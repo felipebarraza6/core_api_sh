@@ -1,0 +1,73 @@
+version: '3'
+
+volumes:
+    certs: {}
+    vhostd: {}
+    html: {}
+
+services:
+    nginx_proxy:
+        image: jwilder/nginx-proxy       
+        restart: always
+        ports:
+          - "80:80"
+          - "443:443"
+        volumes:
+          - /var/run/docker.sock:/tmp/docker.sock:ro
+          - certs:/etc/nginx/certs:ro
+          - vhostd:/etc/nginx/vhost.d
+          - html:/usr/share/nginx/html
+        labels:
+          - com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy
+
+    letsencrypt:
+        image: jrcs/letsencrypt-nginx-proxy-companion
+        restart: always
+        environment:
+          - NGINX_PROXY_CONTAINER=nginx_proxy
+        volumes:
+            - certs:/etc/nginx/certs:rw
+            - vhostd:/etc/nginx/vhost.d
+            - html:/usr/share/nginx/html
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+        depends_on:
+          - nginx_proxy
+
+    django: &django
+        build: ./api
+        image: shydro_django
+        volumes:
+            - .:/code
+        expose:
+            - "80"
+        environment:
+            - VIRTUAL_HOST=api.smarthydro.app, www.api.smarthydro.app
+            - LETSENCRYPT_HOST=api.smarthydro.app, www.api.smarthydro.app
+            - LETSENCRYPT_EMAIL=api@smarthydro.app
+            # Variables para cluster PostgreSQL
+            - CLUSTER_DB_HOST=${CLUSTER_DB_HOST}
+            - CLUSTER_DB_PORT=${CLUSTER_DB_PORT:-5432}
+            - CLUSTER_DB_USER=${CLUSTER_DB_USER}
+            - CLUSTER_DB_PASSWORD=${CLUSTER_DB_PASSWORD}
+            - CLUSTER_DB_NAME=${CLUSTER_DB_NAME}
+            - USE_CLUSTER=${USE_CLUSTER}
+        depends_on:
+            - nginx_proxy
+            - letsencrypt
+
+    cron:
+        build: ./api
+        restart: unless-stopped
+        image: cron_smarthydro
+        volumes:
+          - .:/code
+        environment:
+            - CLUSTER_CLUSTER_DB_HOST=${CLUSTER_DB_HOST}
+            - CLUSTER_CLUSTER_DB_PORT=${CLUSTER_DB_PORT:-5432}
+            - CLUSTER_CLUSTER_DB_USER=${CLUSTER_DB_USER}
+            - CLUSTER_CLUSTER_DB_PASSWORD=${CLUSTER_DB_PASSWORD}
+            - CLUSTER_CLUSTER_DB_NAME=${CLUSTER_DB_NAME}
+            - USE_CLUSTER=${USE_CLUSTER}
+        depends_on:
+          - django
+        command: cron -f

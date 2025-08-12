@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Error Crítico - SmartHydro</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f4f4f4;
+      }
+      .container {
+        max-width: 800px;
+        margin: 20px auto;
+        background-color: #ffffff;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      .header {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        padding: 20px;
+        text-align: center;
+        border-radius: 10px 10px 0 0;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      .content {
+        padding: 30px;
+      }
+      .alert-box {
+        border-radius: 8px;
+        padding: 20px;
+        margin: 20px 0;
+      }
+      .alert-critical {
+        background-color: #fee;
+        border-left: 5px solid #dc3545;
+      }
+      .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin: 20px 0;
+      }
+      .info-item {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+      }
+      .info-label {
+        font-weight: bold;
+        color: #495057;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      .info-value {
+        font-size: 16px;
+        color: #212529;
+        margin-top: 5px;
+      }
+      .status-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+      .status-critical {
+        background-color: #dc3545;
+      }
+      .explanation {
+        background-color: #e3f2fd;
+        border-left: 5px solid #2196f3;
+        padding: 15px;
+        margin: 20px 0;
+      }
+      .explanation h4 {
+        margin: 0 0 10px 0;
+        color: #1976d2;
+      }
+      .explanation p {
+        margin: 0;
+        color: #424242;
+      }
+      .footer {
+        background-color: #f8f9fa;
+        padding: 20px;
+        text-align: center;
+        color: #6c757d;
+        font-size: 12px;
+        border-radius: 0 0 10px 10px;
+      }
+      .urgent-notice {
+        background-color: #fff3cd;
+        border: 2px solid #ffc107;
+        border-radius: 5px;
+        padding: 15px;
+        margin: 20px 0;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🚨 ERROR CRÍTICO DEL SISTEMA IKOLU APP</h1>
+        <p>
+          Se ha detectado un problema crítico que requiere atención inmediata
+          del equipo técnico
+        </p>
+      </div>
+
+      <div class="content">
+        <div class="urgent-notice">
+          <strong>⚠️ ATENCIÓN URGENTE:</strong> Este error del sistema Ikolu App
+          requiere intervención inmediata del equipo técnico.
+        </div>
+
+        <div class="alert-box alert-critical">
+          <h2>
+            <span class="status-indicator status-critical"></span>Error Crítico
+            Detectado
+          </h2>
+          <p>
+            Se ha detectado un problema crítico en el sistema que puede afectar
+            el funcionamiento normal.
+          </p>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Tipo de Error</div>
+            <div class="info-value">{{ error_type|default:"Crítico" }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Punto de Captación</div>
+            <div class="info-value">#{{ point_id|default:"N/A" }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Hora de Detección</div>
+            <div class="info-value">{{ timestamp|default:"N/A" }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Prioridad</div>
+            <div class="info-value">ALTA</div>
+          </div>
+        </div>
+
+        <div class="explanation">
+          <h4>📋 ¿Qué significa esto?</h4>
+          <p>
+            Se ha detectado un error crítico en el sistema Ikolu App que puede
+            comprometer el funcionamiento normal de los servicios de monitoreo
+            hidrológico. El equipo técnico de Ikolu App ha sido notificado
+            automáticamente.
+          </p>
+        </div>
+
+        <div class="explanation">
+          <h4>🔧 Acciones que realizará el equipo de Ikolu App</h4>
+          <p>
+            1. El equipo técnico de Ikolu App verificará el estado del
+            sistema<br />
+            2. Se realizará diagnóstico remoto de la conectividad<br />
+            3. Se revisarán los logs del sistema para identificar la causa<br />
+            4. Se implementarán las correcciones necesarias<br />
+            5. Se notificará cuando el problema esté resuelto
+          </p>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>© 2025 Ikolu App - Sistema de Monitoreo Hidrológico</p>
+        <p>
+          <strong>URGENTE:</strong> Este es un mensaje de error crítico del
+          sistema Ikolu App. El equipo técnico ha sido notificado
+          automáticamente.
+        </p>
+        <p><strong>Contacto:</strong> telemetry@smarthydro.app</p>
+      </div>
+    </div>
+  </body>
+</html>

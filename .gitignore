@@ -1,0 +1,261 @@
+# 🚫 GITIGNORE - SMART HYDRO PROJECT
+
+# ========================================
+# PYTHON / DJANGO
+# ========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ========================================
+# DOCKER
+# ========================================
+.dockerignore
+docker-compose.override.yml
+docker-compose.*.yml
+!docker-compose.yml
+!docker-compose.prod.yml
+
+# ========================================
+# DATABASE
+# ========================================
+*.db
+*.sqlite
+*.sqlite3
+*.psql
+*.postgresql
+backup_*/
+*.backup
+*.dump
+*.sql
+
+# ========================================
+# LOGS & TEMPORALES
+# ========================================
+*.log
+logs/
+static/
+tmp/
+temp/
+.tmp/
+.temp/
+.backup_cluster_20250812_130725/
+
+# ========================================
+# BACKUPS & MAINTENANCE
+# ========================================
+backup_cluster_*/
+staging_deleted_*/
+root_cleanup_backup_*/
+maintenance_complete_report_*/
+cronjobs_cleanup_report_*/
+root_cleanup_report_*/
+
+# ========================================
+# ENVIRONMENT & CONFIG
+# ========================================
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.*.local
+!.env.example
+!env.example
+
+# ========================================
+# IDE & EDITORES
+# ========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ========================================
+# OS & SYSTEM
+# ========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ========================================
+# TESTING & COVERAGE
+# ========================================
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# ========================================
+# JUPYTER NOTEBOOKS
+# ========================================
+.ipynb_checkpoints
+
+# ========================================
+# PYCHARM
+# ========================================
+.idea/
+
+# ========================================
+# VS CODE
+# ========================================
+.vscode/
+
+# ========================================
+# SSL & CERTIFICATES
+# ========================================
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+ssl/
+
+# ========================================
+# NODE (si usas frontend)
+# ========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# ========================================
+# COMPILED & BUILD
+# ========================================
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.dll
+*.dylib
+
+# ========================================
+# LOCAL DEVELOPMENT
+# ========================================
+local_settings.py
+local_config.py
+dev_settings.py
+test_settings.py
+
+# ========================================
+# PRODUCTION
+# ========================================
+production_settings.py
+prod_settings.py
+live_settings.py
+
+# ========================================
+# BACKUP FILES
+# ========================================
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*.swp
+*.tmp
+
+# ========================================
+# MAINTENANCE SCRIPTS OUTPUT
+# ========================================
+maintenance/*.log
+maintenance/*.md
+maintenance/backup_*/
+maintenance/*_report_*/
+
+# ========================================
+# CRONJOBS OUTPUT
+# ========================================
+api/cronjobs/*.log
+api/cronjobs/*.md
+api/cronjobs/backup_*/
+
+# ========================================
+# PROJECT SPECIFIC
+# ========================================
+# SmartHydro specific files
+correccion_*.log
+recalculo_*.log
+health_check.log
+correccion_historicos.log
+recalculo_diffs.log
+
+# ========================================
+# EXCEPTIONS (KEEP THESE)
+# ========================================
+!docker-compose.yml
+!docker-compose.prod.yml
+!requirements.txt
+!README.md
+!LICENSE
+!.gitignore
+!manage.py
+!api/settings.py
+!api/urls.py
+!api/wsgi.py
+!api/asgi.py
+
+# ========================================
+# COMMENTS
+# ========================================
+# Este .gitignore está diseñado para SmartHydro
+# Mantiene solo los archivos esenciales del proyecto
+# Ignora backups, logs, configuraciones locales y archivos temporales

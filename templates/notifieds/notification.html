@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Notificación - SmartHydro</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f4f4f4;
+      }
+      .container {
+        max-width: 800px;
+        margin: 20px auto;
+        background-color: #ffffff;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        text-align: center;
+        border-radius: 10px 10px 0 0;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      .content {
+        padding: 30px;
+      }
+      .alert-box {
+        border-radius: 8px;
+        padding: 20px;
+        margin: 20px 0;
+      }
+      .alert-info {
+        background-color: #d1ecf1;
+        border-left: 5px solid #17a2b8;
+      }
+      .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin: 20px 0;
+      }
+      .info-item {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+      }
+      .info-label {
+        font-weight: bold;
+        color: #495057;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      .info-value {
+        font-size: 16px;
+        color: #212529;
+        margin-top: 5px;
+      }
+      .status-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+      .status-info {
+        background-color: #17a2b8;
+      }
+      .explanation {
+        background-color: #e3f2fd;
+        border-left: 5px solid #2196f3;
+        padding: 15px;
+        margin: 20px 0;
+      }
+      .explanation h4 {
+        margin: 0 0 10px 0;
+        color: #1976d2;
+      }
+      .explanation p {
+        margin: 0;
+        color: #424242;
+      }
+      .footer {
+        background-color: #f8f9fa;
+        padding: 20px;
+        text-align: center;
+        color: #6c757d;
+        font-size: 12px;
+        border-radius: 0 0 10px 10px;
+      }
+      .success-notice {
+        background-color: #d4edda;
+        border: 2px solid #28a745;
+        border-radius: 5px;
+        padding: 15px;
+        margin: 20px 0;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>📢 NOTIFICACIÓN DEL SISTEMA</h1>
+        <p>Información importante sobre el estado del sistema</p>
+      </div>
+
+      <div class="content">
+        <div class="alert-box alert-info">
+          <h2>
+            <span class="status-indicator status-info"></span>Notificación del
+            Sistema
+          </h2>
+          <p>
+            {{ message|default:"Se ha generado una notificación del sistema.
+            Revisa los detalles a continuación." }}
+          </p>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Tipo de Notificación</div>
+            <div class="info-value">
+              {{ notification_type|default:"General" }}
+            </div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Punto de Captación</div>
+            <div class="info-value">#{{ point_id|default:"N/A" }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Hora de Generación</div>
+            <div class="info-value">{{ timestamp|default:"N/A" }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Estado</div>
+            <div class="info-value">{{ status|default:"Información" }}</div>
+          </div>
+        </div>
+
+        <div class="explanation">
+          <h4>📋 Información Adicional</h4>
+          <p>
+            {{ additional_info|default:"Esta notificación contiene información
+            importante sobre el estado del sistema o eventos recientes." }}
+          </p>
+        </div>
+
+        {% if actions %}
+        <div class="explanation">
+          <h4>🔧 Acciones Sugeridas</h4>
+          <p>{{ actions|safe }}</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="footer">
+        <p>© 2025 SmartHydro - Sistema de Monitoreo Hidrológico</p>
+        <p>
+          Este es un mensaje informativo del sistema. Para más información,
+          consulta el dashboard.
+        </p>
+        <p><strong>Contacto:</strong> telemetry@smarthydro.app</p>
+      </div>
+    </div>
+  </body>
+</html>

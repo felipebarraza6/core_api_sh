@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recuperación: Sistema DGA Normalizado</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f4f4f4;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        background-color: #ffffff;
+      }
+      .header {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+        padding: 20px;
+        text-align: center;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      .content {
+        padding: 30px;
+      }
+      .alert-box {
+        border-radius: 8px;
+        padding: 20px;
+        margin: 20px 0;
+      }
+      .alert-success {
+        background-color: #d4edda;
+        border-left: 5px solid #28a745;
+      }
+      .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin: 20px 0;
+      }
+      .info-item {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+      }
+      .info-label {
+        font-weight: bold;
+        color: #495057;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      .info-value {
+        font-size: 16px;
+        color: #212529;
+        margin-top: 5px;
+      }
+      .status-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+      .status-success {
+        background-color: #28a745;
+      }
+      .explanation {
+        background-color: #e3f2fd;
+        border-left: 5px solid #2196f3;
+        padding: 15px;
+        margin: 20px 0;
+      }
+      .explanation h4 {
+        margin: 0 0 10px 0;
+        color: #1976d2;
+      }
+      .explanation p {
+        margin: 0;
+        color: #424242;
+      }
+      .footer {
+        background-color: #f8f9fa;
+        padding: 20px;
+        text-align: center;
+        color: #6c757d;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>✅ RECUPERACIÓN DEL SISTEMA</h1>
+        <p>Sistema DGA Normalizado - Funcionando Correctamente</p>
+      </div>
+
+      <div class="content">
+        <div class="alert-box alert-success">
+          <h2>
+            <span class="status-indicator status-success"></span>Sistema DGA
+            Recuperado
+          </h2>
+          <p>
+            El sistema DGA ha vuelto a funcionar normalmente. Los datos se están
+            enviando correctamente.
+          </p>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Punto de Captación</div>
+            <div class="info-value">#{{ point_id }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Registros en Cola</div>
+            <div class="info-value">{{ queue_count }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Estado Actual</div>
+            <div class="info-value">Normalizado</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Hora de Recuperación</div>
+            <div class="info-value">{{ timestamp }}</div>
+          </div>
+        </div>
+
+        <div class="explanation">
+          <h4>🎉 ¿Qué pasó?</h4>
+          <p>
+            El sistema DGA ha vuelto a funcionar correctamente. Los registros
+            que estaban en cola se están procesando y enviando normalmente al
+            servicio DGA.
+          </p>
+        </div>
+
+        <div class="explanation">
+          <h4>📊 Estado del Sistema</h4>
+          <p>
+            • Comunicación DGA: ✅ Funcionando<br />
+            • Envío de datos: ✅ Activo<br />
+            • Cola de registros: ✅ Normalizada<br />
+            • Monitoreo: ✅ Continuo
+          </p>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>
+          Este es un mensaje automático del sistema SmartHydro. No responda a
+          este correo.
+        </p>
+        <p>© 2025 SmartHydro - Sistema de Monitoreo Hidrológico</p>
+        <p><strong>Contacto:</strong> telemetry@smarthydro.app</p>
+      </div>
+    </div>
+  </body>
+</html>
