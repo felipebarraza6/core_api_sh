@@ -47,8 +47,12 @@ CLUSTER_DB_PRIMARY = {
 CLUSTER_DB_BACKUP = {
     "host": os.environ.get("CLUSTER_DB_HOST", "db-postgresql.com"),
     "port": os.environ.get("CLUSTER_DB_PORT", "123"),
-    "user": os.environ.get("CLUSTER_DB_USER", "admin"),
-    "password": os.environ.get("CLUSTER_DB_PASSWORD", ""),
+    "user": os.environ.get(
+        "CLUSTER_DB_USER_BACKUP", "data_store_telemetry"
+    ),  # ✅ Usuario específico
+    "password": os.environ.get(
+        "CLUSTER_DB_PASSWORD_BACKUP", ""
+    ),  # ✅ Password específica
     "database": "data_store_telemetry",  # Base de respaldo fija
     "sslmode": os.environ.get("CLUSTER_DB_SSLMODE", "require"),
 }
