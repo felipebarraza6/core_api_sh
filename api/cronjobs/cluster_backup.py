@@ -1,188 +1,178 @@
 #!/usr/bin/env python3
 
-import psycopg2
-import psycopg2.extras
+import os
 import time
 
+import psycopg2
+import psycopg2.extras
+
+
+# Cargar variables de entorno
+def load_env():
+    """Cargar variables de entorno desde archivo .env"""
+    env_file = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"
+    )
+
+    if os.path.exists(env_file):
+        with open(env_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    os.environ[key] = value
+
+
+# Cargar variables de entorno
+load_env()
+
 LOCAL_DB = {
-    'host': 'postgres',
-    'port': '5432', 
-    'user': 'postgres',
-    'password': 'postgres',
-    'database': 'postgres'
+    "host": os.environ.get("LOCAL_DB_HOST", "postgres"),
+    "port": os.environ.get("LOCAL_DB_PORT", "5432"),
+    "user": os.environ.get("LOCAL_DB_USER", "smarthydro_user"),
+    "password": os.environ.get("LOCAL_DB_PASSWORD", ""),
+    "database": os.environ.get("LOCAL_DB_NAME", "smarthydro_prod"),
 }
 
-CLUSTER_DB = {
-    'host': 'db-postgresql-nyc3-22918-do-user-7500906-0.m.db.ondigitalocean.com',
-    'port': '25060',
-    'user': 'doadmin',
-    'password': 'AVNS_29JJQpkue7Sf52s7Bw1',
-    'database': 'telemetry_api',
-    'sslmode': 'require'
+# CONFIGURACIÓN DUAL BACKUP
+CLUSTER_DB_PRIMARY = {
+    "host": os.environ.get("CLUSTER_DB_HOST", "db-postgresql.com"),
+    "port": os.environ.get("CLUSTER_DB_PORT", "123"),
+    "user": os.environ.get("CLUSTER_DB_USER", "admin"),
+    "password": os.environ.get("CLUSTER_DB_PASSWORD", ""),
+    "database": os.environ.get("CLUSTER_DB_NAME", "telemetry_api"),
+    "sslmode": os.environ.get("CLUSTER_DB_SSLMODE", "require"),
 }
 
-def find_and_migrate_missing():
-    print("=== MIGRANDO LA LAGUNITA ===")
-    print("Comparando local vs cluster para encontrar faltantes")
-    print()
-    
+CLUSTER_DB_BACKUP = {
+    "host": os.environ.get("CLUSTER_DB_HOST", "db-postgresql.com"),
+    "port": os.environ.get("CLUSTER_DB_PORT", "123"),
+    "user": os.environ.get("CLUSTER_DB_USER", "admin"),
+    "password": os.environ.get("CLUSTER_DB_PASSWORD", ""),
+    "database": "data_store_telemetry",  # Base de respaldo fija
+    "sslmode": os.environ.get("CLUSTER_DB_SSLMODE", "require"),
+}
+
+
+def backup_to_database(cluster_db_config, db_name):
+    """Realizar backup a una base de datos específica del cluster"""
+    print(f"=== RESPALDO A {db_name.upper()} ===")
+
     try:
-        local_conn = psycopg2.connect(**LOCAL_DB)
-        local_cursor = local_conn.cursor()
-        
-        cluster_conn = psycopg2.connect(**CLUSTER_DB)
+        cluster_conn = psycopg2.connect(**cluster_db_config)
         cluster_cursor = cluster_conn.cursor()
-        
-        # Validaciones previas: asegurar integridad de la BD local
-        print("=== VALIDACIONES PREVIAS ===")
-        
-        # 1) Verificar que existan tablas en la BD local
-        local_cursor.execute(
-            "SELECT COUNT(*) FROM information_schema.tables "
-            "WHERE table_schema='public' AND table_type='BASE TABLE';"
-        )
-        tables_count = local_cursor.fetchone()[0]
-        if tables_count == 0:
-            print("ERROR: no se encontraron tablas en la BD local. Abortando migracion.")
-            local_cursor.close()
-            local_conn.close()
-            cluster_cursor.close()
-            cluster_conn.close()
-            return False
-        print(f"OK: Tablas encontradas en BD local: {tables_count}")
-        
-        # 2) Verificar que la tabla core_interactiondetail no este vacia
-        local_cursor.execute("SELECT COUNT(*) FROM core_interactiondetail;")
-        local_total = local_cursor.fetchone()[0]
-        if local_total == 0:
-            print("ERROR: la tabla core_interactiondetail esta vacia. Abortando migracion.")
-            local_cursor.close()
-            local_conn.close()
-            cluster_cursor.close()
-            cluster_conn.close()
-            return False
-        print(f"OK: Registros en core_interactiondetail local: {local_total:,}")
-        
-        # Contar registros en el cluster para comparacion
+
+        # Verificar conexión
         cluster_cursor.execute("SELECT COUNT(*) FROM core_interactiondetail;")
         cluster_total = cluster_cursor.fetchone()[0]
-        
+        print(f"✅ Conectado a {db_name}: {cluster_total:,} registros existentes")
+
+        return cluster_conn, cluster_cursor, cluster_total
+
+    except Exception as e:
+        print(f"❌ ERROR conectando a {db_name}: {e}")
+        return None, None, 0
+
+
+def sync_to_database(
+    local_conn, local_cursor, cluster_conn, cluster_cursor, db_name, local_total
+):
+    """Sincronizar datos del local a una base específica del cluster"""
+    print(f"=== SINCRONIZANDO A {db_name.upper()} ===")
+
+    try:
+        # Contar registros en el cluster
+        cluster_cursor.execute("SELECT COUNT(*) FROM core_interactiondetail;")
+        cluster_total = cluster_cursor.fetchone()[0]
+
         missing_count = local_total - cluster_total
-        
-        print()
-        print("=== COMPARACION LOCAL VS CLUSTER ===")
-        print(f"Local total: {local_total:,}")
-        print(f"Cluster total: {cluster_total:,}")
-        print(f"FALTANTES: {missing_count:,}")
-        print()
-        
-        # NUEVA FUNCIONALIDAD: Eliminar registros huerfanos del cluster
-        # (registros que estan en cluster pero ya no en local)
-        print("=== LIMPIEZA DE REGISTROS HUERFANOS ===")
-        print("Identificando registros huerfanos en el cluster...")
-        
-        # Obtener todos los IDs del cluster
+        print(f"📊 {db_name}: Local {local_total:,} vs Cluster {cluster_total:,}")
+        print(f"📊 FALTANTES: {missing_count:,}")
+
+        if missing_count <= 0:
+            print(f"✅ {db_name}: No hay registros faltantes!")
+            return True
+
+        # Limpiar registros huérfanos
+        print(f"🧹 {db_name}: Limpiando registros huérfanos...")
         cluster_cursor.execute("SELECT id FROM core_interactiondetail ORDER BY id;")
         cluster_ids = set(row[0] for row in cluster_cursor.fetchall())
-        
-        # Obtener todos los IDs locales
+
         local_cursor.execute("SELECT id FROM core_interactiondetail ORDER BY id;")
         local_ids = set(row[0] for row in local_cursor.fetchall())
-        
-        # IDs huerfanos = estan en cluster pero no en local
+
         orphan_ids = cluster_ids - local_ids
-        
+
         if orphan_ids:
-            print(f"LIMPIEZA: Encontrados {len(orphan_ids)} registros huerfanos en el cluster.")
-            print("Eliminando registros huerfanos...")
-            
-            # Eliminar en lotes de 1000 para evitar problemas de memoria
+            print(f"🗑️ {db_name}: Eliminando {len(orphan_ids)} registros huérfanos...")
             orphan_list = list(orphan_ids)
             batch_size = 1000
-            deleted_count = 0
-            
+
             for i in range(0, len(orphan_list), batch_size):
-                batch = orphan_list[i:i + batch_size]
+                batch = orphan_list[i : i + batch_size]
                 placeholders = ",".join(["%s"] * len(batch))
-                delete_query = f"DELETE FROM core_interactiondetail WHERE id IN ({placeholders})"
+                delete_query = (
+                    f"DELETE FROM core_interactiondetail WHERE id IN ({placeholders})"
+                )
                 cluster_cursor.execute(delete_query, batch)
-                deleted_count += cluster_cursor.rowcount
-            
+
             cluster_conn.commit()
-            print(f"OK: Eliminados: {deleted_count} registros huerfanos del cluster")
-        else:
-            print("OK: No se encontraron registros huerfanos en el cluster.")
-        print()
-        
-        # Recalcular totales despues de la limpieza
+            print(f"✅ {db_name}: Registros huérfanos eliminados")
+
+        # Recalcular faltantes después de limpieza
         cluster_cursor.execute("SELECT COUNT(*) FROM core_interactiondetail;")
         cluster_total_after_cleanup = cluster_cursor.fetchone()[0]
         missing_count = local_total - cluster_total_after_cleanup
-        
-        print(f"Cluster total despues de limpieza: {cluster_total_after_cleanup:,}")
-        print(f"FALTANTES despues de limpieza: {missing_count:,}")
-        print()
-        
+
         if missing_count <= 0:
-            print("OK: No hay registros faltantes!")
+            print(f"✅ {db_name}: No hay registros faltantes después de limpieza!")
             return True
-        
-        # Encontrar el rango de IDs faltantes
-        cluster_cursor.execute("SELECT MAX(id) FROM core_interactiondetail;")
-        cluster_max_id = cluster_cursor.fetchone()[0]
-        
+
+        # Buscar registros faltantes
+        print(f"🔍 {db_name}: Buscando {missing_count:,} registros faltantes...")
+
         local_cursor.execute("SELECT MAX(id) FROM core_interactiondetail;")
         local_max_id = local_cursor.fetchone()[0]
-        
-        print(f"Local max ID: {local_max_id}")
-        print(f"Cluster max ID: {cluster_max_id}")
-        print(f"Diferencia de IDs: {local_max_id - cluster_max_id}")
-        print()
-        
-        # Buscar registros faltantes (los mas nuevos probablemente)
-        print("=== BUSQUEDA DE REGISTROS FALTANTES ===")
-        print("Buscando registros faltantes...")
-        
-        # Estrategia 1: IDs mayores al max del cluster
+
+        cluster_cursor.execute("SELECT MAX(id) FROM core_interactiondetail;")
+        cluster_max_id = cluster_cursor.fetchone()[0]
+
+        # Buscar registros faltantes
         if local_max_id > cluster_max_id:
-            print(f"Migrando IDs desde {cluster_max_id + 1} hasta {local_max_id}")
-            
-            local_cursor.execute("""
+            local_cursor.execute(
+                """
                 SELECT id, created, modified, date_time_medition, date_time_last_logger,
                        flow, total, total_diff, total_today_diff, nivel, water_table,
                        send_dga, return_dga, n_voucher, is_error, catchment_point_id,
                        notification_id, pulses, days_not_conection
-                FROM core_interactiondetail 
+                FROM core_interactiondetail
                 WHERE id > %s
                 ORDER BY id
-            """, (cluster_max_id,))
-            
+                """,
+                (cluster_max_id,),
+            )
         else:
-            # Estrategia 2: Registros del ultimo dia que no esten
-            print("Buscando por fecha - ultimas 24 horas")
-            local_cursor.execute("""
+            local_cursor.execute(
+                """
                 SELECT id, created, modified, date_time_medition, date_time_last_logger,
                        flow, total, total_diff, total_today_diff, nivel, water_table,
                        send_dga, return_dga, n_voucher, is_error, catchment_point_id,
                        notification_id, pulses, days_not_conection
-                FROM core_interactiondetail 
+                FROM core_interactiondetail
                 WHERE created >= NOW() - INTERVAL '24 hours'
                 ORDER BY id
-            """)
-        
+                """
+            )
+
         missing_records = local_cursor.fetchall()
-        
+
         if not missing_records:
-            print("OK: No se encontraron registros faltantes especificos")
+            print(f"✅ {db_name}: No se encontraron registros faltantes específicos")
             return True
-            
-        print(f"ENCONTRADOS: {len(missing_records)} registros faltantes")
-        print()
-        
-        # Migrar usando BULK INSERT (ultra rapido)
-        print("=== MIGRACION DE REGISTROS FALTANTES ===")
-        print("Migrando faltantes con BULK INSERT...")
-        
+
+        print(f"📥 {db_name}: Migrando {len(missing_records)} registros...")
+
+        # Migrar con BULK INSERT
         insert_query = """
             INSERT INTO core_interactiondetail 
             (id, created, modified, date_time_medition, date_time_last_logger,
@@ -192,32 +182,29 @@ def find_and_migrate_missing():
             VALUES %s
             ON CONFLICT (id) DO NOTHING
         """
-        
+
         start_time = time.time()
-        
+
         try:
-            # BULK INSERT de todos los faltantes
             psycopg2.extras.execute_values(
-                cluster_cursor,
-                insert_query,
-                missing_records,
-                page_size=1000
+                cluster_cursor, insert_query, missing_records, page_size=1000
             )
             cluster_conn.commit()
-            
+
             bulk_time = time.time() - start_time
             rate = len(missing_records) / bulk_time if bulk_time > 0 else 0
-            
-            print(f"OK: Migrados: {len(missing_records)} en {bulk_time:.1f}s")
-            print(f"VELOCIDAD: {rate:.0f} reg/seg")
-            
+
+            print(f"✅ {db_name}: Migrados {len(missing_records)} en {bulk_time:.1f}s")
+            print(f"🚀 {db_name}: Velocidad {rate:.0f} reg/seg")
+
         except Exception as e:
-            print(f"ERROR en bulk: {e}")
+            print(f"❌ {db_name}: Error en bulk insert: {e}")
             # Fallback individual
             success = 0
             for record in missing_records:
                 try:
-                    cluster_cursor.execute("""
+                    cluster_cursor.execute(
+                        """
                         INSERT INTO core_interactiondetail 
                         (id, created, modified, date_time_medition, date_time_last_logger,
                          flow, total, total_diff, total_today_diff, nivel, water_table,
@@ -225,54 +212,155 @@ def find_and_migrate_missing():
                          notification_id, pulses, days_not_conection)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (id) DO NOTHING
-                    """, record)
+                        """,
+                        record,
+                    )
                     success += 1
                 except:
                     pass
+
             cluster_conn.commit()
-            print(f"OK: Migrados individualmente: {success}")
-        
-        # Verificacion final
+            print(f"✅ {db_name}: Migrados individualmente: {success}")
+
+        # Verificación final
         cluster_cursor.execute("SELECT COUNT(*) FROM core_interactiondetail;")
         final_cluster_total = cluster_cursor.fetchone()[0]
-        
-        print()
-        print("=== VERIFICACION FINAL ===")
-        print(f"Local total: {local_total:,}")
-        print(f"Cluster total inicial: {cluster_total:,}")
-        print(f"Cluster total final: {final_cluster_total:,}")
-        print(f"Diferencia final: {local_total - final_cluster_total:,}")
-        
+
+        print(f"📊 {db_name}: VERIFICACIÓN FINAL")
+        print(f"📊 {db_name}: Local {local_total:,} vs Cluster {final_cluster_total:,}")
+        print(f"📊 {db_name}: Diferencia final {local_total - final_cluster_total:,}")
+
         if final_cluster_total >= local_total * 0.99:
-            print("SUCCESS: LAGUNITA MIGRADA EXITOSAMENTE!")
-            print("SUCCESS: CLUSTER AL 100%!")
+            print(f"🎉 {db_name}: RESPALDO EXITOSO AL 100%!")
+            return True
         else:
-            print("WARNING: Aun faltan algunos registros")
-        
+            print(f"⚠️ {db_name}: Aún faltan algunos registros")
+            return False
+
+    except Exception as e:
+        print(f"❌ {db_name}: Error en sincronización: {e}")
+        return False
+
+
+def find_and_migrate_missing():
+    """Función principal de respaldo dual"""
+    print("=== RESPALDO DUAL AL CLUSTER ===")
+    print("Sincronizando local → telemetry_api + data_store_telemetry")
+    print()
+
+    try:
+        # Conectar a base local
+        local_conn = psycopg2.connect(**LOCAL_DB)
+        local_cursor = local_cursor = local_conn.cursor()
+
+        # Validaciones previas
+        print("=== VALIDACIONES PREVIAS ===")
+
+        local_cursor.execute(
+            "SELECT COUNT(*) FROM information_schema.tables "
+            "WHERE table_schema='public' AND table_type='BASE TABLE';"
+        )
+        tables_count = local_cursor.fetchone()[0]
+        if tables_count == 0:
+            print("❌ ERROR: No se encontraron tablas en la BD local")
+            return False
+        print(f"✅ Tablas encontradas en BD local: {tables_count}")
+
+        local_cursor.execute("SELECT COUNT(*) FROM core_interactiondetail;")
+        local_total = local_cursor.fetchone()[0]
+        if local_total == 0:
+            print("❌ ERROR: La tabla core_interactiondetail está vacía")
+            return False
+        print(f"✅ Registros en core_interactiondetail local: {local_total:,}")
+
+        print()
+
+        # RESPALDO DUAL
+        results = []
+
+        # 1. Respaldo a telemetry_api (primaria)
+        print("🔄 INICIANDO RESPALDO PRIMARIO (telemetry_api)")
+        conn1, cursor1, total1 = backup_to_database(CLUSTER_DB_PRIMARY, "telemetry_api")
+        if conn1 and cursor1:
+            result1 = sync_to_database(
+                local_conn, local_cursor, conn1, cursor1, "telemetry_api", local_total
+            )
+            results.append(("telemetry_api", result1))
+            cursor1.close()
+            conn1.close()
+        else:
+            results.append(("telemetry_api", False))
+
+        print()
+
+        # 2. Respaldo a data_store_telemetry (secundaria)
+        print("🔄 INICIANDO RESPALDO SECUNDARIO (data_store_telemetry)")
+        conn2, cursor2, total2 = backup_to_database(
+            CLUSTER_DB_BACKUP, "data_store_telemetry"
+        )
+        if conn2 and cursor2:
+            result2 = sync_to_database(
+                local_conn,
+                local_cursor,
+                conn2,
+                cursor2,
+                "data_store_telemetry",
+                local_total,
+            )
+            results.append(("data_store_telemetry", result2))
+            cursor2.close()
+            conn2.close()
+        else:
+            results.append(("data_store_telemetry", False))
+
+        # Cerrar conexión local
         local_cursor.close()
         local_conn.close()
-        cluster_cursor.close()
-        cluster_conn.close()
-        
-        return True
-        
+
+        # RESUMEN FINAL
+        print()
+        print("=== RESUMEN RESPALDO DUAL ===")
+        success_count = sum(1 for _, result in results if result)
+
+        for db_name, result in results:
+            status = "✅ EXITOSO" if result else "❌ FALLÓ"
+            print(f"📊 {db_name}: {status}")
+
+        print(f"📊 TOTAL: {success_count}/{len(results)} respaldos exitosos")
+
+        if success_count == len(results):
+            print("🎉 ¡RESPALDO DUAL COMPLETADO AL 100%!")
+            return True
+        elif success_count > 0:
+            print("⚠️ RESPALDO PARCIAL: Al menos una base está respaldada")
+            return True
+        else:
+            print("❌ RESPALDO DUAL FALLÓ COMPLETAMENTE")
+            return False
+
     except Exception as e:
-        print(f"ERROR: {e}")
+        print(f"❌ ERROR GENERAL: {e}")
         return False
+
 
 if __name__ == "__main__":
     find_and_migrate_missing()
 
+
 def run():
-    """Funcion para ejecutar el backup desde django_crontab"""
+    """Función para ejecutar el backup dual desde django_crontab"""
     try:
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Iniciando backup del cluster...")
+        print(
+            f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Iniciando backup dual del cluster..."
+        )
         result = find_and_migrate_missing()
         if result:
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Backup completado exitosamente")
+            print(
+                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Backup dual completado exitosamente"
+            )
         else:
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Backup fallo")
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Backup dual falló")
         return result
     except Exception as e:
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error en backup: {e}")
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error en backup dual: {e}")
         return False

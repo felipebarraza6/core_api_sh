@@ -1,12 +1,12 @@
-# 🚫 GITIGNORE - SMART HYDRO PROJECT
-
-# ========================================
-# PYTHON / DJANGO
-# ========================================
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# C extensions
 *.so
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -20,20 +20,103 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# Django
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
-media/
-staticfiles/
 
-# Virtual environments
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
+#   However, in case of collaboration, if having platform-specific dependencies or dependencies
+#   having no cross-platform support, pipenv may install dependencies that don't work, or not
+#   install all needed dependencies.
+#Pipfile.lock
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Environments
 .env
 .venv
 env/
@@ -42,220 +125,60 @@ ENV/
 env.bak/
 venv.bak/
 
-# ========================================
-# DOCKER
-# ========================================
-.dockerignore
-docker-compose.override.yml
-docker-compose.*.yml
-!docker-compose.yml
-!docker-compose.prod.yml
-
-# ========================================
-# DATABASE
-# ========================================
-*.db
-*.sqlite
-*.sqlite3
-*.psql
-*.postgresql
-backup_*/
-*.backup
-*.dump
-*.sql
-
-# ========================================
-# LOGS & TEMPORALES
-# ========================================
-*.log
-logs/
-static/
-tmp/
-temp/
-.tmp/
-.temp/
-.backup_cluster_20250812_130725/
-
-# ========================================
-# BACKUPS & MAINTENANCE
-# ========================================
-backup_cluster_*/
-staging_deleted_*/
-root_cleanup_backup_*/
-maintenance_complete_report_*/
-cronjobs_cleanup_report_*/
-root_cleanup_report_*/
-
-# ========================================
 # ENVIRONMENT & CONFIG
-# ========================================
+# ====================
+# Archivos de entorno (contienen credenciales reales)
 .env
 .env.local
 .env.development
 .env.test
 .env.production
 .env.*.local
-!.env.example
-!env.example
 
-# ========================================
-# IDE & EDITORES
-# ========================================
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Archivos de configuración seguros (SÍ se suben al repositorio)
+!init-db-secure.sql
+!docker-compose.production.secure.yml
 
-# ========================================
-# OS & SYSTEM
-# ========================================
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-desktop.ini
-
-# ========================================
-# TESTING & COVERAGE
-# ========================================
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# ========================================
-# JUPYTER NOTEBOOKS
-# ========================================
-.ipynb_checkpoints
-
-# ========================================
-# PYCHARM
-# ========================================
-.idea/
-
-# ========================================
-# VS CODE
-# ========================================
-.vscode/
-
-# ========================================
-# SSL & CERTIFICATES
-# ========================================
-*.pem
-*.key
-*.crt
-*.csr
-*.p12
-*.pfx
-ssl/
-
-# ========================================
-# NODE (si usas frontend)
-# ========================================
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.npm
-.yarn-integrity
-
-# ========================================
-# COMPILED & BUILD
-# ========================================
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.dll
-*.dylib
-
-# ========================================
-# LOCAL DEVELOPMENT
-# ========================================
-local_settings.py
-local_config.py
-dev_settings.py
-test_settings.py
-
-# ========================================
-# PRODUCTION
-# ========================================
-production_settings.py
-prod_settings.py
-live_settings.py
-
-# ========================================
-# BACKUP FILES
-# ========================================
-*.bak
-*.backup
-*.old
-*.orig
-*.save
-*.swp
-*.tmp
-
-# ========================================
-# MAINTENANCE SCRIPTS OUTPUT
-# ========================================
+# MAINTENANCE & BACKUP
+# ====================
+# Logs de mantenimiento
 maintenance/*.log
-maintenance/*.md
-maintenance/backup_*/
-maintenance/*_report_*/
 
-# ========================================
-# CRONJOBS OUTPUT
-# ========================================
+# Archivos de backup
+*.sql
+*.dump
+*.backup
+
+# CRONJOBS & TELEMETRY
+# ====================
+# Logs de cron jobs
 api/cronjobs/*.log
-api/cronjobs/*.md
-api/cronjobs/backup_*/
 
-# ========================================
-# PROJECT SPECIFIC
-# ========================================
-# SmartHydro specific files
+# Archivos temporales de telemetría
+*.tmp
+*.temp
+
+# CORRECCIONES & RECÁLCULOS
+# ==========================
+# Logs de correcciones
 correccion_*.log
 recalculo_*.log
-health_check.log
+
+# Archivos de corrección histórica
 correccion_historicos.log
 recalculo_diffs.log
 
-# ========================================
-# EXCEPTIONS (KEEP THESE)
-# ========================================
-!docker-compose.yml
-!docker-compose.prod.yml
-!requirements.txt
-!README.md
-!LICENSE
-!.gitignore
-!manage.py
-!api/settings.py
-!api/urls.py
-!api/wsgi.py
-!api/asgi.py
+# HEALTH CHECKS
+# =============
+# Logs de health checks
+health_check.log
 
-# ========================================
-# COMMENTS
-# ========================================
-# Este .gitignore está diseñado para SmartHydro
-# Mantiene solo los archivos esenciales del proyecto
-# Ignora backups, logs, configuraciones locales y archivos temporales
+# EXCEPTIONS (KEEP THESE)
+# =======================
+# Archivos que SÍ deben estar en el repositorio
+!maintenance/README.md
+!maintenance/*.py
+!maintenance/*.sh
+
+backup_cluster_20250812_211918
+backup_cluster_20250812_212722
