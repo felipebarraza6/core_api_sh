@@ -170,7 +170,7 @@ class CatchmentPointSerializerDetailCron(serializers.ModelSerializer):
 
     class Meta:
         model = CatchmentPoint
-        fields = ('id', 'title',
+        fields = ('id', 'title', 'frecuency',
                   'profile_data_config', )
 
 

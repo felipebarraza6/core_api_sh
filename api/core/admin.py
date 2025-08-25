@@ -222,5 +222,17 @@ def agregar_registros_cola_dga(modeladmin, request, queryset):
 agregar_registros_cola_dga.short_description = 'Agregar a cola DGA'
 
 # Agregar la acción al admin
-InteractionDetailAdmin.actions = ['agregar_registros_cola_dga']
-InteractionDetailAdmin.agregar_registros_cola_dga = agregar_registros_cola_dga
+
+# Función para remover registros de la cola DGA  
+def remover_registros_cola_dga(modeladmin, request, queryset):
+    """Remover registros seleccionados de la cola de envío DGA"""
+    updated = queryset.filter(send_dga=True).update(send_dga=False)
+    if updated > 0:
+        modeladmin.message_user(request, f'{updated} registros removidos de la cola DGA.')
+    else:
+        modeladmin.message_user(request, 'Ningún registro válido para remover.', level='warning')
+
+remover_registros_cola_dga.short_description = 'Remover de cola DGA'
+
+# Asignar ambas acciones al admin
+InteractionDetailAdmin.actions = [agregar_registros_cola_dga, remover_registros_cola_dga]

@@ -1,179 +1,185 @@
 """Procesamiento de totalizados - SIN LÓGICA DE RESET."""
 
 import logging
-
 from api.core.models import InteractionDetail
 
-# Configurar logging para mejor trazabilidad
 logger = logging.getLogger(__name__)
 
 
 def total_m3(pulses_factor, value, point_catchment):
     """
     Calcular total en m3 usando la fórmula simple: (pulsos * constante) / 1000
-    SIN LÓGICA DE RESET - Solo procesa pulsos tal como llegan
-
-    Args:
-        pulses_factor: Factor de conversión de pulsos a m3
-        value: Valor de pulsos del sensor
-        point_catchment: Punto de captación
-
-    Returns:
-        str: Total calculado en m3 como string
+    SIN LÓGICA DE RESET - Solo procesa pulsos tal como llegan.
     """
     try:
-        # Validar que pulses_factor sea válido
         if not pulses_factor or pulses_factor <= 0:
             logger.warning(
                 f"pulses_factor no válido: {pulses_factor}, usando constante por defecto 1000"
             )
             pulses_factor = 1000
-
-        # FÓRMULA SIMPLE: total = (pulsos * constante) / 1000
         nuevo_total = (float(value) * float(pulses_factor)) / 1000.0
-
-        # ✅ PROTECCIÓN: si es negativo, mantener último total válido
         if nuevo_total < 0:
-            logger.error(f"🚨 TOTAL NEGATIVO DETECTADO: {nuevo_total}")
-            
-            # Obtener el último total válido
-            ultimo_registro = (
+            logger.error(f"TOTAL NEGATIVO DETECTADO: {nuevo_total}")
+            ultimo = (
                 InteractionDetail.objects.filter(catchment_point_id=point_catchment["id"])
                 .exclude(total__isnull=True)
-                .order_by("-created")
-                .first()
+                .order_by("-date_time_medition").first()
             )
-            
-            if ultimo_registro:
-                ultimo_total = int(float(ultimo_registro.total))
-                logger.info(f"🔒 MANTENIENDO ÚLTIMO TOTAL VÁLIDO: {ultimo_total}")
-                return str(ultimo_total)
-            else:
-                logger.warning("🔒 NO HAY TOTAL PREVIO, RETORNANDO 0")
-                return "0"
-
-        # ✅ RETORNAR TOTAL CALCULADO (SIN MANIPULACIÓN)
-        logger.info(f"📊 TOTAL CALCULADO: {nuevo_total} m³ (pulsos: {value}, factor: {pulses_factor})")
-        return str(int(round(nuevo_total)))
-
-    except (ValueError, ZeroDivisionError) as e:
-        logger.error(f"Error en cálculo de total_m3: {e}")
-        
-        # En caso de error, también mantener último total válido
-        try:
-            ultimo_registro = (
-                InteractionDetail.objects.filter(catchment_point_id=point_catchment["id"])
-                .exclude(total__isnull=True)
-                .order_by("-created")
-                .first()
-            )
-            
-            if ultimo_registro:
-                ultimo_total = int(float(ultimo_registro.total))
-                logger.info(f"🔒 ERROR EN CÁLCULO, MANTENIENDO ÚLTIMO TOTAL: {ultimo_total}")
-                return str(ultimo_total)
-            else:
-                logger.warning("🔒 ERROR EN CÁLCULO Y NO HAY TOTAL PREVIO, RETORNANDO 0")
-                return "0"
-        except:
+            if ultimo:
+                try:
+                    return str(int(float(ultimo.total)))
+                except Exception:
+                    return "0"
             return "0"
+        return str(int(round(nuevo_total)))
+    except Exception as e:
+        logger.error(f"Error en total_m3: {e}")
+        try:
+            ultimo = (
+                InteractionDetail.objects.filter(catchment_point_id=point_catchment["id"])
+                .exclude(total__isnull=True)
+                .order_by("-date_time_medition").first()
+            )
+            if ultimo:
+                return str(int(float(ultimo.total)))
+        except Exception:
+            pass
+        return "0"
 
 
-def total_hour(total, point_catchment):
+def total_hour(total, point_catchment, current_dt=None):
     """
-    Calcular diferencia entre las dos últimas mediciones (SIN LÓGICA DE RESET)
-
-    Args:
-        total: Total actual
-        point_catchment: Punto de captación
-
-    Returns:
-        int: Diferencia calculada entre mediciones
+    Diferencia contra la medición anterior ordenando por created (campo que siempre existe).
+    - Si no hay anterior: 0
+    - Si hay reset (total_actual < total_anterior): diff = total_actual
+    - Si normal: diff = total_actual - total_anterior (clamp >= 0)
     """
     try:
-        # Obtener los dos registros más recientes
-        registros = (
-            InteractionDetail.objects.filter(catchment_point_id=point_catchment["id"])
-            .exclude(total__isnull=True)
-            .order_by("-created")[:2]
-        )
-
         total_actual = float(total)
-
-        if len(registros) >= 2:
-            # ✅ SIMPLE: tomar el SEGUNDO registro (el anterior inmediato)
-            total_anterior = float(registros[1].total)
-            diferencia = total_actual - total_anterior
-
-            # ✅ PROTECCIÓN: NUNCA DIFERENCIAS NEGATIVAS
-            if diferencia < 0:
-                logger.warning(f"🚨 DIFERENCIA NEGATIVA: {total_actual} - {total_anterior} = {diferencia}")
-                diferencia = 0
-
-            logger.info(f"📊 Diferencia: {total_actual} - {total_anterior} = {diferencia}")
-            return int(round(diferencia))
-
-        elif len(registros) == 1:
-            # Solo hay un registro previo
-            total_anterior = float(registros[0].total)
-            diferencia = total_actual - total_anterior
-
-            if diferencia < 0:
-                logger.warning(f"🚨 DIFERENCIA NEGATIVA: {total_actual} - {total_anterior} = {diferencia}")
-                diferencia = 0
-
-            logger.info(f"📊 Diferencia (1 prev): {total_actual} - {total_anterior} = {diferencia}")
-            return int(round(diferencia))
+        
+        # ✅ SOLUCIÓN: Usar campo 'created' que siempre existe
+        if current_dt:
+            # Si se pasa current_dt, filtrar por fecha
+            prev = (
+                InteractionDetail.objects.filter(
+                    catchment_point_id=point_catchment["id"],
+                    created__lt=current_dt,
+                )
+                .exclude(total__isnull=True)
+                .exclude(total="")
+                .order_by("-created", "-id")
+                .first()
+            )
         else:
-            # Primer registro del punto
-            logger.info(f"📊 Primer registro: {total_actual}")
-            return int(round(total_actual))
+            # ✅ SOLUCIÓN: Si no hay current_dt, buscar el último registro
+            prev = (
+                InteractionDetail.objects.filter(
+                    catchment_point_id=point_catchment["id"],
+                )
+                .exclude(total__isnull=True)
+                .exclude(total="")
+                .order_by("-created", "-id")
+                .first()
+            )
+        
+        if not prev:
+            logger.info(f"No hay registro anterior para punto {point_catchment['id']}, diff = 0")
+            return 0
             
+        total_anterior = float(prev.total)
+        
+        # ✅ LÓGICA CORREGIDA: Manejar reset de contador
+        if total_actual < total_anterior:
+            logger.info(f"Reset detectado: {total_actual} < {total_anterior}, diff = {total_actual}")
+            return int(round(total_actual))
+        
+        # ✅ CÁLCULO NORMAL: Diferencia entre total actual y anterior
+        diff = total_actual - total_anterior
+        if diff < 0:
+            diff = 0
+            
+        logger.info(f"Diff calculada: {total_actual} - {total_anterior} = {diff}")
+        return int(round(diff))
+        
     except Exception as e:
-        logger.error(f"Error calculando diferencia entre mediciones: {e}")
+        logger.error(f"Error total_hour para punto {point_catchment['id']}: {e}")
         return 0
 
 
-def total_day(total, point_catchment):
+def total_day(point_catchment, current_dt=None, current_diff=None):
     """
-    Calcular acumulado de todas las diferencias del día actual (SIN LÓGICA DE RESET)
-
-    Args:
-        total: Total actual
-        point_catchment: Punto de captación
-
-    Returns:
-        int: Acumulado del día
+    🚀 VERSIÓN OPTIMIZADA: Acumulado del día = Total actual - Primer total del día
+    Mucho más eficiente que sumar todas las diferencias hora por hora.
     """
     try:
-        # Obtener la fecha actual
-        from datetime import datetime
-        import pytz
-
-        chile = pytz.timezone("America/Santiago")
-        ahora = datetime.now(chile)
-        hoy = ahora.date()
-
-        # ✅ SIMPLE: obtener todas las diferencias del día actual
-        diferencias_hoy = (
+        # ✅ SOLUCIÓN: Si no hay current_dt, usar fecha actual
+        if current_dt:
+            dia = current_dt.date()
+        else:
+            from datetime import datetime
+            dia = datetime.now().date()
+        
+        # ✅ BUSQUEDA OPTIMIZADA: Solo el primer total del día
+        primer_total_dia = (
             InteractionDetail.objects.filter(
                 catchment_point_id=point_catchment["id"],
-                created__date=hoy,
+                created__date=dia,
             )
-            .exclude(total_diff__isnull=True)
-            .values_list("total_diff", flat=True)
+            .exclude(total__isnull=True)
+            .exclude(total="")
+            .order_by("created", "id")  # Ordenar ASC para obtener el primero
+            .first()
         )
-
-        if diferencias_hoy:
-            # ✅ Sumar solo diferencias positivas
-            suma_diferencias = sum([diff for diff in diferencias_hoy if diff > 0])
-            logger.info(f"📊 Acumulado del día: {suma_diferencias}")
-            return int(round(suma_diferencias))
-        else:
-            logger.info("📊 No hay diferencias en el día, total_today_diff = 0")
+        
+        if not primer_total_dia:
+            logger.info(f"No hay registros del día para punto {point_catchment['id']}, diff = 0")
             return 0
-
+        
+        primer_total = float(primer_total_dia.total)
+        
+        # ✅ CÁLCULO OPTIMIZADO: Si hay current_diff, usarlo; si no, calcular
+        if current_diff is not None:
+            # Caso 1: Se pasa current_diff directamente
+            total_actual = primer_total + current_diff
+        else:
+            # Caso 2: Buscar el último total del día para calcular
+            ultimo_total_dia = (
+                InteractionDetail.objects.filter(
+                    catchment_point_id=point_catchment["id"],
+                    created__date=dia,
+                )
+                .exclude(total__isnull=True)
+                .exclude(total="")
+                .order_by("-created", "-id")  # Ordenar DESC para obtener el último
+                .first()
+            )
+            
+            if not ultimo_total_dia:
+                logger.info(f"No hay último registro del día para punto {point_catchment['id']}")
+                return 0
+            
+            total_actual = float(ultimo_total_dia.total)
+        
+        # ✅ CÁLCULO FINAL: Diferencia entre total actual y primer total del día
+        if total_actual < primer_total:
+            # Si hay reset de contador, usar el total actual
+            logger.info(f"Reset detectado: {total_actual} < {primer_total}, diff = {total_actual}")
+            return int(round(total_actual))
+        
+        diff_dia = total_actual - primer_total
+        if diff_dia < 0:
+            diff_dia = 0
+            
+        logger.info(f"Acumulado día optimizado: {total_actual} - {primer_total} = {diff_dia}")
+        return int(round(diff_dia))
+        
     except Exception as e:
-        logger.error(f"Error calculando acumulado del día: {e}")
-        return 0
+        logger.error(f"Error total_day optimizado para punto {point_catchment['id']}: {e}")
+        try:
+            cd = int(current_diff) if current_diff else 0
+        except Exception:
+            cd = 0
+        return cd if cd > 0 else 0
+
+
 

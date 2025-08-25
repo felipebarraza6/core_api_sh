@@ -25,9 +25,10 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
 
 # Configuración de seguridad para producción
-CSRF_TRUSTED_ORIGINS = ["https://*.smarthydro.app", "https://api.smarthydro.app"]
+CSRF_TRUSTED_ORIGINS = ["https://*.smarthydro.app", "https://api.smarthydro.app", "https://ikolu.smarthydro.app"]
 ALLOWED_HOSTS = [
     "api.smarthydro.app",
+    "ikolu.smarthydro.app",
     "localhost",
     "127.0.0.1",
     "postgres",  # Para conexiones internas Docker
@@ -118,19 +119,19 @@ CRONJOBS = [
         "api.cronjobs.dga.cron_dga.run",
         ">> /tmp/smarthydro/dga.log 2>&1",
     ),
-    # cola ejecución SMA - cada 5 minutos
+    # cola ejecución sma
     (
         "*/5 * * * *",
         "api.cronjobs.sma.cron_sma.run",
         ">> /tmp/smarthydro/sma.log 2>&1",
     ),
-    # backup cluster - cada hora (SOLO LECTURA)
+    # cluster_backup habilitado
     (
         "0 * * * *",
-        "api.cronjobs.cluster_backup.run",
+        "api.cronjobs.cluster_backup_complete_final.run",
         ">> /tmp/smarthydro/cluster_backup.log 2>&1",
     ),
-    # cola ejecución alertas - cada 10 minutos
+    # alertas
     (
         "*/10 * * * *",
         "api.cronjobs.alerts.cron_alerts.run",
@@ -158,25 +159,37 @@ CORS_ORIGIN_WHITELIST = [
     "https://smarthydro.app",
     "https://www.smarthydro.app",
     "https://api.smarthydro.app",
+    "https://ikolu.smarthydro.app",
     "http://localhost:3000",  # Solo para desarrollo
     "http://localhost:8000",  # Solo para desarrollo
 ]
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+    "referer",
+    "sec-ch-ua",
+    "sec-ch-ua-mobile",
+    "sec-ch-ua-platform",
+]
 
 REST_FRAMEWORK = {
-    "DEFAULT_RENDERER_CLASSES": (
-        "rest_framework.renderers.JSONRenderer",
-        "drf_excel.renderers.XLSXRenderer",
-    ),
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework.authentication.TokenAuthentication",
-    ),
-    "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend"),
-    "DEFAULT_PAGINATION_CLASS": ("rest_framework.pagination.PageNumberPagination"),
+    "EXCEPTION_HANDLER": "api.core.utils.json_on_error_exception_handler",
+    "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    "DEFAULT_AUTHENTICATION_CLASSES": ("rest_framework.authentication.TokenAuthentication",),
+    "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated"),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
 }
 
 ROOT_URLCONF = "api.urls"
@@ -188,8 +201,8 @@ TEMPLATES = [
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
-                "django.context_processors.debug",
-                "django.context_processors.request",
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
             ],
@@ -211,7 +224,7 @@ DATABASES = {
         "NAME": os.environ.get("LOCAL_DB_NAME", "smarthydro_prod"),
         "USER": os.environ.get("LOCAL_DB_USER", "smarthydro_user"),
         "PASSWORD": os.environ.get("LOCAL_DB_PASSWORD"),
-        "HOST": os.environ.get("LOCAL_DB_HOST", "postgres"),
+        "HOST": os.environ.get("LOCAL_DB_HOST", "postgres_db_secure"),
         "PORT": os.environ.get("LOCAL_DB_PORT", "5432"),
         "OPTIONS": {
             "connect_timeout": 10,
@@ -271,7 +284,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
-STATIC_ROOT = os.path.join(BASE_DIR, "static/")
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 # Configuración de logging para producción
 LOGGING = {
@@ -325,3 +338,22 @@ SESSION_SAVE_EVERY_REQUEST = True
 
 # Configuración de archivos estáticos
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+# Configuración temporal para debug de CORS
+if not DEBUG:
+    # Permitir X-Frame-Options para CORS
+    X_FRAME_OPTIONS = 'SAMEORIGIN'  # Cambiar de DENY a SAMEORIGIN
+    
+    # Configuraciones CORS adicionales para producción
+    CORS_PREFLIGHT_MAX_AGE = 86400
+    CORS_EXPOSE_HEADERS = [
+        'accept',
+        'accept-encoding', 
+        'authorization',
+        'content-type',
+        'dnt',
+        'origin',
+        'user-agent',
+        'x-csrftoken',
+        'x-requested-with',
+    ]

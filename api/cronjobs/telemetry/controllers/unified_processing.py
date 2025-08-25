@@ -119,7 +119,10 @@ def process_totalizado_variable(
     created_register: Dict[str, Any],
 ) -> tuple:
     """
-    Procesar variable de tipo TOTALIZADO (pulsos)
+    FUNCIÓN UNIFICADA para procesar variable de tipo TOTALIZADO (pulsos)
+    
+    Esta función centraliza TODA la lógica de procesamiento de totalizados para
+    garantizar consistencia absoluta entre todos los cronjobs.
 
     Args:
         data: Datos obtenidos de la API
@@ -132,38 +135,48 @@ def process_totalizado_variable(
     """
     from .total import total_day, total_hour, total_m3
 
-    # Validar conversión segura
+    # 1. VALIDAR Y CONVERTIR VALOR DE PULSOS
     try:
-        value = int(float(data["value"]))
+        value = int(float(data.get("value", 0)))
     except (ValueError, TypeError) as e:
-        print(f"Error convirtiendo {data['value']}: {e}")
+        print(f"⚠️ Error convirtiendo valor {data.get('value')}: {e}")
         value = 0
 
+    # 2. ASIGNAR PULSOS AL REGISTRO
     created_register["pulses"] = value
 
-    # ✅ FÓRMULA CORRECTA: (pulsos * factor) / 1000
-    created_register["total"] = total_m3(
-        variable.get("pulses_factor"), value, point_catchment
-    )
+    # 3. CALCULAR TOTAL USANDO FÓRMULA UNIFICADA: (pulsos × factor) ÷ 1000
+    pulses_factor = variable.get("pulses_factor", 1000)
+    if not pulses_factor or pulses_factor <= 0:
+        print(f"⚠️ Factor de pulsos no válido: {pulses_factor}, usando 1000")
+        pulses_factor = 1000
+    
+    total_calculado = total_m3(pulses_factor, value, point_catchment)
+    created_register["total"] = total_calculado
 
-    # ✅ DIFERENCIA POR HORA (consumo actual)
-    created_register["total_diff"] = total_hour(
-        created_register["total"], point_catchment
-    )
+    # 4. CALCULAR DIFERENCIA POR HORA (consumo actual)
+    current_dt = datetime.strptime(data["date_time"], "%Y-%m-%dT%H:%M:%S") if data.get("date_time") else datetime.now()
+    total_diff = total_hour(created_register["total"], point_catchment, current_dt)
+    created_register["total_diff"] = total_diff
 
-    # ✅ ACUMULADO DEL DÍA
-    created_register["total_today_diff"] = total_day(
-        created_register["total"], point_catchment
-    )
+    # 5. CALCULAR ACUMULADO DEL DÍA
+    total_today_diff = total_day(point_catchment, current_dt, total_diff)
+    created_register["total_today_diff"] = total_today_diff
 
-    created_register["date_time_last_logger"] = data["date_time"]
-    date_time_last_logger_total = data["date_time"]
+    # 6. ASIGNAR TIMESTAMP DEL ÚLTIMO LOGGER
+    if data.get("date_time"):
+        created_register["date_time_last_logger"] = data["date_time"]
+        date_time_last_logger_total = data["date_time"]
+    else:
+        date_time_last_logger_total = None
 
-    log_variable_processing(
-        point_catchment["id"],
-        variable.get("str_variable"),
-        "TOTALIZADO",
-        True,
+    # 7. LOGGING DE ÉXITO
+    print(
+        f"✅ Punto {point_catchment['id']} - TOTALIZADO "
+        f"'{variable.get('str_variable')}' procesado: "
+        f"pulsos={value}, factor={pulses_factor}, "
+        f"total={total_calculado}, diff_hora={total_diff}, "
+        f"diff_dia={total_today_diff}"
     )
 
     return date_time_last_logger_total, created_register
@@ -215,13 +228,13 @@ def process_nivel_variable(
         created_register["nivel"] = nivel_mt(
             float(nivel_value) - 17.0,
             variable.get("calculate_nivel"),
-            point_catchment["id"],
+            point_catchment["id"], point_catchment["profile_data_config"].get("d3", 0)
         )
     else:
         created_register["nivel"] = nivel_mt(
             nivel_value,
             variable.get("calculate_nivel"),
-            point_catchment["id"],
+            point_catchment["id"], point_catchment["profile_data_config"].get("d3", 0)
         )
 
     # Validar d3 antes de calcular nivel freático

@@ -196,7 +196,7 @@ def get_data_nettra(variables, token, point_catchment):
                 )
                 # ✅ ACUMULADO DEL DÍA
                 created_register["total_today_diff"] = total_day(
-                    created_register["total"], point_catchment
+                    point_catchment, None, created_register["total_diff"]
                 )
                 created_register["date_time_last_logger"] = data["date_time"]
                 date_time_last_logger_total = data["date_time"]

@@ -196,9 +196,9 @@ def get_data_twin(variables, token, point_catchment):
                 created_register["total_diff"] = total_hour(
                     created_register["total"], point_catchment
                 )
-                # ✅ ACUMULADO DEL DÍA
+                # ✅ ACUMULADO DEL DÍA (OPTIMIZADO)
                 created_register["total_today_diff"] = total_day(
-                    created_register["total"], point_catchment
+                    point_catchment, None, created_register["total_diff"]
                 )
                 created_register["date_time_last_logger"] = data["date_time"]
                 date_time_last_logger_total = data["date_time"]
