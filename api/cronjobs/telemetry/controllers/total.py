@@ -137,28 +137,23 @@ def total_day(point_catchment, current_dt=None, current_diff=None):
         
         primer_total = float(primer_total_dia.total)
         
-        # ✅ CÁLCULO OPTIMIZADO: Si hay current_diff, usarlo; si no, calcular
-        if current_diff is not None:
-            # Caso 1: Se pasa current_diff directamente
-            total_actual = primer_total + current_diff
-        else:
-            # Caso 2: Buscar el último total del día para calcular
-            ultimo_total_dia = (
-                InteractionDetail.objects.filter(
-                    catchment_point_id=point_catchment["id"],
-                    created__date=dia,
-                )
-                .exclude(total__isnull=True)
-                .exclude(total="")
-                .order_by("-created", "-id")  # Ordenar DESC para obtener el último
-                .first()
+        # ✅ CÁLCULO OPTIMIZADO: Buscar el total actual del día
+        ultimo_total_dia = (
+            InteractionDetail.objects.filter(
+                catchment_point_id=point_catchment["id"],
+                created__date=dia,
             )
-            
-            if not ultimo_total_dia:
-                logger.info(f"No hay último registro del día para punto {point_catchment['id']}")
-                return 0
-            
-            total_actual = float(ultimo_total_dia.total)
+            .exclude(total__isnull=True)
+            .exclude(total="")
+            .order_by("-created", "-id")  # Ordenar DESC para obtener el último
+            .first()
+        )
+        
+        if not ultimo_total_dia:
+            logger.info(f"No hay último registro del día para punto {point_catchment['id']}")
+            return 0
+        
+        total_actual = float(ultimo_total_dia.total)
         
         # ✅ CÁLCULO FINAL: Diferencia entre total actual y primer total del día
         if total_actual < primer_total:
