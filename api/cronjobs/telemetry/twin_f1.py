@@ -240,13 +240,15 @@ def get_data_twin(variables, token, point_catchment):
                     created_register["nivel"] = nivel_mt(
                         float(nivel_value) - 17.0,
                         variable.get("calculate_nivel"),
-                        point_catchment["id"],
+                        point_catchment["id"], 
+                        point_catchment["profile_data_config"].get("d3", 0)
                     )
                 else:
                     created_register["nivel"] = nivel_mt(
                         nivel_value,
                         variable.get("calculate_nivel"),
-                        point_catchment["id"],
+                        point_catchment["id"], 
+                        point_catchment["profile_data_config"].get("d3", 0)
                     )
 
                 # Validar d3 antes de calcular nivel freático

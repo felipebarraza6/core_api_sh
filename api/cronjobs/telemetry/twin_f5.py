@@ -8,8 +8,12 @@ import pytz
 from api.core.models import CatchmentPoint, DgaDataConfigCatchment, InteractionDetail
 from api.core.serializers import CatchmentPointSerializerDetailCron
 
-# CONTROLADORES UNIFICADOS (mismos que twin.py)
-from .controllers.flow import average_flow, instantaneous_flow
+# CONTROLADORES UNIFICADOS (mismos que twin_f1.py)
+from .controllers.flow import (
+    average_flow,
+    instantaneous_flow,
+    instantaneous_flow_calculate,
+)
 from .controllers.nivel import nivel_mt, water_table
 from .controllers.total import total_day, total_hour, total_m3
 
@@ -94,7 +98,6 @@ def validate_frequency(point_catchment, current_time):
         elif standard == "MENOR":
             return (
                 current_time.day == 1
-                and current_time.hour == 0
                 and current_time.minute == 0
             )  # Mensual
         elif standard == "CAUDALES_MUY_PEQUENOS":
@@ -120,7 +123,7 @@ def get_data_twin(variables, token, point_catchment):
         "%Y-%m-%dT%H:%M:00"
     )
 
-    # DISABLED: Validación de frecuencia (mantener comentada como en twin.py)
+    # DISABLED: Validación de frecuencia (mantener comentada como en twin_f1.py)
     # current_time = datetime.now(chile)
     # if not validate_frequency(point_catchment, current_time):
     #     print(f"Punto {point_catchment['id']} no corresponde a frecuencia actual")
@@ -236,13 +239,15 @@ def get_data_twin(variables, token, point_catchment):
                     created_register["nivel"] = nivel_mt(
                         float(nivel_value) - 17.0,
                         variable.get("calculate_nivel"),
-                        point_catchment["id"],
+                        point_catchment["id"], 
+                        point_catchment["profile_data_config"].get("d3", 0)
                     )
                 else:
                     created_register["nivel"] = nivel_mt(
                         nivel_value,
                         variable.get("calculate_nivel"),
-                        point_catchment["id"],
+                        point_catchment["id"], 
+                        point_catchment["profile_data_config"].get("d3", 0)
                     )
 
                 # Validar d3 antes de calcular nivel freático

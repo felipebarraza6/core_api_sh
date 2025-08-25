@@ -1,17 +1,23 @@
-"""Nettra 1/hour."""
+"""Nettra 1/hour - UNIFICADO Y MEJORADO"""
 
 import time
 from datetime import datetime
 
 import pytz
-from django.utils.timezone import make_aware
 
 from api.core.models import CatchmentPoint, DgaDataConfigCatchment, InteractionDetail
 from api.core.serializers import CatchmentPointSerializerDetailCron
 
-from .controllers.flow import average_flow, instantaneous_flow
+# CONTROLADORES UNIFICADOS (mismos que twin_f1.py)
+from .controllers.flow import (
+    average_flow,
+    instantaneous_flow,
+    instantaneous_flow_calculate,
+)
 from .controllers.nivel import nivel_mt, water_table
 from .controllers.total import total_day, total_hour, total_m3
+
+# GETTERS UNIFICADOS
 from .getters.tago import get_data_tago
 from .getters.tdata import get_data_tdata
 from .getters.thingsio import get_data_thethings
@@ -92,7 +98,6 @@ def validate_frequency(point_catchment, current_time):
         elif standard == "MENOR":
             return (
                 current_time.day == 1
-                and current_time.hour == 0
                 and current_time.minute == 0
             )  # Mensual
         elif standard == "CAUDALES_MUY_PEQUENOS":
@@ -110,7 +115,7 @@ def validate_frequency(point_catchment, current_time):
 
 
 def get_data_nettra(variables, token, point_catchment):
-    """Get data by father netra"""
+    """Get data by father nettra - UNIFICADO Y MEJORADO"""
     chile = pytz.timezone("America/Santiago")
     created_register = {}
     date_time_last_logger_total = None
@@ -118,11 +123,11 @@ def get_data_nettra(variables, token, point_catchment):
         "%Y-%m-%dT%H:00:00"
     )
 
-# DISABLED:     # Validar frecuencia antes de procesar
-# DISABLED:     current_time = datetime.now(chile)
-# DISABLED:     if not validate_frequency(point_catchment, current_time):
-# DISABLED:         print(f"Punto {point_catchment['id']} no corresponde a frecuencia actual")
-# DISABLED:         return
+    # DISABLED: Validación de frecuencia (mantener comentada como en twin_f1.py)
+    # current_time = datetime.now(chile)
+    # if not validate_frequency(point_catchment, current_time):
+    #     print(f"Punto {point_catchment['id']} no corresponde a frecuencia actual")
+    #     return
 
     for variable in variables:
         data = None  # Inicializar data
@@ -182,12 +187,15 @@ def get_data_nettra(variables, token, point_catchment):
                     value = 0
 
                 created_register["pulses"] = value
+                # ✅ FÓRMULA CORRECTA: (pulsos * factor) / 1000
                 created_register["total"] = total_m3(
                     variable.get("pulses_factor"), value, point_catchment
                 )
+                # ✅ DIFERENCIA POR HORA (consumo actual)
                 created_register["total_diff"] = total_hour(
                     created_register["total"], point_catchment
                 )
+                # ✅ ACUMULADO DEL DÍA
                 created_register["total_today_diff"] = total_day(
                     created_register["total"], point_catchment
                 )
@@ -203,7 +211,10 @@ def get_data_nettra(variables, token, point_catchment):
 
             elif type_variable == "NIVEL":
                 # Manejar nivel negativo
-                nivel_value = data["value"]
+                try:
+                    nivel_value = float(data["value"])
+                except (ValueError, TypeError):
+                    nivel_value = 0
                 if nivel_value < 0:
                     # Buscar nivel más alto registrado
                     nivel_mas_alto = (
@@ -224,7 +235,9 @@ def get_data_nettra(variables, token, point_catchment):
                         nivel_value = 0
 
                 created_register["nivel"] = nivel_mt(
-                    nivel_value, variable.get("calculate_nivel"), point_catchment["id"]
+                    nivel_value, variable.get("calculate_nivel"), 
+                    point_catchment["id"], 
+                    point_catchment["profile_data_config"].get("d3", 0)
                 )
 
                 # Validar d3 antes de calcular nivel freático
@@ -244,7 +257,9 @@ def get_data_nettra(variables, token, point_catchment):
 
             elif type_variable == "CAUDAL":
                 created_register["flow"] = instantaneous_flow(
-                    data["value"], variable.get("convert_to_lt"), variable.get("calculate_nivel")
+                    data["value"], 
+                    variable.get("convert_to_lt"), 
+                    variable.get("calculate_nivel")
                 )
                 created_register["date_time_last_logger"] = data["date_time"]
 
@@ -302,12 +317,13 @@ def get_data_nettra(variables, token, point_catchment):
 
     get = DgaDataConfigCatchment.objects.get(point_catchment__id=point_catchment["id"])
     current_time = datetime.now(chile)
-    
+
     # Solo enviar a DGA si está habilitado Y corresponde la frecuencia
     if get.send_dga and validate_frequency(point_catchment, current_time):
         created_register["send_dga"] = True
     else:
         created_register["send_dga"] = False
+
     InteractionDetail.objects.create(
         catchment_point_id=point_catchment["id"], **created_register
     )
