@@ -23,7 +23,7 @@ services:
     # user: "101:101"
     # ✅ SEGURIDAD: Healthcheck
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD-SHELL", "curl -f -L http://localhost/admin/ > /dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -138,7 +138,7 @@ services:
     restart: unless-stopped
     # ✅ SEGURIDAD: Healthcheck
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD-SHELL", "curl -f -L http://localhost/admin/ > /dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
