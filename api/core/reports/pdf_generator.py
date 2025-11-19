@@ -417,13 +417,13 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
                 ['Tipo DGA', dga.get('tipo_dga', 'Sin registros')],
                 ['Código Obra', dga.get('codigo_obra', 'Sin registros')],
                 ['Caudal Otorgado', f"{format_decimal(dga.get('caudal_otorgado'), 2)} L/s" if dga.get('caudal_otorgado') else 'Sin registros'],
-                ['Total Otorgado', f"{format_number_with_thousands(dga.get('total_otorgado'))} m³" if dga.get('total_otorgado') else 'N/A'],
-                ['SHAC', dga.get('shac', 'N/A')],
-                ['DGA Región', dga.get('region_dga', 'N/A')],
-                ['Fecha Inicio Cumplimiento', dga.get('fecha_inicio_cumplimiento', 'N/A')],
-                ['Fecha Creación Código', dga.get('fecha_creacion_codigo', 'N/A')],
-                ['Nombre Informante', dga.get('nombre_informante', 'N/A')],
-                ['RUT Informante', dga.get('rut_informante', 'N/A')],
+                ['Total Otorgado', f"{format_number_with_thousands(dga.get('total_otorgado'))} m³" if dga.get('total_otorgado') else 'Sin registros'],
+                ['SHAC', dga.get('shac', 'Sin registros')],
+                ['DGA Región', dga.get('region_dga', 'Sin registros')],
+                ['Fecha Inicio Cumplimiento', dga.get('fecha_inicio_cumplimiento', 'Sin registros')],
+                ['Fecha Creación Código', dga.get('fecha_creacion_codigo', 'Sin registros')],
+                ['Nombre Informante', dga.get('nombre_informante', 'Sin registros')],
+                ['RUT Informante', dga.get('rut_informante', 'Sin registros')],
             ]
             for row in dga_rows:
                 dga_data.append([
@@ -631,7 +631,7 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             elements.append(Paragraph("<b>Totalizado:</b>", styles['Heading3']))
             primer_total = analisis.get('primer_total_anio', {})
             primer_valor = primer_total.get('valor') if primer_total else None
-            primer_fecha = primer_total.get('fecha', 'N/A') if primer_total else 'N/A'
+            primer_fecha = primer_total.get('fecha', 'Sin registros') if primer_total else 'Sin registros'
             
             total_data = []
             total_data.append([
@@ -697,12 +697,12 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
                 min_caudal = c['min'] if c['min'] > 0 else None
                 max_caudal = c['max'] if c['max'] > 0 else None
                 variacion_caudal = calculate_variation_percentage(min_caudal, max_caudal)
-                variacion_text = f"{variacion_caudal:.1f}%" if variacion_caudal is not None else 'N/A'
+                variacion_text = f"{variacion_caudal:.1f}%" if variacion_caudal is not None else 'Sin registros'
                 
                 stats_data.append([
                     Paragraph('Caudal (L/s)', styles['Normal']),
-                    Paragraph(format_decimal(min_caudal, 2) if min_caudal else 'N/A', styles['Normal']),
-                    Paragraph(format_decimal(max_caudal, 2) if max_caudal else 'N/A', styles['Normal']),
+                    Paragraph(format_decimal(min_caudal, 2) if min_caudal else 'Sin registros', styles['Normal']),
+                    Paragraph(format_decimal(max_caudal, 2) if max_caudal else 'Sin registros', styles['Normal']),
                     Paragraph(format_decimal(c['promedio'], 2), styles['Normal']),
                     Paragraph(variacion_text, styles['Normal'])
                 ])
@@ -711,7 +711,7 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             if 'nivel' in analisis['estadisticas']:
                 n = analisis['estadisticas']['nivel']
                 variacion_nivel = calculate_variation_percentage(n['min'], n['max'])
-                variacion_nivel_text = f"{variacion_nivel:.1f}%" if variacion_nivel is not None else 'N/A'
+                variacion_nivel_text = f"{variacion_nivel:.1f}%" if variacion_nivel is not None else 'Sin registros'
                 
                 stats_data.append([
                     Paragraph('Nivel (m)', styles['Normal']),
@@ -898,8 +898,8 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             elements.append(Paragraph("<b>Comparación Caudal Probable vs Real:</b>", styles['Heading3']))
             primera_comp = analisis['caudal_probable_info'][0] if analisis['caudal_probable_info'] else None
             if primera_comp:
-                tipo_diametro = primera_comp.get('tipo_diametro', 'N/A')
-                diametro_val = primera_comp.get('diametro', 'N/A')
+                tipo_diametro = primera_comp.get('tipo_diametro', 'Sin registros')
+                diametro_val = primera_comp.get('diametro', 'Sin registros')
                 elements.append(Paragraph(f"NOTA: El caudal probable se calcula usando {tipo_diametro} ({diametro_val} pulg) con diferentes velocidades (1.0, 1.5, 2.0, 2.5, 3.0, 3.5 m/s).", natural_text_style))
             
             # Tabla con velocidades múltiples
