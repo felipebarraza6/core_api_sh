@@ -503,7 +503,7 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
         import pytz
         
         # Verificar qué variables tiene el punto
-        variables = Variable.objects.filter(scheme_catchment__points_catchment_id=point_id)
+        variables = Variable.objects.filter(scheme_catchment__points_catchment=point)
         has_totalizado = variables.filter(type_variable="TOTALIZADO").exists()
         has_caudal = variables.filter(type_variable__in=["CAUDAL", "CAUDAL_PROMEDIO"]).exists()
         has_nivel = variables.filter(type_variable="NIVEL").exists()
