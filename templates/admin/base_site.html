@@ -1,0 +1,699 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} | SmartHydro{% endblock %}
+
+{% block branding %}
+<div id="site-name" style="display: flex; align-items: center; padding: 8px 15px;">
+    <a href="/admin/" style="display: flex; align-items: center; text-decoration: none; height: 100%;">
+        <span style="color: #ffffff; font-size: 22px; font-weight: 700; letter-spacing: 0.5px;">Ikolu Build V.2</span>
+    </a>
+</div>
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<!-- Cargar SOLO el CSS maestro (incluye todos los estilos optimizados) -->
+<link rel="stylesheet" href="{% static 'admin/css/smarthydro_admin_master.css' %}"
+<style>
+    /* Mejoras adicionales para el menú de Jazzmin */
+    .sidebar .nav-sidebar .nav-item {
+        margin-bottom: 4px;
+    }
+
+    /* Separadores visuales en el menú */
+    .sidebar .nav-sidebar .nav-header {
+        color: #adb5bd !important;
+        font-weight: 700 !important;
+        font-size: 11px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
+        padding: 15px 20px 8px 20px !important;
+        margin-top: 15px !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+    }
+
+    .sidebar .nav-sidebar .nav-header:first-child {
+        border-top: none !important;
+        margin-top: 0 !important;
+    }
+
+    /* Mejorar contraste en items del menú */
+    .sidebar .nav-sidebar .nav-link {
+        color: #e9ecef !important;
+        font-weight: 500 !important;
+        padding: 12px 20px !important;
+        border-radius: 6px !important;
+        margin: 2px 8px !important;
+        transition: all 0.2s !important;
+    }
+
+    .sidebar .nav-sidebar .nav-link:hover {
+        background-color: rgba(255, 255, 255, 0.15) !important;
+        color: #ffffff !important;
+        transform: translateX(4px);
+    }
+
+    .sidebar .nav-sidebar .nav-link.active {
+        background: linear-gradient(135deg, #3d7bb3 0%, #569cd6 100%) !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+    }
+
+    /* Mejorar navbar con mejor contraste */
+    .navbar {
+        background: linear-gradient(135deg, #1e3f5f 0%, #2d5a8a 0%, #3d7bb3 100%) !important;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
+        border-bottom: 3px solid #0f1f2f !important;
+    }
+
+    .navbar-brand {
+        font-weight: 700 !important;
+        font-size: 20px !important;
+        color: #ffffff !important;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+    }
+
+    /* Mejorar contraste en la barra superior */
+    .main-header {
+        background: linear-gradient(135deg, #1e3f5f 0%, #2d5a8a 0%, #3d7bb3 100%) !important;
+        border-bottom: 3px solid #0f1f2f !important;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
+    }
+
+    .main-header .navbar-nav .nav-link {
+        color: #ffffff !important;
+        font-weight: 600 !important;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+    }
+
+    .main-header .navbar-nav .nav-link:hover {
+        background-color: rgba(255, 255, 255, 0.15) !important;
+        color: #ffffff !important;
+    }
+
+    /* Asegurar modo white en todo */
+    body {
+        background-color: #ffffff !important;
+        color: #212529 !important;
+    }
+
+    /* Mejorar contraste en contenido principal - Modo white */
+    .content-wrapper {
+        background-color: #ffffff !important;
+        color: #212529 !important;
+    }
+
+    .content {
+        background-color: #ffffff !important;
+        color: #212529 !important;
+    }
+
+    /* Asegurar que todo el texto sea visible */
+    .content,
+    .content * {
+        color: #212529 !important;
+    }
+
+    .content p,
+    .content div,
+    .content span,
+    .content td,
+    .content th {
+        color: #212529 !important;
+    }
+
+    .content-header {
+        background: #ffffff !important;
+        border-bottom: 2px solid #dee2e6 !important;
+        padding: 20px !important;
+    }
+
+    .content-header h1 {
+        color: #212529 !important;
+        font-weight: 700 !important;
+        font-size: 24px !important;
+    }
+
+    /* Asegurar que las tablas y listas sean visibles */
+    #result_list,
+    #changelist,
+    .results,
+    .module {
+        background-color: #ffffff !important;
+        color: #212529 !important;
+    }
+
+    #result_list th,
+    #result_list td,
+    .results th,
+    .results td {
+        color: #212529 !important;
+        background-color: #ffffff !important;
+    }
+
+    #result_list th {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+    }
+
+    /* Asegurar que los enlaces sean visibles */
+    .content a {
+        color: #569cd6 !important;
+    }
+
+    .content a:hover {
+        color: #3d7bb3 !important;
+    }
+
+    /* Mejorar cards */
+    .card {
+        border: 1px solid #dee2e6 !important;
+        border-radius: 10px !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+        margin-bottom: 20px !important;
+    }
+
+    .card-header {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+        border-bottom: 2px solid #dee2e6 !important;
+        font-weight: 700 !important;
+        color: #212529 !important;
+        padding: 15px 20px !important;
+    }
+
+    /* Mejorar tablas - Modo white */
+    .table {
+        background-color: #ffffff !important;
+        border-radius: 8px !important;
+        overflow: hidden !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    .table th {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        font-weight: 700 !important;
+    }
+
+    .table td {
+        background-color: #ffffff !important;
+        color: #212529 !important;
+    }
+
+    /* Asegurar que todos los textos sean visibles */
+    .content-wrapper,
+    .content-wrapper * {
+        color: #212529 !important;
+    }
+
+    .content-wrapper h1,
+    .content-wrapper h2,
+    .content-wrapper h3,
+    .content-wrapper h4,
+    .content-wrapper h5,
+    .content-wrapper h6 {
+        color: #212529 !important;
+        font-weight: 700 !important;
+    }
+
+    .content-wrapper p,
+    .content-wrapper div:not(.badge):not(.label),
+    .content-wrapper span:not(.badge):not(.label),
+    .content-wrapper li {
+        color: #212529 !important;
+    }
+
+    /* Excepciones para elementos que deben tener otros colores */
+    .content-wrapper a {
+        color: #569cd6 !important;
+    }
+
+    .content-wrapper a:hover {
+        color: #3d7bb3 !important;
+    }
+
+    .content-wrapper .badge,
+    .content-wrapper .label {
+        color: inherit !important;
+    }
+
+    /* Asegurar que el contenido principal sea visible - ESTILOS AGRESIVOS */
+    #content,
+    #content-main,
+    .content-main,
+    .main-content,
+    .changelist,
+    #changelist,
+    .results,
+    #result_list,
+    .content-wrapper>*,
+    .wrapper>* {
+        background-color: #ffffff !important;
+        color: #212529 !important;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        min-height: 200px !important;
+        position: relative !important;
+        z-index: 1 !important;
+    }
+
+    /* Forzar visibilidad de TODO el contenido dentro de content-wrapper */
+    .content-wrapper {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        min-height: 500px !important;
+        padding: 20px !important;
+        background: #ffffff !important;
+    }
+
+    .content-wrapper>div,
+    .content-wrapper>section,
+    .content-wrapper>article {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    /* Forzar visibilidad de tablas y resultados */
+    .results table,
+    #result_list table,
+    .changelist table {
+        display: table !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        width: 100% !important;
+    }
+
+    .results tbody,
+    #result_list tbody,
+    .changelist tbody {
+        display: table-row-group !important;
+        visibility: visible !important;
+    }
+
+    .results tr,
+    #result_list tr,
+    .changelist tr {
+        display: table-row !important;
+        visibility: visible !important;
+    }
+
+    .results td,
+    .results th,
+    #result_list td,
+    #result_list th,
+    .changelist td,
+    .changelist th {
+        display: table-cell !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        color: #212529 !important;
+        background-color: #ffffff !important;
+    }
+
+    #content,
+    #content-main,
+    .content-main,
+    .main-content {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        min-height: 400px !important;
+        padding: 20px !important;
+    }
+
+    #content *:not(.badge):not(.label),
+    #content-main *:not(.badge):not(.label),
+    .content-main *:not(.badge):not(.label),
+    .main-content *:not(.badge):not(.label),
+    .changelist *:not(.badge):not(.label),
+    #changelist *:not(.badge):not(.label) {
+        color: #212529 !important;
+    }
+
+    #content a,
+    #content-main a,
+    .content-main a,
+    .main-content a,
+    .changelist a,
+    #changelist a {
+        color: #569cd6 !important;
+    }
+
+    /* Asegurar que las listas y módulos sean visibles */
+    .module,
+    .module h2,
+    .module h3,
+    .module p,
+    .module ul,
+    .module li {
+        color: #212529 !important;
+        background-color: #ffffff !important;
+    }
+
+    /* Asegurar que los resultados de búsqueda sean visibles */
+    .results,
+    .results th,
+    .results td,
+    .results a {
+        color: #212529 !important;
+        background-color: #ffffff !important;
+    }
+
+    .results th {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+    }
+
+    /* Mejorar campos de búsqueda con placeholders */
+    #changelist-search input[type="text"],
+    #changelist-search input[type="search"],
+    .navbar-search input[type="text"],
+    .navbar-search input[type="search"] {
+        background-color: #ffffff !important;
+        border: 2px solid #ced4da !important;
+        border-radius: 6px !important;
+        padding: 10px 15px !important;
+        color: #212529 !important;
+        font-size: 14px !important;
+    }
+
+    #changelist-search input[type="text"]::placeholder,
+    #changelist-search input[type="search"]::placeholder,
+    .navbar-search input[type="text"]::placeholder,
+    .navbar-search input[type="search"]::placeholder {
+        color: #6c757d !important;
+        opacity: 0.8 !important;
+        font-style: italic !important;
+    }
+
+    #changelist-search input[type="text"]:focus,
+    #changelist-search input[type="search"]:focus,
+    .navbar-search input[type="text"]:focus,
+    .navbar-search input[type="search"]:focus {
+        border-color: #569cd6 !important;
+        box-shadow: 0 0 0 0.2rem rgba(86, 156, 214, 0.25) !important;
+        outline: none !important;
+    }
+
+    /* Mejorar espaciado de botones de acción */
+    .object-tools {
+        display: flex !important;
+        gap: 15px !important;
+        flex-wrap: wrap !important;
+        margin-bottom: 20px !important;
+        padding: 15px !important;
+        background-color: #ffffff !important;
+        border: 1px solid #dee2e6 !important;
+        border-radius: 8px !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+    }
+
+    .object-tools li {
+        margin: 0 !important;
+        list-style: none !important;
+    }
+
+    .object-tools a {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+        padding: 12px 24px !important;
+        background: linear-gradient(135deg, #3d7bb3 0%, #569cd6 100%) !important;
+        color: #ffffff !important;
+        text-decoration: none !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        transition: all 0.3s !important;
+        border: 2px solid #2d5a8a !important;
+        box-shadow: 0 2px 4px rgba(61, 123, 179, 0.2) !important;
+        white-space: nowrap !important;
+        margin: 0 !important;
+    }
+
+    .object-tools a:hover {
+        background: linear-gradient(135deg, #2d5a8a 0%, #3d7bb3 100%) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 8px rgba(61, 123, 179, 0.3) !important;
+        color: #ffffff !important;
+    }
+
+    .object-tools a.addlink {
+        background: linear-gradient(135deg, #3ba890 0%, #4ec9b0 100%) !important;
+        border-color: #2a7a6a !important;
+    }
+
+    .object-tools a.addlink:hover {
+        background: linear-gradient(135deg, #2a7a6a 0%, #3ba890 100%) !important;
+    }
+
+    .table thead th {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+        color: #212529 !important;
+        font-weight: 700 !important;
+        border-bottom: 2px solid #dee2e6 !important;
+        padding: 12px 15px !important;
+    }
+
+    .table tbody td {
+        color: #495057 !important;
+        border-bottom: 1px solid #e9ecef !important;
+        padding: 12px 15px !important;
+    }
+
+    .table tbody tr:hover {
+        background-color: #f8f9fa !important;
+    }
+
+    /* Mejorar formularios */
+    .form-group {
+        margin-bottom: 20px !important;
+    }
+
+    .form-control {
+        border: 2px solid #ced4da !important;
+        border-radius: 6px !important;
+        padding: 10px 15px !important;
+        font-size: 14px !important;
+        transition: all 0.2s !important;
+    }
+
+    .form-control:focus {
+        border-color: #0056b3 !important;
+        box-shadow: 0 0 0 0.2rem rgba(0, 86, 179, 0.25) !important;
+    }
+
+    label {
+        font-weight: 600 !important;
+        color: #212529 !important;
+        margin-bottom: 8px !important;
+    }
+
+    /* Mejorar botones */
+    .btn {
+        font-weight: 600 !important;
+        border-width: 2px !important;
+        padding: 10px 20px !important;
+        border-radius: 6px !important;
+        transition: all 0.2s !important;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #3d7bb3 0%, #569cd6 100%) !important;
+        border-color: #3d7bb3 !important;
+        box-shadow: 0 2px 4px rgba(61, 123, 179, 0.2) !important;
+    }
+
+    .btn-primary:hover {
+        background: linear-gradient(135deg, #2d5a8a 0%, #3d7bb3 100%) !important;
+        border-color: #2d5a8a !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px rgba(61, 123, 179, 0.3) !important;
+    }
+
+    .btn-success {
+        background: linear-gradient(135deg, #3ba890 0%, #4ec9b0 100%) !important;
+        border-color: #3ba890 !important;
+    }
+
+    .btn-success:hover {
+        background: linear-gradient(135deg, #2a7a6a 0%, #3ba890 100%) !important;
+        border-color: #2a7a6a !important;
+    }
+
+    .btn-danger {
+        background: linear-gradient(135deg, #d66b55 0%, #f48771 100%) !important;
+        border-color: #d66b55 !important;
+    }
+
+    .btn-danger:hover {
+        background: linear-gradient(135deg, #b84d3a 0%, #d66b55 100%) !important;
+        border-color: #b84d3a !important;
+    }
+
+    /* Mejorar badges */
+    .badge {
+        font-weight: 600 !important;
+        padding: 6px 10px !important;
+        border-radius: 6px !important;
+    }
+
+    /* Mejorar paginación */
+    .pagination {
+        margin-top: 20px !important;
+    }
+
+    .page-link {
+        color: #569cd6 !important;
+        border-color: #dee2e6 !important;
+        font-weight: 600 !important;
+        padding: 10px 15px !important;
+    }
+
+    .page-link:hover {
+        color: #3d7bb3 !important;
+    }
+
+    .page-item.active .page-link {
+        background: linear-gradient(135deg, #3d7bb3 0%, #569cd6 100%) !important;
+        border-color: #3d7bb3 !important;
+        color: #ffffff !important;
+    }
+
+    /* Mejorar filtros */
+    #changelist-filter {
+        background-color: #ffffff !important;
+        border: 1px solid #dee2e6 !important;
+        border-radius: 8px !important;
+        padding: 15px !important;
+    }
+
+    #changelist-filter h3 {
+        color: #212529 !important;
+        font-weight: 700 !important;
+        font-size: 14px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        margin-bottom: 12px !important;
+        padding-bottom: 8px !important;
+        border-bottom: 2px solid #dee2e6 !important;
+    }
+
+    /* Mejorar acciones */
+    .actions {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+        border: 1px solid #dee2e6 !important;
+        border-radius: 8px !important;
+        padding: 15px !important;
+        margin-bottom: 20px !important;
+    }
+
+    /* Mejorar mensajes */
+    .alert {
+        border-width: 2px !important;
+        font-weight: 500 !important;
+        border-radius: 8px !important;
+        padding: 15px 20px !important;
+    }
+</style>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<script>
+    // Agregar placeholders a los campos de búsqueda
+    document.addEventListener('DOMContentLoaded', function () {
+        // Campos de búsqueda en la barra superior
+        const navbarSearchInputs = document.querySelectorAll('.navbar-search input[type="text"], .navbar-search input[type="search"]');
+        navbarSearchInputs.forEach(function (input) {
+            if (!input.placeholder && !input.value) {
+                input.placeholder = 'Buscar...';
+            }
+        });
+
+        // Campos de búsqueda en changelist
+        const changelistSearchInputs = document.querySelectorAll('#changelist-search input[type="text"], #changelist-search input[type="search"]');
+        changelistSearchInputs.forEach(function (input) {
+            if (!input.placeholder && !input.value) {
+                input.placeholder = 'Buscar registros...';
+            }
+        });
+
+        // Campos de búsqueda generales
+        const allSearchInputs = document.querySelectorAll('input[type="text"][name*="search"], input[type="search"]');
+        allSearchInputs.forEach(function (input) {
+            if (!input.placeholder && !input.value && input.name && input.name.includes('search')) {
+                input.placeholder = 'Buscar...';
+            }
+        });
+
+        // FORZAR VISIBILIDAD DEL CONTENIDO - Script de emergencia
+        const forceVisibility = function () {
+            console.log('Forzando visibilidad del contenido...');
+
+            // Forzar visibilidad de contenedores principales
+            const contentElements = document.querySelectorAll('#content, #content-main, .content-main, .main-content, .content-wrapper, .changelist, #changelist, .results, #result_list, .module');
+            console.log('Elementos de contenido encontrados:', contentElements.length);
+            contentElements.forEach(el => {
+                if (el) {
+                    el.style.display = 'block';
+                    el.style.visibility = 'visible';
+                    el.style.opacity = '1';
+                    el.style.color = '#212529';
+                    el.style.backgroundColor = '#ffffff';
+                    el.style.minHeight = '200px';
+                    console.log('Forzando visibilidad en:', el.className || el.id);
+                }
+            });
+
+            // Forzar visibilidad de tablas
+            const tables = document.querySelectorAll('table');
+            console.log('Tablas encontradas:', tables.length);
+            tables.forEach(table => {
+                table.style.display = 'table';
+                table.style.visibility = 'visible';
+                table.style.opacity = '1';
+                table.style.width = '100%';
+            });
+
+            // Forzar visibilidad de todas las celdas
+            const cells = document.querySelectorAll('td, th');
+            console.log('Celdas encontradas:', cells.length);
+            cells.forEach(cell => {
+                cell.style.display = 'table-cell';
+                cell.style.visibility = 'visible';
+                cell.style.opacity = '1';
+                cell.style.color = '#212529';
+                cell.style.backgroundColor = cell.tagName === 'TH' ? '#f8f9fa' : '#ffffff';
+            });
+
+            // Forzar visibilidad de todos los divs dentro de content-wrapper
+            const contentDivs = document.querySelectorAll('.content-wrapper div, #content div, #content-main div');
+            console.log('Divs de contenido encontrados:', contentDivs.length);
+            contentDivs.forEach(div => {
+                if (!div.classList.contains('badge') && !div.classList.contains('label')) {
+                    div.style.display = 'block';
+                    div.style.visibility = 'visible';
+                    div.style.opacity = '1';
+                }
+            });
+        };
+
+        // Ejecutar inmediatamente
+        forceVisibility();
+
+        // Ejecutar después de delays para asegurar que el DOM esté completamente cargado
+        setTimeout(forceVisibility, 100);
+        setTimeout(forceVisibility, 500);
+        setTimeout(forceVisibility, 1000);
+        setTimeout(forceVisibility, 2000);
+    });
+</script>
+{% endblock %}
