@@ -1,13 +1,88 @@
 # TIMESTAMP FIX APPLIED - Version 2025-08-06-04:36 - No Z in timestamp
 """Cron SEND DATA DGA."""
 
+from datetime import datetime
 from typing import Optional
 
 import pytz
 
-from api.core.models import DgaDataConfigCatchment, InteractionDetail
+from api.core.models import (
+    DgaDataConfigCatchment, 
+    InteractionDetail, 
+    Variable, 
+    SchemesCatchment
+)
+
+# Importar función de cálculo de caudal promedio
+from api.cronjobs.telemetry.controllers.flow import average_flow
+
+# ✅ Logging estructurado
+from api.cronjobs.utils.logging_config import dga_logger
 
 from .send_data_dga import send
+
+
+def _has_average_flow_variable(catchment_point_id: int) -> bool:
+    """
+    Verifica si un punto de captación tiene configurada una variable de CAUDAL_PROMEDIO.
+    
+    Args:
+        catchment_point_id: ID del punto de captación
+        
+    Returns:
+        bool: True si tiene variable CAUDAL_PROMEDIO configurada
+    """
+    try:
+        # Buscar si el punto tiene esquemas con variables CAUDAL_PROMEDIO
+        has_caudal_promedio = Variable.objects.filter(
+            scheme_catchment__points_catchment__id=catchment_point_id,
+            type_variable="CAUDAL_PROMEDIO"
+        ).exists()
+        
+        return has_caudal_promedio
+    except Exception as e:
+        dga_logger.error(f"Error verificando variable CAUDAL_PROMEDIO para punto {catchment_point_id}: {e}")
+        return False
+
+
+def _calculate_dynamic_flow(register: InteractionDetail) -> float:
+    """
+    Calcula el caudal promedio dinámicamente usando la función average_flow.
+    
+    Args:
+        register: Registro de InteractionDetail
+        
+    Returns:
+        float: Caudal calculado dinámicamente o 0.0 si falla
+    """
+    try:
+        # Buscar el registro anterior para calcular caudal promedio
+        previous_register = InteractionDetail.objects.filter(
+            catchment_point=register.catchment_point,
+            date_time_medition__lt=register.date_time_medition
+        ).order_by('-date_time_medition').first()
+        
+        if not previous_register:
+            dga_logger.warning(f"No hay registro anterior para punto {register.catchment_point.id}, retornando 0.0")
+            return 0.0
+        
+        # Preparar datos para average_flow (como en los cronjobs)
+        point_catchment = {"id": register.catchment_point.id}
+        total_actual = register.total or 0
+        
+        # Usar la función average_flow existente
+        calculated_flow = average_flow(
+            point_catchment=point_catchment,
+            total=total_actual,
+            date_lg=register.date_time_medition
+        )
+        
+        dga_logger.info(f"Caudal calculado dinámicamente para punto {register.catchment_point.id}: {calculated_flow}")
+        return calculated_flow
+        
+    except Exception as e:
+        dga_logger.error(f"Error calculando caudal dinámico para registro {register.id}: {e}")
+        return 0.0
 
 
 def run():
@@ -25,25 +100,31 @@ def run():
         )
 
         if not data_for_send.exists():
-            print("No hay registros pendientes de envío a DGA")
+            dga_logger.info("No hay registros pendientes de envío a DGA")
             return
 
-        print(f"Procesando {data_for_send.count()} registros para envío a DGA")
+        # Limitar a 10 registros por ejecución para evitar timeouts
+        data_for_send = data_for_send[:10]
 
+        dga_logger.info(f"Procesando {len(data_for_send)} registros para envío a DGA")
+
+        # Contadores para el reporte final
         success_count = 0
         error_count = 0
 
         for register in data_for_send:
             try:
-                # Validar que el registro tenga datos necesarios
+                # Validar el registro antes de procesarlo
                 if not _validate_register(register):
+                    dga_logger.warning(f"Registro {register.id} no válido, omitiendo")
+                    error_count += 1
                     continue
 
                 # Obtener configuración DGA
                 dga_config = _get_dga_config(register)
                 if not dga_config:
-                    print(
-                        f"Error: No se encontró configuración DGA para registro {register.id}"
+                    dga_logger.warning(
+                        f"No se pudo obtener configuración DGA para registro {register.id}"
                     )
                     error_count += 1
                     continue
@@ -55,27 +136,27 @@ def run():
                     continue
 
                 # Enviar datos a DGA
-                print(f"Enviando registro {register.id} a DGA: {dga_config.code_dga}")
+                dga_logger.info(f"Enviando registro {register.id} a DGA: {dga_config.code_dga}")
                 send_result = send(response_data)  # MODIFICADO: Capturar resultado
-                print(f"DEBUG: send() retornó: {send_result}, tipo: {type(send_result)}")
+                dga_logger.debug(f"send() retornó: {send_result}, tipo: {type(send_result)}")
 
                 # MODIFICADO: Verificar el resultado del envío
                 if send_result:
                     success_count += 1
-                    print(f"Registro {register.id} procesado exitosamente")
+                    dga_logger.info(f"Registro {register.id} procesado exitosamente")
                 else:
                     error_count += 1
-                    print(f"Error: Fallo al enviar registro {register.id} a DGA")
+                    dga_logger.error(f"Error: Fallo al enviar registro {register.id} a DGA")
 
             except Exception as e:
                 error_count += 1
                 error_msg = f"Error procesando registro {register.id}: {str(e)}"
-                print(f"ERROR: {error_msg}")
+                dga_logger.error(f"ERROR: {error_msg}", exc_info=True)
 
-        print(f"Proceso completado: {success_count} exitosos, {error_count} errores")
+        dga_logger.info(f"Proceso completado: {success_count} exitosos, {error_count} errores")
 
     except Exception as e:
-        print(f"Error general en cron DGA: {str(e)}")
+        dga_logger.error(f"Error general en cron DGA: {str(e)}", exc_info=True)
 
 
 def _validate_register(register: InteractionDetail) -> bool:
@@ -91,66 +172,51 @@ def _validate_register(register: InteractionDetail) -> bool:
     try:
         # Validar que tenga fecha de medición
         if not register.date_time_medition:
-            print(f"Error: Fecha de medición no disponible para registro {register.id}")
+            dga_logger.error(f"Error: Fecha de medición no disponible para registro {register.id}")
             return False
 
         # Validar que tenga punto de captación
         if not register.catchment_point:
-            print(
+            dga_logger.error(
                 f"Error: Punto de captación no disponible para registro {register.id}"
-            )
-            return False
-
-        # Validar que tenga datos de caudal o total
-        if not register.flow and not register.total:
-            print(
-                f"Error: No hay datos de caudal o total para enviar en registro {register.id}"
             )
             return False
 
         return True
 
     except Exception as e:
-        print(f"Error validando registro {register.id}: {str(e)}")
+        dga_logger.error(f"Error validando registro {register.id}: {str(e)}", exc_info=True)
         return False
 
 
 def _get_dga_config(register: InteractionDetail) -> Optional[DgaDataConfigCatchment]:
     """
-    Obtiene la configuración DGA para el punto de captación.
+    Obtiene la configuración DGA para un registro.
 
     Args:
         register: Registro de InteractionDetail
 
     Returns:
-        DgaDataConfigCatchment o None si no se encuentra
+        Configuración DGA o None si no se encuentra
     """
     try:
+        # Obtener configuración DGA para el punto de captación
         dga_config = DgaDataConfigCatchment.objects.filter(
-            point_catchment=register.catchment_point.id
-        ).last()
+            point_catchment=register.catchment_point
+        ).first()
 
         if not dga_config:
-            return None
-
-        # Validar que tenga los datos mínimos necesarios
-        required_fields = [
-            dga_config.code_dga,
-            dga_config.rut_report_dga,
-            dga_config.password_dga_software,
-        ]
-
-        if not all(required_fields):
-            print(
-                f"Configuración DGA incompleta para punto {register.catchment_point.id}"
+            dga_logger.warning(
+                f"No se encontró configuración DGA para punto {register.catchment_point.id}"
             )
             return None
 
         return dga_config
 
     except Exception as e:
-        print(
-            f"Error obteniendo configuración DGA para registro {register.id}: {str(e)}"
+        dga_logger.error(
+            f"Error obteniendo configuración DGA para registro {register.id}: {str(e)}",
+            exc_info=True
         )
         return None
 
@@ -173,6 +239,40 @@ def _prepare_response_data(
         chile_tz = pytz.timezone("America/Santiago")
         date_time_medition_chile = register.date_time_medition.astimezone(chile_tz)
 
+        # NUEVA LÓGICA: Determinar caudal según tipo de variable y estándar DGA
+        flow_value = register.flow or 0.0
+        
+        # ✅ NUEVO: Priorizar cálculo según estándar (especialmente para MEDIO)
+        from django.conf import settings
+        use_new_calculation = getattr(settings, 'USE_NEW_CAUDAL_CALCULATION_MEDIO', False)
+        
+        if use_new_calculation and dga_config.standard == "MEDIO":
+            try:
+                from api.cronjobs.dga.caudal_calculations import calculate_flow_by_standard
+                calculated_flow = calculate_flow_by_standard(register, dga_config)
+                # Para MEDIO, siempre usamos el promedio diario si es válido
+                flow_value = calculated_flow
+                dga_logger.info(f"[NUEVO] Usando caudal medio diario para MEDIO: {flow_value} L/s")
+            except Exception as e:
+                dga_logger.warning(f"[NUEVO] Error en cálculo medio diario: {e}, usando cálculo actual", exc_info=True)
+        else:
+            # FIX APLICADO: Si no hay consumo (total_diff = 0), el caudal debe ser 0
+            # (Solo para estándares que no sean MEDIO, ya que MEDIO reporta promedio diario)
+            if register.total_diff == 0:
+                flow_value = 0.0
+                dga_logger.info(f"Sin consumo (total_diff=0), caudal corregido a: {flow_value}")
+            else:
+                # Si hay consumo, verificar si el punto tiene variable CAUDAL_PROMEDIO
+                if _has_average_flow_variable(register.catchment_point.id):
+                    calculated_flow = _calculate_dynamic_flow(register)
+                    if calculated_flow > 0:
+                        flow_value = calculated_flow
+                        dga_logger.info(f"Usando caudal calculado dinámicamente: {flow_value}")
+                    else:
+                        dga_logger.warning(f"Cálculo dinámico falló, usando valor guardado: {flow_value}")
+                else:
+                    dga_logger.debug(f"Punto sin CAUDAL_PROMEDIO, usando valor guardado: {flow_value}")
+
         response_data = {
             "catchment_point": register.catchment_point.title,
             # Redondear a hora cerrada (minutos y segundos = 00) para API DGA
@@ -180,13 +280,13 @@ def _prepare_response_data(
                 "%Y-%m-%dT%H:00:00"
             ),
             "total": register.total or "0",
-            "flow": register.flow or 0.0,
+            "flow": flow_value,  # MODIFICADO: Usar valor calculado dinámicamente si corresponde
             "water_table": register.water_table or 0.0,
             "type_dga": dga_config.type_dga,
             "code_dga": dga_config.code_dga,
             "id_data": register.id,
             "rut": dga_config.rut_report_dga,
-            "password": dga_config.password_dga_software,
+            "password": dga_config.get_dga_password(),  # Usa método que fallback a settings
             "dga_config": {
                 "rut_empresa": getattr(dga_config, "rut_empresa", "76944359-2")
             },
@@ -200,12 +300,11 @@ def _prepare_response_data(
         ]
 
         if not all(critical_fields):
-            print(f"Error: Configuración DGA incompleta para registro {register.id}")
+            dga_logger.error(f"Error: Configuración DGA incompleta para registro {register.id}")
             return None
 
         return response_data
 
     except Exception as e:
-        error_msg = f"Error preparando datos para registro {register.id}: {str(e)}"
-        print(f"ERROR: {error_msg}")
+        dga_logger.error(f"Error preparando datos para registro {register.id}: {str(e)}", exc_info=True)
         return None

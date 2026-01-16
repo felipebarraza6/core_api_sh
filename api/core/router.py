@@ -10,6 +10,7 @@ from rest_framework.routers import DefaultRouter
 from api.core.views import users as views_users
 from api.core.views import catchment_points as views_catchment
 from api.core.views import interaction_detail as views_detail
+from api.core.views import management as views_management
 
 router = DefaultRouter()
 
@@ -53,7 +54,11 @@ router.register(r'variable', views_catchment.VariableViewSet,
 router.register(r'register_persons',
                 views_catchment.RegisterPersonsViewSet, basename='register_persons')
 
+# Endpoints de gestión y administración
+router.register(r'management', views_management.ManagementViewSet, basename='management')
 
 urlpatterns = [
     path('', include(router.urls))
 ]
+
+

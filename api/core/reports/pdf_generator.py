@@ -25,33 +25,50 @@ import math
 import urllib.request
 from api.core.validators.telemetry_validator import analyze_data_coherence
 
+# Utilidades de formateo centralizadas (elimina duplicación)
+from api.core.utils.formatters import format_number_with_thousands as _format_number
+from api.core.utils.formatters import format_decimal as _format_decimal
 
+
+# Wrappers para mantener compatibilidad con comportamiento existente (retorna 'Sin registros' en lugar de '0')
 def format_number_with_thousands(value):
-    """Formatear número con puntos de miles."""
+    """Formatear número con puntos de miles. Retorna 'Sin registros' si None."""
     if value is None:
         return 'Sin registros'
-    try:
-        return f"{int(value):,}".replace(',', '.')
-    except (ValueError, TypeError):
-        return str(value)
+    result = _format_number(value)
+    return result if result != '0' else 'Sin registros'
 
 
 def format_decimal(value, decimals=2):
-    """Formatear decimal con puntos de miles."""
+    """Formatear decimal con puntos de miles. Retorna 'Sin registros' si None."""
     if value is None:
         return 'Sin registros'
-    try:
-        return f"{float(value):,.{decimals}f}".replace(',', '.')
-    except (ValueError, TypeError):
-        return str(value)
+    result = _format_decimal(value, decimals)
+    # Si es 0, puede ser válido (no siempre es 'Sin registros')
+    return result
 
 
-def calculate_variation_percentage(min_val, max_val):
-    """Calcular variación como porcentaje."""
-    if min_val is None or max_val is None or min_val == 0:
+def calculate_variation_percentage(min_val, max_val, avg_val=None):
+    """
+    Calcular variación del máximo respecto al promedio.
+    Si no se proporciona avg_val, se calcula como (min + max) / 2.
+    Fórmula: (max - avg) / avg * 100
+    """
+    if max_val is None:
         return None
+    
+    # Si no se proporciona promedio, calcularlo
+    if avg_val is None:
+        if min_val is None:
+            return None
+        avg_val = (min_val + max_val) / 2
+    
+    if avg_val == 0:
+        return None
+    
     try:
-        return ((max_val - min_val) / min_val) * 100
+        # Variación del máximo respecto al promedio
+        return ((max_val - avg_val) / avg_val) * 100
     except (ZeroDivisionError, TypeError):
         return None
 
@@ -136,14 +153,18 @@ def create_line_chart(data_points, title, y_label, color, width=500, height=250,
                    strokeWidth=1)
     drawing.add(bg_rect)
     
-    # Título mejorado con fondo
-    title_bg = Rect(width/2 - 120, height - 35, 240, 25,
+    # Título mejorado con fondo (ajustar ancho según longitud del título)
+    title_width = min(len(title) * 6, width - 40)  # Aproximadamente 6 píxeles por carácter
+    title_font_size = 11 if len(title) > 40 else 12
+    title_bg = Rect(width/2 - title_width/2, height - 35, title_width, 25,
                    fillColor=colors.HexColor('#E6F2FF'),
                    strokeColor=colors.HexColor('#0066CC'),
                    strokeWidth=1)
     drawing.add(title_bg)
-    drawing.add(String(width/2, height - 22, title, 
-                      textAnchor='middle', fontSize=12, fillColor=colors.HexColor('#003366'),
+    # Truncar título si es muy largo
+    title_display = title[:60] + '...' if len(title) > 60 else title
+    drawing.add(String(width/2, height - 22, title_display, 
+                      textAnchor='middle', fontSize=title_font_size, fillColor=colors.HexColor('#003366'),
                       fontName='Helvetica-Bold'))
     
     # Etiqueta eje Y mejorada
@@ -155,14 +176,14 @@ def create_line_chart(data_points, title, y_label, color, width=500, height=250,
     drawing.add(String(width/2, 25, 'Mediciones (orden cronológico)', 
                       textAnchor='middle', fontSize=9, fillColor=colors.HexColor('#666666')))
     
-    # Estadísticas en una caja informativa
+    # Estadísticas en una caja informativa (movida más abajo para no pisar el título)
     stats_text = f"Min: {min_val:.2f} | Max: {max_val:.2f} | Prom: {sum(data_points)/len(data_points):.2f}"
-    stats_bg = Rect(width - 200, height - 30, 190, 20,
+    stats_bg = Rect(width - 200, height - 55, 190, 20,
                    fillColor=colors.HexColor('#FFF9E6'),
                    strokeColor=colors.HexColor('#FFCC00'),
                    strokeWidth=1)
     drawing.add(stats_bg)
-    drawing.add(String(width - 105, height - 20, stats_text,
+    drawing.add(String(width - 105, height - 45, stats_text,
                       textAnchor='middle', fontSize=7, fillColor=colors.HexColor('#666666')))
     
     # Icono informativo (círculo con "i")
@@ -286,13 +307,26 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             elements.append(Spacer(1, 0.3*inch))
             continue
         
-        # Encabezado del punto
-        elements.append(Paragraph(f"<b>Punto de Captación: {analisis['point_name']}</b>", heading_style))
-        if analisis.get('project'):
-            elements.append(Paragraph(f"Proyecto: {analisis['project']}", styles['Normal']))
-        elements.append(Paragraph(f"Período analizado: {analisis['periodo']['inicio']} a {analisis['periodo']['fin']} ({analisis['periodo']['dias']} días)", styles['Normal']))
-        elements.append(Paragraph(f"Total de mediciones: {format_number_with_thousands(analisis['total_registros'])}", styles['Normal']))
-        elements.append(Spacer(1, 0.2*inch))
+        # Encabezado del punto con manejo seguro de errores
+        try:
+            point_name = analisis.get('point_name', f'Punto {point_id}')
+            elements.append(Paragraph(f"<b>Punto de Captación: {point_name}</b>", heading_style))
+            if analisis.get('project'):
+                elements.append(Paragraph(f"Proyecto: {analisis['project']}", styles['Normal']))
+            
+            periodo = analisis.get('periodo', {})
+            if periodo:
+                periodo_text = f"{periodo.get('inicio', 'N/A')} a {periodo.get('fin', 'N/A')} ({periodo.get('dias', 0)} días)"
+            else:
+                periodo_text = "Período no disponible"
+            elements.append(Paragraph(f"Período analizado: {periodo_text}", styles['Normal']))
+            
+            total_reg = analisis.get('total_registros', 0)
+            elements.append(Paragraph(f"Total de mediciones: {format_number_with_thousands(total_reg)}", styles['Normal']))
+            elements.append(Spacer(1, 0.2*inch))
+        except Exception as e:
+            elements.append(Paragraph(f"⚠️ Error al procesar encabezado: {str(e)}", styles['Normal']))
+            elements.append(Spacer(1, 0.2*inch))
         
         # ========================================
         # SECCIÓN: CONFIGURACIÓN
@@ -304,7 +338,7 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
         
         # Variables configuradas con detalles (sin columna Servicio, tablas mejoradas con ajuste de texto)
         if config.get('variables'):
-            elements.append(Paragraph("<b>Variables Configuradas:</b>", styles['Heading3']))
+            elements.append(Paragraph("<b>Configuración:</b>", styles['Heading3']))
             vars_data = []
             # Encabezados con Paragraph para mejor control
             vars_data.append([
@@ -343,10 +377,13 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             elements.append(vars_table)
             elements.append(Spacer(1, 0.2*inch))
         
+        # Agregar PageBreak antes de los datos estáticos para evitar cortes
+        elements.append(PageBreak())
+        
         # Perfil de datos (datos estáticos) con ajuste de texto
         if config.get('perfil'):
             perfil = config['perfil']
-            elements.append(Paragraph("<b>Datos Estáticos del Perfil:</b>", styles['Heading3']))
+            elements.append(Paragraph("<b>Datos Estáticos del Punto de Captación:</b>", styles['Heading3']))
             perfil_data = []
             perfil_data.append([
                 Paragraph('<b>Parámetro</b>', styles['Normal']),
@@ -395,6 +432,65 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             elements.append(Paragraph(f"<b>Frecuencia de Lectura:</b> {config['frecuencia']}", styles['Heading3']))
             elements.append(Spacer(1, 0.1*inch))
         
+        # Caudal Probable por la Cañería
+        if config.get('perfil'):
+            perfil = config['perfil']
+            d4 = perfil.get('d4_diametro_ducto_salida')
+            d5 = perfil.get('d5_diametro_flujometro')
+            diametro_usar = d5 if d5 else d4
+            
+            if diametro_usar:
+                elements.append(Spacer(1, 0.2*inch))
+                elements.append(Paragraph("<b>Caudal Probable por la Cañería:</b>", styles['Heading3']))
+                
+                # Explicación del análisis
+                tipo_diametro = 'd5 - Diámetro Flujómetro' if d5 else 'd4 - Diámetro Ducto Salida'
+                elements.append(Paragraph(
+                    f"<i>El caudal probable se calcula utilizando el {tipo_diametro} ({diametro_usar} pulg) "
+                    f"con diferentes velocidades de flujo (1.0, 1.5, 2.0, 2.5, 3.0, 3.5 m/s).</i>",
+                    natural_text_style
+                ))
+                elements.append(Spacer(1, 0.1*inch))
+                
+                # Explicación de la fórmula
+                elements.append(Paragraph(
+                    "<b>Fórmula de cálculo:</b> Q (L/s) = π × (d/2)² × v × 1000",
+                    styles['Normal']
+                ))
+                elements.append(Paragraph(
+                    "Donde: d = diámetro en metros (pulgadas × 0.0254), v = velocidad en m/s",
+                    styles['Normal']
+                ))
+                elements.append(Spacer(1, 0.1*inch))
+                
+                # Tabla con caudales por velocidad
+                from api.core.validators.telemetry_validator import calculate_probable_flow_by_velocity
+                velocidades = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5]
+                caudal_vel_data = [['Velocidad (m/s)', 'Caudal Probable (L/s)']]
+                for v in velocidades:
+                    q_prob = calculate_probable_flow_by_velocity(diametro_usar, v)
+                    caudal_vel_data.append([
+                        f"{v:.1f}",
+                        format_decimal(q_prob, 2)
+                    ])
+                
+                caudal_vel_table = Table(caudal_vel_data, colWidths=[2.0*inch, 2.5*inch])
+                caudal_vel_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), water_blue),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 9),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+                    ('TOPPADDING', (0, 0), (-1, 0), 10),
+                    ('BACKGROUND', (0, 1), (-1, -1), water_light_blue),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('FONTSIZE', (0, 1), (-1, -1), 8),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [water_light_blue, colors.white]),
+                ]))
+                elements.append(caudal_vel_table)
+                elements.append(Spacer(1, 0.2*inch))
+        
         elements.append(PageBreak())
         
         # ========================================
@@ -412,7 +508,6 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
                 Paragraph('<b>Valor</b>', styles['Normal'])
             ])
             dga_rows = [
-                ['Enviar a DGA', 'Sí' if dga.get('enviar_dga') else 'No'],
                 ['Estándar', dga.get('estandar', 'Sin registros')],
                 ['Tipo DGA', dga.get('tipo_dga', 'Sin registros')],
                 ['Código Obra', dga.get('codigo_obra', 'Sin registros')],
@@ -459,31 +554,162 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             td = analisis['telemetria_dia']
             elements.append(Paragraph("<b>TELEMETRÍA DEL DÍA</b>", heading_style))
             elements.append(Paragraph(f"<b>Punto de Captación:</b> {analisis['point_name']}", styles['Normal']))
-            elements.append(Paragraph(f"<b>Fecha:</b> {datetime.now().strftime('%Y-%m-%d')}", styles['Normal']))
+            
+            # Tabla completa con todos los registros del día (ayer para tener todas las mediciones)
+            from api.core.models import InteractionDetail
+            import pytz
+            from datetime import timedelta
+            chile_tz = pytz.timezone("America/Santiago")
+            yesterday = (datetime.now(chile_tz) - timedelta(days=1)).date()
+            yesterday_str = yesterday.strftime('%Y-%m-%d')
+            elements.append(Paragraph(f"<b>Fecha:</b> {yesterday_str}", styles['Normal']))
             elements.append(Spacer(1, 0.2*inch))
             
-            dia_data = [
-                ['Indicador', 'Valor'],
-                ['Mediciones del día', format_number_with_thousands(td['total_registros'])],
-                ['Consumo total del día', f"{format_number_with_thousands(int(td['consumo_total']))} m³"],
-                ['Caudal promedio del día', f"{format_decimal(td['caudal_promedio'], 2)} L/s"],
-                ['Nivel promedio del día', f"{format_decimal(td['nivel_promedio'], 2)} m"]
+            # Obtener registros de ayer
+            yesterday_records = InteractionDetail.objects.filter(
+                catchment_point_id=point_id,
+                date_time_medition__date=yesterday
+            ).order_by('date_time_medition')
+            
+            # Calcular indicadores de ayer
+            total_registros_ayer = yesterday_records.count()
+            consumo_total_ayer = sum(float(r.total_diff) if r.total_diff else 0 for r in yesterday_records)
+            caudal_promedio_ayer = sum(float(r.flow) if r.flow else 0 for r in yesterday_records) / total_registros_ayer if total_registros_ayer > 0 else 0
+            nivel_promedio_ayer = sum(float(r.nivel) if r.nivel else 0 for r in yesterday_records) / total_registros_ayer if total_registros_ayer > 0 else 0
+            
+            # Indicadores horizontales
+            indicadores_data = [
+                ['Mediciones del día', 'Consumo total del día', 'Caudal promedio', 'Nivel promedio'],
+                [
+                    format_number_with_thousands(total_registros_ayer) if total_registros_ayer else 'Sin registros',
+                    f"{format_number_with_thousands(int(consumo_total_ayer))} m³" if consumo_total_ayer else 'Sin registros',
+                    f"{format_decimal(caudal_promedio_ayer, 2)} L/s" if caudal_promedio_ayer else 'Sin registros',
+                    f"{format_decimal(nivel_promedio_ayer, 2)} m" if nivel_promedio_ayer else 'Sin registros'
+                ]
             ]
-            dia_table = Table(dia_data, colWidths=[2.2*inch, 1.8*inch])
-            dia_table.setStyle(TableStyle([
+            indicadores_table = Table(indicadores_data, colWidths=[1.2*inch, 1.2*inch, 1.2*inch, 1.2*inch])
+            indicadores_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), water_blue),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+                ('TOPPADDING', (0, 0), (-1, 0), 10),
                 ('BACKGROUND', (0, 1), (-1, -1), water_light_blue),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
             ]))
-            elements.append(dia_table)
-            elements.append(Spacer(1, 0.2*inch))
+            elements.append(indicadores_table)
+            elements.append(Spacer(1, 0.3*inch))
             
-            elements.append(PageBreak())
+            if yesterday_records.exists():
+                elements.append(Paragraph("<b>Registros Medidos del Día:</b>", styles['Heading3']))
+                
+                # Preparar datos de la tabla con todas las variables
+                records_data = []
+                # Encabezados con todas las columnas posibles
+                headers = [
+                    Paragraph('<b>Fecha Medición</b>', styles['Normal']),
+                    Paragraph('<b>Fecha Logger</b>', styles['Normal']),
+                    Paragraph('<b>Diferencia (seg)</b>', styles['Normal']),
+                    Paragraph('<b>Caudal (L/s)</b>', styles['Normal']),
+                    Paragraph('<b>Total (m³)</b>', styles['Normal']),
+                    Paragraph('<b>Nivel (m)</b>', styles['Normal']),
+                    Paragraph('<b>Nivel Freático (m)</b>', styles['Normal']),
+                    Paragraph('<b>Consumo (m³/h)</b>', styles['Normal']),
+                    Paragraph('<b>Pulsos</b>', styles['Normal']),
+                ]
+                records_data.append(headers)
+                
+                for record in yesterday_records:
+                    # Calcular diferencia en segundos
+                    diff_seg = 0
+                    if record.date_time_medition and record.date_time_last_logger:
+                        try:
+                            if record.date_time_medition.tzinfo is None:
+                                dt_med = chile_tz.localize(record.date_time_medition)
+                            else:
+                                dt_med = record.date_time_medition
+                            if record.date_time_last_logger.tzinfo is None:
+                                dt_log = chile_tz.localize(record.date_time_last_logger)
+                            else:
+                                dt_log = record.date_time_last_logger
+                            diff_seg = int((dt_med - dt_log).total_seconds())
+                        except:
+                            diff_seg = 0
+                    
+                    # Asegurar que todos los valores None, null, N/A, s/n, etc. se conviertan a "Sin registros"
+                    # Convertir fechas a zona horaria de Chile
+                    if record.date_time_medition:
+                        medition_date_chile = record.date_time_medition.astimezone(chile_tz)
+                        fecha_med = medition_date_chile.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        fecha_med = 'Sin registros'
+                    
+                    if record.date_time_last_logger:
+                        logger_date_chile = record.date_time_last_logger.astimezone(chile_tz)
+                        fecha_log = logger_date_chile.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        fecha_log = 'Sin registros'
+                    caudal_val = format_decimal(record.flow, 2) if record.flow and record.flow != 0 else '0.00'
+                    total_str = str(record.total).strip() if record.total else ''
+                    total_val = format_number_with_thousands(int(float(record.total))) if record.total and total_str not in ['', 'None', 'null', 'N/A', 'n/a', 's/n', 'S/N', '0'] else 'Sin registros'
+                    nivel_val = format_decimal(record.nivel, 2) if record.nivel and record.nivel != 0 else '0.00'
+                    nivel_freatico_val = format_decimal(record.water_table, 2) if record.water_table and record.water_table != 0 else '0.00'
+                    consumo_val = format_number_with_thousands(int(record.total_diff)) if record.total_diff and record.total_diff != 0 else '0'
+                    pulsos_val = format_number_with_thousands(int(record.pulses)) if record.pulses and record.pulses != 0 else '0'
+                    
+                    row = [
+                        Paragraph(fecha_med, styles['Normal']),
+                        Paragraph(fecha_log, styles['Normal']),
+                        Paragraph(str(diff_seg), styles['Normal']),
+                        Paragraph(caudal_val, styles['Normal']),
+                        Paragraph(total_val, styles['Normal']),
+                        Paragraph(nivel_val, styles['Normal']),
+                        Paragraph(nivel_freatico_val, styles['Normal']),
+                        Paragraph(consumo_val, styles['Normal']),
+                        Paragraph(pulsos_val, styles['Normal']),
+                    ]
+                    records_data.append(row)
+                
+                # Usar ancho completo de la página
+                page_width = A4[0] - 100  # Ancho menos márgenes
+                col_widths = [
+                    page_width * 0.15,  # Fecha Medición
+                    page_width * 0.15,  # Fecha Logger
+                    page_width * 0.08,  # Diferencia
+                    page_width * 0.08,  # Caudal
+                    page_width * 0.10,  # Total
+                    page_width * 0.08,  # Nivel
+                    page_width * 0.10,  # Nivel Freático
+                    page_width * 0.10,  # Consumo
+                    page_width * 0.08,  # Pulsos
+                ]
+                
+                records_table = Table(records_data, colWidths=col_widths)
+                records_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), water_blue),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 7),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                    ('TOPPADDING', (0, 0), (-1, 0), 8),
+                    ('BACKGROUND', (0, 1), (-1, -1), water_light_blue),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('FONTSIZE', (0, 1), (-1, -1), 7),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [water_light_blue, colors.white]),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 3),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+                ]))
+                elements.append(records_table)
+            else:
+                elements.append(Paragraph("No hay registros para el día de ayer.", styles['Normal']))
+            
+            # Solo agregar PageBreak si hay contenido suficiente, sino continuar en la misma página
+            elements.append(Spacer(1, 0.2*inch))
         
         # ========================================
         # SECCIÓN: ANÁLISIS DE DATOS CON GRÁFICOS
@@ -528,7 +754,9 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
         
         for record in chart_records:
             if record.date_time_medition:
-                dates_labels.append(record.date_time_medition.strftime('%Y-%m-%d %H:%M'))
+                # Convertir a zona horaria de Chile para el gráfico
+                medition_date_chile = record.date_time_medition.astimezone(chile_tz)
+                dates_labels.append(medition_date_chile.strftime('%Y-%m-%d %H:%M'))
                 if record.total:
                     total_data.append(float(record.total))
                 else:
@@ -549,19 +777,39 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             elements.append(Paragraph("<b>Gráficos de Evolución Temporal</b>", styles['Heading3']))
             elements.append(Spacer(1, 0.1*inch))
             
-            # Gráfico de Total
+            # Gráfico de Total (solo primer y último, NO promedio)
             if has_totalizado and any(t is not None for t in total_data):
                 total_clean = [t for t in total_data if t is not None]
                 if total_clean:
+                    primer_total_val = total_clean[0]
+                    ultimo_total_val = total_clean[-1]
+                    
+                    # Verificar si el total no se ha movido
+                    total_no_se_mueve = (primer_total_val == ultimo_total_val) or (len(set(total_clean)) == 1)
+                    
                     elements.append(Paragraph("<b>Total Acumulado (m³)</b>", styles['Normal']))
-                    elements.append(Paragraph(
-                        "<i>Muestra la evolución del total acumulado durante el período. "
-                        "Este valor siempre debe crecer o mantenerse constante.</i>",
-                        natural_text_style
-                    ))
+                    if total_no_se_mueve:
+                        elements.append(Paragraph(
+                            "<b>⚠️ ADVERTENCIA:</b> El total acumulado no ha variado durante el período. "
+                            "Esto puede indicar un reset del contador, un contador detenido, o que el totalizado no ha cambiado en mucho tiempo (días). "
+                            "Se recomienda verificar el funcionamiento del contador.",
+                            ParagraphStyle('WarningText', parent=styles['Normal'], textColor=colors.HexColor('#CC0000'), fontSize=10)
+                        ))
+                    else:
+                        elements.append(Paragraph(
+                            "<i>Muestra el primer y último total acumulado del período. "
+                            "Este valor siempre debe crecer o mantenerse constante. "
+                            "Solo se grafican estos dos puntos para identificar reinicios cuando llega a 0 o cuando el totalizado no ha cambiado en mucho tiempo.</i>",
+                            natural_text_style
+                        ))
+                    
+                    # Solo graficar primer y último
+                    total_chart_data = [primer_total_val, ultimo_total_val]
+                    # Título más corto para evitar cortes
+                    total_chart_title = f"Total: {format_number_with_thousands(int(primer_total_val))} → {format_number_with_thousands(int(ultimo_total_val))} m³"
                     total_chart = create_line_chart(
-                        total_clean, 
-                        f"Total Acumulado - {analisis['point_name']}", 
+                        total_chart_data, 
+                        total_chart_title, 
                         "m³",
                         '#0066CC',
                         width=500,
@@ -595,15 +843,31 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             if has_nivel and any(n is not None for n in nivel_data):
                 nivel_clean = [n for n in nivel_data if n is not None]
                 if nivel_clean:
+                    # Verificar si el nivel no ha variado
+                    nivel_min = min(nivel_clean)
+                    nivel_max = max(nivel_clean)
+                    nivel_no_varia = (nivel_max - nivel_min) < 0.01  # Menos de 1 cm de diferencia
+                    
                     elements.append(Paragraph("<b>Nivel de Agua (m)</b>", styles['Normal']))
-                    elements.append(Paragraph(
-                        "<i>Muestra la evolución del nivel de agua durante el período. "
-                        "Variaciones significativas pueden indicar cambios en el nivel freático o problemas de medición.</i>",
-                        natural_text_style
-                    ))
+                    if nivel_no_varia:
+                        elements.append(Paragraph(
+                            "<b>⚠️ ADVERTENCIA:</b> El nivel de agua no ha variado durante el período. "
+                            "Esto puede indicar que el sensor está detenido o que el nivel realmente no ha cambiado. "
+                            "Se recomienda verificar el funcionamiento del sensor de nivel.",
+                            ParagraphStyle('WarningText', parent=styles['Normal'], textColor=colors.HexColor('#CC0000'), fontSize=10)
+                        ))
+                    else:
+                        elements.append(Paragraph(
+                            "<i>Muestra la evolución del nivel de agua durante el período. "
+                            "Variaciones significativas pueden indicar cambios en el nivel freático o problemas de medición.</i>",
+                            natural_text_style
+                        ))
+                    
+                    # Título más corto para nivel
+                    nivel_chart_title = f"Nivel: {format_decimal(nivel_min, 2)} - {format_decimal(nivel_max, 2)} m"
                     nivel_chart = create_line_chart(
                         nivel_clean,
-                        f"Nivel - {analisis['point_name']}",
+                        nivel_chart_title,
                         "m",
                         '#FF6600',
                         width=500,
@@ -640,10 +904,10 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             ])
             total_rows = [
                 ['Total Actual', f"{format_number_with_thousands(int(t['max']))} m³"],
-                ['Primer Registro del Año', f"{format_number_with_thousands(primer_valor)} m³" if primer_valor else 'Sin registros'],
-                ['Fecha Primer Registro', primer_fecha if primer_fecha != 'N/A' else 'Sin registros'],
-                ['Total Promedio', f"{format_number_with_thousands(int(t['promedio']))} m³"],
-                ['NOTA', 'El total siempre crece (no tiene máximo). Se muestra el valor actual y el primer registro del año.'],
+                ['Primer Dato', f"{format_number_with_thousands(primer_valor)} m³" if primer_valor else 'Sin registros'],
+                ['Primer Acumulado', f"{format_number_with_thousands(primer_valor)} m³" if primer_valor else 'Sin registros'],
+                ['Fecha Primer Dato', primer_fecha if primer_fecha and primer_fecha not in ['N/A', 'None', 'null', 'n/a', 's/n', 'S/N'] else 'Sin registros'],
+                ['NOTA', 'El total siempre crece (no tiene máximo). Se muestra el valor actual y el primer dato. NO se calcula promedio porque es un totalizado que crece.'],
             ]
             for row in total_rows:
                 total_data.append([
@@ -781,8 +1045,10 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
         # Extremos de caudal con nivel
         if analisis.get('estadisticas', {}).get('caudal_extremos'):
             ce = analisis['estadisticas']['caudal_extremos']
-            advanced_data.append(['Caudal mínimo', f"{ce['min']['valor']:.2f} L/s (Nivel: {ce['min']['nivel']:.2f} m) - {ce['min']['fecha']}"])
-            advanced_data.append(['Caudal máximo', f"{ce['max']['valor']:.2f} L/s (Nivel: {ce['max']['nivel']:.2f} m) - {ce['max']['fecha']}"])
+            nivel_min_str = f"{ce['min']['nivel']:.2f}" if ce['min']['nivel'] is not None else 'N/A'
+            advanced_data.append(['Caudal mínimo', f"{ce['min']['valor']:.2f} L/s (Nivel: {nivel_min_str} m) - {ce['min']['fecha']}"])
+            nivel_max_str = f"{ce['max']['nivel']:.2f}" if ce['max']['nivel'] is not None else 'N/A'
+            advanced_data.append(['Caudal máximo', f"{ce['max']['valor']:.2f} L/s (Nivel: {nivel_max_str} m) - {ce['max']['fecha']}"])
         
         # Máximo consumo por hora (total_diff)
         if analisis.get('max_consumo_hora'):
@@ -816,8 +1082,9 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             elements.append(Spacer(1, 0.2*inch))
         
         
-        # Pulsos Procesados (no recibidos directamente)
+        # Pulsos Procesados (no recibidos directamente) - en página separada
         if analisis.get('pulsos_procesados'):
+            elements.append(PageBreak())
             elements.append(Paragraph("<b>Pulsos Procesados (últimos 10 registros):</b>", styles['Heading3']))
             elements.append(Paragraph("NOTA: Fórmula directa: total (m³) = (pulsos × pulses_factor) ÷ 1000. Fórmula inversa: pulsos procesados = (total × 1000) ÷ pulses_factor", natural_text_style))
             pulsos_data = [['Fecha', 'Pulsos Recibidos', 'Pulsos Procesados', 'Total (m³)']]
@@ -849,9 +1116,9 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             fechas_cero_data = [['Fecha Medición', 'Fecha Logger', 'Total (m³)']]
             for fpc in analisis['fechas_pulsos_cero'][:10]:
                 fechas_cero_data.append([
-                    fpc['fecha'],
-                    fpc['fecha_logger'],
-                    str(fpc['total'])
+                    fpc['fecha'] if fpc['fecha'] != 'N/A' else 'Sin registros',
+                    fpc.get('fecha_logger', 'Sin registros') if fpc.get('fecha_logger') != 'N/A' else 'Sin registros',
+                    str(fpc['total']) if fpc.get('total') else 'Sin registros'
                 ])
             fechas_cero_table = Table(fechas_cero_data, colWidths=[1.8*inch, 1.8*inch, 0.9*inch])
             fechas_cero_table.setStyle(TableStyle([
@@ -936,20 +1203,71 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             elements.append(comp_table)
             elements.append(Spacer(1, 0.2*inch))
         
-        # Últimos 5 registros enviados a DGA
-        from api.core.models import InteractionDetail
-        dga_records = InteractionDetail.objects.filter(
-            catchment_point_id=point_id,
-            send_dga=True
-        ).order_by('-date_time_medition')[:5]
+        # Últimos 5 registros enviados a DGA del último mes completo del período
+        try:
+            from api.core.models import InteractionDetail
+            from datetime import timedelta
+            import calendar
+            import pytz
+            
+            # Obtener el último mes completo del período con manejo seguro
+            chile_tz_dga = pytz.timezone("America/Santiago")
+            periodo = analisis.get('periodo', {})
+            periodo_fin_str = periodo.get('fin')
+            
+            if periodo_fin_str:
+                try:
+                    periodo_fin_dt = datetime.strptime(periodo_fin_str, '%Y-%m-%d')
+                    # Primer día del último mes completo
+                    last_month_start = periodo_fin_dt.replace(day=1)
+                    # Último día del último mes completo
+                    last_day = calendar.monthrange(last_month_start.year, last_month_start.month)[1]
+                    last_month_end = last_month_start.replace(day=last_day)
+                    last_month_end = chile_tz_dga.localize(last_month_end) + timedelta(days=1) - timedelta(seconds=1)
+                    last_month_start = chile_tz_dga.localize(last_month_start)
+                    
+                    dga_records = InteractionDetail.objects.filter(
+                        catchment_point_id=point_id,
+                        send_dga=True,
+                        date_time_medition__gte=last_month_start,
+                        date_time_medition__lte=last_month_end
+                    ).order_by('-date_time_medition')[:5]
+                except (ValueError, AttributeError) as e:
+                    # Si hay error con las fechas, usar todos los registros DGA
+                    dga_records = InteractionDetail.objects.filter(
+                        catchment_point_id=point_id,
+                        send_dga=True
+                    ).order_by('-date_time_medition')[:5]
+            else:
+                # Si no hay período, usar todos los registros DGA
+                dga_records = InteractionDetail.objects.filter(
+                    catchment_point_id=point_id,
+                    send_dga=True
+                ).order_by('-date_time_medition')[:5]
+        except Exception as e:
+            # Si hay cualquier error, no mostrar registros DGA
+            dga_records = InteractionDetail.objects.none()
         
         if dga_records.exists():
             elements.append(Paragraph("<b>Últimos 5 Registros Enviados a DGA:</b>", styles['Heading3']))
             dga_reg_data = [['Fecha Medición', 'Fecha Logger', 'Total (m³)', 'Caudal (L/s)', 'Nivel (m)']]
             for dga_rec in dga_records:
+                # Convertir fechas a zona horaria de Chile
+                if dga_rec.date_time_medition:
+                    medition_date_chile = dga_rec.date_time_medition.astimezone(chile_tz)
+                    fecha_med_dga = medition_date_chile.strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    fecha_med_dga = 'Sin registros'
+                
+                if dga_rec.date_time_last_logger:
+                    logger_date_chile = dga_rec.date_time_last_logger.astimezone(chile_tz)
+                    fecha_log_dga = logger_date_chile.strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    fecha_log_dga = 'Sin registros'
+                
                 dga_reg_data.append([
-                    dga_rec.date_time_medition.strftime('%Y-%m-%d %H:%M:%S') if dga_rec.date_time_medition else 'Sin registros',
-                    dga_rec.date_time_last_logger.strftime('%Y-%m-%d %H:%M:%S') if dga_rec.date_time_last_logger else 'Sin registros',
+                    fecha_med_dga,
+                    fecha_log_dga,
                     format_number_with_thousands(int(float(dga_rec.total))) if dga_rec.total else '0',
                     format_decimal(dga_rec.flow, 2) if dga_rec.flow else '0.00',
                     format_decimal(dga_rec.nivel, 2) if dga_rec.nivel else '0.00',
@@ -983,9 +1301,9 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             # Resumen de incidencias con casitas de color (sin gráfico)
             summary_data = [
                 ['Tipo', 'Cantidad'],
-                ['Críticas', format_number_with_thousands(analisis['incidencias_criticas'])],
-                ['Advertencias', format_number_with_thousands(analisis['incidencias_advertencia'])],
-                ['Informativas', format_number_with_thousands(analisis['incidencias_info'])],
+                ['Críticas', format_number_with_thousands(analisis.get('incidencias_criticas', 0))],
+                ['Advertencias', format_number_with_thousands(analisis.get('incidencias_advertencia', 0))],
+                ['Informativas', format_number_with_thousands(analisis.get('incidencias_info', 0))],
             ]
             summary_table = Table(summary_data, colWidths=[1.8*inch, 0.9*inch])
             summary_table.setStyle(TableStyle([

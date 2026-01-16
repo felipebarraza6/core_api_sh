@@ -21,6 +21,14 @@ class InteractionDetail(ModelApi):
     days_not_conection = models.IntegerField(
         default=0, verbose_name="Dias sin conexión"
     )
+    is_partial = models.BooleanField(
+        default=False, verbose_name="Desconexión parcial",
+        help_text="True si hay variables fallando pero otras funcionando"
+    )
+    variable_details = models.JSONField(
+        blank=True, null=True, verbose_name="Detalle de variables",
+        help_text="JSON con el estado individual de cada variable"
+    )
 
     # Caudal
 
@@ -65,6 +73,12 @@ class InteractionDetail(ModelApi):
 
         verbose_name = "Telemetria"
         verbose_name_plural = "Registros Telemetria"
+        
+        indexes = [
+            models.Index(fields=['catchment_point', 'date_time_medition']),
+            models.Index(fields=['date_time_medition']),
+        ]
+        unique_together = ("catchment_point", "date_time_medition")
 
     def __str__(self):
         return str(self.catchment_point)

@@ -51,6 +51,7 @@ DJANGO_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "jazzmin",  # ✅ Django Jazzmin - DEBE ir ANTES de django.contrib.admin
     "django.contrib.admin",
 ]
 
@@ -75,6 +76,28 @@ EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "notify@smarthydro.app")
 CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "telemetry@smarthydro.app")
 
+# ========================================
+# FEATURE FLAGS - Control de nuevas funcionalidades
+# ========================================
+# Flag para usar nuevo cálculo de caudal medio diario para estándar MEDIO
+USE_NEW_CAUDAL_CALCULATION_MEDIO = os.environ.get(
+    "USE_NEW_CAUDAL_CALCULATION_MEDIO", "True"
+).lower() == "true"
+
+# ========================================
+# DGA CONFIGURATION - Dirección General de Aguas
+# ========================================
+# Contraseña por defecto para software DGA
+# Cada punto puede tener su propia contraseña personalizada en el modelo
+DGA_DEFAULT_PASSWORD = os.environ.get('DGA_DEFAULT_PASSWORD', '')
+
+# ========================================
+# USER CONFIGURATION (DEPRECATED)
+# ========================================
+# DEPRECATED: No usar para nuevos usuarios
+# Mantener solo para compatibilidad con datos existentes
+USER_DEFAULT_PASSWORD = os.environ.get('USER_DEFAULT_PASSWORD', 'pozos.2023')
+
 # Configuración de logs para cron jobs
 CRONJOBS = [
     # tdata 60 minutos
@@ -94,6 +117,12 @@ CRONJOBS = [
         "*/5 * * * *",
         "api.cronjobs.telemetry.twin_f5.run",
         ">> /tmp/smarthydro/twin_5.log 2>&1",
+    ),
+    # tdata 10 minutos
+    (
+        "*/10 * * * *",
+        "api.cronjobs.telemetry.twin_f10.run",
+        ">> /tmp/smarthydro/twin_10.log 2>&1",
     ),
     # nettra 60 minutos
     (
@@ -137,13 +166,34 @@ CRONJOBS = [
         "api.cronjobs.alerts.cron_alerts.run",
         ">> /tmp/smarthydro/alerts.log 2>&1",
     ),
+    # boletín diario - 10:00 PM Chile (01:00 UTC)
+    (
+        "0 1 * * *",
+        "api.cronjobs.reports.daily_bulletin.run",
+        ">> /tmp/smarthydro/daily_bulletin.log 2>&1",
+    ),
+    # reporte diario chat - 09:00 AM Chile (12:00 UTC)
+    (
+        "0 12 * * *",
+        "api.cronjobs.reports.daily_chat_report.run",
+        ">> /tmp/smarthydro/daily_chat_report.log 2>&1",
+    ),
+    # reporte horario DGA MAYOR - cada hora a los :05 (reporta hora anterior)
+    (
+        "5 * * * *",
+        "api.cronjobs.reports.dga_mayor_hourly.run",
+        ">> /tmp/smarthydro/dga_mayor_hourly.log 2>&1",
+    ),
 ]
 
-INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+# Reordenar apps para que "Operaciones y Telemetría" aparezca primero en el menú
+# LOCAL_APPS primero para que core.apps.CoreAppConfig aparezca antes que auth
+INSTALLED_APPS = LOCAL_APPS + DJANGO_APPS + THIRD_PARTY_APPS
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "django.middleware.gzip.GZipMiddleware",  # ✅ RENDIMIENTO: Compresión de respuestas (debe ir temprano)
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",  # Mover antes de CommonMiddleware
     "django.middleware.common.CommonMiddleware",
@@ -162,10 +212,16 @@ CORS_ORIGIN_WHITELIST = [
     "https://ikolu.smarthydro.app",
     "http://localhost:3000",  # Solo para desarrollo
     "http://localhost:8000",  # Solo para desarrollo
+    "http://localhost:3001",  # Local UI development
+]
+
+# ✅ FIX CORS: Permitir también patrones con regex para subdominios
+CORS_ORIGIN_REGEX_WHITELIST = [
+    r"^https://.*\.smarthydro\.app$",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 CORS_ALLOW_HEADERS = [
     "accept",
     "accept-encoding",
@@ -183,7 +239,7 @@ CORS_ALLOW_HEADERS = [
 ]
 
 REST_FRAMEWORK = {
-    "EXCEPTION_HANDLER": "api.core.utils.json_on_error_exception_handler",
+    "EXCEPTION_HANDLER": "api.core.exceptions.json_on_error_exception_handler",
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
     "DEFAULT_AUTHENTICATION_CLASSES": ("rest_framework.authentication.TokenAuthentication",),
     "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
@@ -229,21 +285,25 @@ DATABASES = {
         "OPTIONS": {
             "connect_timeout": 10,
             "application_name": "smarthydro_django",
+            "keepalives": 1,  # Habilitar keepalive para reutilizar conexiones
+            "keepalives_idle": 30,  # Segundos antes de enviar keepalive
+            "keepalives_interval": 10,  # Intervalo entre keepalives
+            "keepalives_count": 5,  # Número de keepalives antes de cerrar
         },
-        "CONN_MAX_AGE": 600,  # 10 minutos
+        "CONN_MAX_AGE": 600,  # 10 minutos - reutilizar conexiones
         "ATOMIC_REQUESTS": True,
     }
 }
 
-# Configuración de caché (opcional, para mejorar rendimiento)
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "unique-snowflake",
-        "TIMEOUT": 300,  # 5 minutos
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://redis:6379/1",
         "OPTIONS": {
-            "MAX_ENTRIES": 1000,
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "IGNORE_EXCEPTIONS": True,  # Fallback gracefully if Redis is down
         },
+        "TIMEOUT": 900,  # 15 minutes
     }
 }
 
@@ -286,6 +346,11 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
+# Directorios adicionales para archivos estáticos
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "static"),  # Archivos estáticos del proyecto
+]
+
 # Configuración de logging para producción
 LOGGING = {
     "version": 1,
@@ -305,9 +370,12 @@ LOGGING = {
     "handlers": {
         "file": {
             "level": "INFO",
-            "class": "logging.FileHandler",
-            "filename": "/tmp/smarthydro/django.log",
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": "/app/logs/django.log",
+            "maxBytes": 1024 * 1024 * 10,  # 10 MB
+            "backupCount": 5,
             "formatter": "verbose",
+            "delay": True,
         },
         "console": {
             "level": "INFO",
@@ -339,6 +407,217 @@ SESSION_SAVE_EVERY_REQUEST = True
 # Configuración de archivos estáticos
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
+# ========================================
+# CONFIGURACIÓN DJANGO JAZZMIN - UI MEJORADA
+# ========================================
+JAZZMIN_SETTINGS = {
+    # Título del sitio
+    # Título del sitio
+    "site_title": "Ikolu Management",
+    "site_header": "Ikolu Management",
+    "site_brand": "Ikolu Management",
+    # Logo de Ikolu - Texto en vez de imagen
+    "site_logo": None,
+    "login_logo": None,
+    "login_logo_dark": None,
+    
+    # Tema y colores personalizados - Mejor contraste
+    "theme": "flatly",  # Tema moderno y limpio con buen contraste
+    "dark_mode_theme": "darkly",  # Tema oscuro alternativo
+    
+    # Iconos
+    "site_icon": None,  # Puedes agregar un favicon aquí
+    
+    # Menú personalizado con grupos organizados
+    "topmenu_links": [
+        # Enlaces externos
+        {"name": "Panel de control", "url": "/admin/", "icon": "fas fa-home", "permissions": ["auth.view_user"]},
+        {"name": "Dashboard", "url": "/admin/dashboard/", "icon": "fas fa-chart-line", "permissions": ["auth.view_user"]},
+        {"name": "Monitoreo", "url": "/admin/telemetry-monitoring/", "icon": "fas fa-tachometer-alt", "permissions": ["auth.view_user"]},
+        {"name": "SmartHydro Web", "url": "https://smarthydro.cl", "new_window": True, "icon": "fas fa-globe"},
+    ],
+    
+    # Menú lateral personalizado con grupos (Jazzmin 3.x)
+    "usermenu_links": [
+        {"model": "auth.user"}
+    ],
+    
+    # Configuración del menú lateral
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    
+    # Orden y agrupación del menú - Organizado por flujo de trabajo
+    "order_with_respect_to": [
+        # OPERACIÓN DE TELEMETRÍA (Prioridad 1 - Lo más importante)
+        "core.InteractionDetail",      # Registros de telemetría
+        "core.CatchmentPoint",          # Puntos de captación
+        
+        # INGESTA DE DATOS (Prioridad 2 - Entrada de datos)
+        "core.Variable",                # Variables capturadas
+        
+        # PROCESAMIENTO (Prioridad 3 - Transformación de datos)
+        "core.SchemesCatchment",        # Esquemas de procesamiento
+        "core.ProfileDataConfigCatchment", # Configuración de procesamiento
+        
+        # CONFIGURACIÓN (Prioridad 4 - Estructura)
+        "core.ProjectCatchments",       # Proyectos
+        "core.Client",                  # Clientes
+        
+        # PREPARACIÓN Y ENVÍO (Prioridad 5 - Preparación para DGA)
+        "core.DgaDataConfigCatchment",  # Configuración DGA
+        "core.ProfileIkoluCatchment",   # Perfiles Ikolu
+        
+        # ALERTAS Y NOTIFICACIONES (Prioridad 6)
+        "core.NotificationsCatchment",
+        "core.ResponseNotificationsCatchment",
+        
+        # DOCUMENTOS (Prioridad 7)
+        "core.FileCatchment",
+        "core.TypeFileCatchment",
+        
+        # ADMINISTRACIÓN (Prioridad 8)
+        "core.User",
+        "auth.Group",
+        "core.RegisterPersons",
+    ],
+    
+    # Personalización de modelos
+    "custom_links": {
+        "core.CatchmentPoint": [{
+            "name": "Ver Dashboard",
+            "url": "/admin/dashboard/",
+            "icon": "fas fa-chart-line",
+        }],
+        "core.InteractionDetail": [{
+            "name": "Ver Dashboard",
+            "url": "/admin/dashboard/",
+            "icon": "fas fa-chart-line",
+        }],
+    },
+    
+    # Iconos personalizados para modelos - Organizados por flujo
+    "icons": {
+        # Autenticación
+        "auth": "fas fa-users-cog",
+        "auth.user": "fas fa-user",
+        "auth.Group": "fas fa-users",
+        
+        # Operación de Telemetría
+        "core.InteractionDetail": "fas fa-database",           # Registros
+        "core.CatchmentPoint": "fas fa-map-marker-alt",        # Puntos
+        "core.ProjectCatchments": "fas fa-project-diagram",     # Proyectos
+        "core.Client": "fas fa-building",                       # Clientes
+        
+        # Ingesta
+        "core.Variable": "fas fa-signal",                      # Variables capturadas
+        
+        # Procesamiento
+        "core.SchemesCatchment": "fas fa-sitemap",             # Esquemas
+        "core.ProfileDataConfigCatchment": "fas fa-cogs",      # Config procesamiento
+        
+        # Preparación y Envío
+        "core.DgaDataConfigCatchment": "fas fa-paper-plane",   # Envío DGA
+        "core.ProfileIkoluCatchment": "fas fa-user-cog",      # Perfiles
+        
+        # Alertas
+        "core.NotificationsCatchment": "fas fa-bell",
+        "core.ResponseNotificationsCatchment": "fas fa-reply",
+        
+        # Documentos
+        "core.FileCatchment": "fas fa-file-alt",
+        "core.TypeFileCatchment": "fas fa-folder-open",
+        
+        # Administración
+        "core.User": "fas fa-user-tie",
+        "core.RegisterPersons": "fas fa-address-book",
+    },
+    
+    # Configuración de UI
+    "default_icon_parents": "fas fa-chevron-circle-right",
+    "default_icon_children": "fas fa-circle",
+    
+    # Relaciones con modelos relacionados
+    "related_modal_active": True,
+    
+    # Personalización de la barra superior
+    "custom_css": "admin/css/admin_improvements.css",  # CSS personalizado para mejoras generales
+    "custom_js": None,  # Puedes agregar JavaScript personalizado aquí
+    
+    # Mostrar UI personalizada
+    "show_ui_builder": False,  # Desactivar el UI builder por defecto
+    
+    # Cambiar el logo en la página de login
+    "changeform_format": "horizontal_tabs",  # horizontal_tabs, collapsible, carousel, single
+    
+    # Configuración de campos
+    "changeform_format_overrides": {
+        "auth.user": "collapsible",
+        "auth.group": "vertical_tabs",
+    },
+    
+    # Idioma
+    "language_chooser": False,  # Ya está en español
+    
+    # Copyright
+    "copyright": "SmartHydro - Sistema de Monitoreo Hidrológico",
+    
+    # Mostrar sidebar
+    "show_sidebar": True,
+    
+    # Navegación
+    "navigation_expanded": True,
+    
+    # Filtros
+    "filter_horizontal": True,
+    
+    # Búsqueda
+    # Búsqueda global desactivada para evitar problemas de layout
+    # "search_model": ["core.CatchmentPoint", "core.InteractionDetail", "core.Client"],
+    
+    # Personalización de la página de inicio
+    "welcome_sign": "Bienvenido a SmartHydro - Panel de Control de Telemetría",
+    
+    # Colores personalizados (opcional)
+    "usermenu_links": [
+        {"name": "Dashboard", "url": "/admin/dashboard/", "icon": "fas fa-chart-line"},
+        {"name": "Monitoreo", "url": "/admin/telemetry-monitoring/", "icon": "fas fa-tachometer-alt"},
+    ],
+}
+
+# Configuración del tema oscuro (opcional) - Mejorado con mejor contraste
+JAZZMIN_UI_TWEAKS = {
+    "navbar_small_text": False,
+    "footer_small_text": False,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "brand_colour": "navbar-primary",
+    "accent": "accent-info",  # Cambiado a info para mejor contraste
+    "navbar": "navbar-dark",
+    "no_navbar_border": False,
+    "navbar_fixed": False,
+    "layout_boxed": False,
+    "footer_fixed": False,
+    "sidebar_fixed": False,
+    "sidebar": "sidebar-dark-primary",
+    "sidebar_nav_small_text": False,
+    "sidebar_disable_expand": False,
+    "sidebar_nav_child_indent": True,  # Mejor indentación para jerarquía
+    "sidebar_nav_compact_style": False,
+    "sidebar_nav_legacy_style": False,
+    "sidebar_nav_flat_style": False,
+    "theme": "flatly",
+    "dark_mode_theme": None,
+    "button_classes": {
+        "primary": "btn-primary",
+        "secondary": "btn-secondary",
+        "info": "btn-info",
+        "warning": "btn-warning",
+        "danger": "btn-danger",
+        "success": "btn-success"
+    },
+    "actions_sticky_top": True,
+}
+
 # Configuración temporal para debug de CORS
 if not DEBUG:
     # Permitir X-Frame-Options para CORS
@@ -357,3 +636,9 @@ if not DEBUG:
         'x-csrftoken',
         'x-requested-with',
     ]
+
+# ========================================
+# CHATBOT CONFIGURATION
+# ========================================
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+

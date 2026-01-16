@@ -1,0 +1,1158 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    /* Ocultar barra lateral izquierda en dashboard - Jazzmin */
+    #nav-sidebar,
+    .sidebar,
+    .main-sidebar,
+    aside.main-sidebar,
+    .sidebar-dark-primary {
+        display: none !important;
+        width: 0 !important;
+        min-width: 0 !important;
+    }
+    
+    /* Expandir contenido a ancho completo */
+    .main,
+    .content-wrapper,
+    body:not(.sidebar-mini-md):not(.sidebar-mini-xs):not(.layout-top-nav) .content-wrapper {
+        margin-left: 0 !important;
+    }
+    
+    #content,
+    .wrapper {
+        margin-left: 0 !important;
+    }
+    
+    /* Asegurar que el body use todo el ancho */
+    body {
+        padding-left: 0 !important;
+    }
+    
+    /* Extender header/navbar a ancho completo */
+    .main-header,
+    nav.main-header {
+        margin-left: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+    }
+    
+    /* Ocultar botón hamburguesa del menú */
+    .nav-link[data-widget="pushmenu"],
+    a[data-widget="pushmenu"],
+    .sidebar-toggle {
+        display: none !important;
+    }
+    
+    /* Ocultar el área del logo/brand (cuadradito blanco) */
+    .brand-link,
+    .navbar-brand,
+    a.brand-link {
+        display: none !important;
+    }
+    
+    /* Estilos para el dashboard tipo Grafana - Modo Blanco */
+    .dashboard-container {
+        padding: 20px;
+        background: #ffffff;
+        color: #212529;
+    }
+
+    .dashboard-header {
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #3c3c3c;
+    }
+
+    .dashboard-header h1 {
+        color: #212529 !important;
+        font-size: 28px;
+        margin: 0;
+        font-weight: 700;
+    }
+
+    .dashboard-header .subtitle {
+        color: #495057 !important;
+        font-size: 14px;
+        margin-top: 5px;
+    }
+
+    /* Tarjetas de métricas */
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .metric-card {
+        background: #ffffff !important;
+        border: 2px solid #dee2e6 !important;
+        border-radius: 8px;
+        padding: 20px;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+        border-color: #569cd6 !important;
+    }
+
+    .metric-card.danger {
+        border-left: 4px solid #f48771;
+    }
+
+    .metric-card.warning {
+        border-left: 4px solid #dcdcaa;
+    }
+
+    .metric-card.success {
+        border-left: 4px solid #4ec9b0;
+    }
+
+    .metric-card.info {
+        border-left: 4px solid #569cd6;
+    }
+
+    .metric-title {
+        font-size: 12px;
+        color: #495057 !important;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+    }
+
+    .metric-value {
+        font-size: 32px;
+        font-weight: bold;
+        color: #212529 !important;
+        margin-bottom: 5px;
+    }
+
+    .metric-change {
+        font-size: 12px;
+        color: #6c757d !important;
+    }
+
+    /* Gráficos */
+    .charts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .chart-card {
+        background: #ffffff !important;
+        border: 2px solid #dee2e6 !important;
+        border-radius: 8px;
+        padding: 20px;
+    }
+
+    .chart-title {
+        font-size: 16px;
+        color: black;
+        margin-bottom: 15px;
+        font-weight: 600;
+    }
+
+    .chart-container {
+        position: relative;
+        height: 300px;
+    }
+
+    /* Alertas */
+    .alerts-section {
+        margin-bottom: 30px;
+    }
+
+    .alert-card {
+        background: #ffffff !important;
+        border: 2px solid #dee2e6 !important;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    .alert-card.danger {
+        border-left: 4px solid #f48771;
+    }
+
+    .alert-card.warning {
+        border-left: 4px solid #dcdcaa;
+    }
+
+    .alert-card.info {
+        border-left: 4px solid #569cd6;
+    }
+
+    .alert-icon {
+        font-size: 24px;
+    }
+
+    .alert-content {
+        flex: 1;
+    }
+
+    .alert-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #ffffff;
+        margin-bottom: 5px;
+    }
+
+    .alert-message {
+        font-size: 14px;
+        color: #858585;
+    }
+
+    .alert-link {
+        color: #569cd6 !important;
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .alert-link:hover {
+        text-decoration: underline;
+    }
+
+    /* Tabla de registros recientes */
+    .recent-table {
+        background: #ffffff !important;
+        border: 2px solid #dee2e6 !important;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .recent-table-header {
+        background: #2d2d30;
+        padding: 15px 20px;
+        border-bottom: 1px solid #dee2e6 !important;
+    }
+
+    .recent-table-header h3 {
+        margin: 0;
+        color: #ffffff;
+        font-size: 16px;
+    }
+
+    .recent-table-content {
+        padding: 0;
+    }
+
+    .recent-table table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: auto;
+    }
+
+    .recent-table-content {
+        overflow-x: auto;
+        max-height: 600px;
+        overflow-y: auto;
+    }
+
+    .recent-table th {
+        background: #f8f9fa !important;
+        color: #212529 !important;
+        text-align: left;
+        padding: 12px 15px;
+        font-size: 12px;
+        text-transform: uppercase;
+        font-weight: 700;
+        border-bottom: 2px solid #dee2e6 !important;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .recent-table th:first-child,
+    .recent-table td:first-child {
+        position: sticky;
+        left: 0;
+        background: #ffffff !important;
+        z-index: 5;
+        border-right: 2px solid #dee2e6 !important;
+    }
+
+    .recent-table th:first-child {
+        z-index: 15;
+        background: #f8f9fa !important;
+    }
+
+    .recent-table td {
+        padding: 12px 15px;
+        border-bottom: 1px solid #e9ecef !important;
+        color: #212529 !important;
+        font-size: 13px;
+        vertical-align: top;
+        background: #ffffff !important;
+    }
+
+    .recent-table tr:hover {
+        background: #f8f9fa !important;
+    }
+
+    @media (max-width: 1200px) {
+        .recent-table table {
+            font-size: 12px;
+        }
+
+        .recent-table th,
+        .recent-table td {
+            padding: 8px 12px;
+        }
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .status-badge.error {
+        background: #f48771;
+        color: #1e1e1e;
+    }
+
+    .status-badge.ok {
+        background: #4ec9b0;
+        color: #1e1e1e;
+    }
+
+    .status-badge.warning {
+        background: #dcdcaa;
+        color: #1e1e1e;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div class="dashboard-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <div>
+                <h1>Dashboard de Control de Telemetría</h1>
+                <div class="subtitle">Centro de control en tiempo real • Última actualización: {{ now|date:"d/m/YH:i:s"}}</div>
+            </div>
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                <form method="get" action="{% url 'admin_dashboard' %}" style="margin: 0; min-width: 300px;">
+                    <!-- NO incluir point aquí para que se limpie al cambiar de proyecto -->
+                    <input type="hidden" name="veracidad_periodo" value="{{ veracidad_periodo|default:'' }}">
+                    <select name="project" id="project-filter" onchange="this.form.submit()" style="
+                        width: 100%;
+                        padding: 12px 15px;
+                        background: #252526;
+                        border: 2px solid #3c3c3c;
+                        border-radius: 8px;
+                        color: #d4d4d4;
+                        font-size: 14px;
+                        cursor: pointer;
+                        transition: all 0.3s;
+                        font-weight: 500;
+                    " onmouseover="this.style.borderColor='#007acc'" onmouseout="this.style.borderColor='#3c3c3c'">
+                        <option value="">🌐 Todos los Proyectos</option>
+                        {% for project in all_projects %}
+                        {% if selected_project_id == project.id %}
+                        <option value="{{ project.id }}" selected>📁 {{ project.name }}</option>
+                        {% else %}
+                        <option value="{{ project.id }}">📁 {{ project.name }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </form>
+                <!-- Selector de punto eliminado - solo filtro por proyecto y veracidad -->
+                <!-- Selector de período para veracidad histórica -->
+                <form method="get" action="{% url 'admin_dashboard' %}" style="margin: 0; min-width: 250px;">
+                    <input type="hidden" name="project" value="{{ selected_project_id|default:'' }}">
+                    <!-- NO incluir point - solo proyecto y veracidad -->
+                    <select name="veracidad_periodo" id="veracidad-periodo-filter" onchange="this.form.submit()" style="
+                        width: 100%;
+                        padding: 12px 15px;
+                        background: #252526;
+                        border: 2px solid #3c3c3c;
+                        border-radius: 8px;
+                        color: #d4d4d4;
+                        font-size: 14px;
+                        cursor: pointer;
+                        transition: all 0.3s;
+                        font-weight: 500;
+                    " onmouseover="this.style.borderColor='#007acc'" onmouseout="this.style.borderColor='#3c3c3c'">
+                        <option value="">Veracidad: Último registro</option>
+                        {% if veracidad_periodo == 'trimestre' %}
+                        <option value="trimestre" selected>Veracidad: Último trimestre</option>
+                        {% else %}
+                        <option value="trimestre">Veracidad: Último trimestre</option>
+                        {% endif %}
+                        {% if veracidad_periodo == 'mes' %}
+                        <option value="mes" selected>Veracidad: Último mes</option>
+                        {% else %}
+                        <option value="mes">Veracidad: Último mes</option>
+                        {% endif %}
+                        {% if veracidad_periodo == 'semestre' %}
+                        <option value="semestre" selected>Veracidad: Últimos 6 meses</option>
+                        {% else %}
+                        <option value="semestre">Veracidad: Últimos 6 meses</option>
+                        {% endif %}
+                        {% if veracidad_periodo == 'año' %}
+                        <option value="año" selected>Veracidad: Último año</option>
+                        {% else %}
+                        <option value="año">Veracidad: Último año</option>
+                        {% endif %}
+                    </select>
+                </form>
+            </div>
+        </div>
+        {% if selected_project or selected_point %}
+        <div
+            style="background: rgba(78, 201, 176, 0.2); border-left: 4px solid #4ec9b0; padding: 12px 15px; border-radius: 6px; margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+            {% if selected_project %}
+                <strong style="color: #4ec9b0;">Proyecto:</strong>
+                <span style="color: #212529 !important;">{{ selected_project.name }}</span>
+                {% endif %}
+                {% if selected_point %}
+                <strong style="color: #4ec9b0; margin-left: 20px;">Punto:</strong>
+                <span style="color: #212529 !important;">{{ selected_point.title }}</span>
+                {% endif %}
+            </div>
+            <a href="{% url 'admin_dashboard' %}"
+                style="color: #4ec9b0; text-decoration: none; padding: 6px 12px; background: rgba(78, 201, 176, 0.3); border-radius: 4px;">
+                Limpiar filtros</a>
+        </div>
+        {% endif %}
+
+        {% if selected_project_id and project_points %}
+        <div
+            style="background: #252526; border: 1px solid #3c3c3c; border-radius: 8px; padding: 20px; margin-top: 20px; margin-bottom: 30px;">
+            <h3 style="color: #ffffff; margin: 0 0 15px 0; font-size: 18px;">Puntos del Proyecto ({{project_points|length }})</h3>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                {% for point in project_points %}
+                <span class="point-badge"
+                    style="display: inline-block; padding: 8px 15px; background: #f8f9fa !important; color: #212529 !important; border: 1px solid #dee2e6 !important; border-radius: 6px; font-size: 13px;">
+                    {{ point.title }}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Flujo de Procesos -->
+    <div
+        style="background: #252526; border: 1px solid #3c3c3c; border-radius: 8px; padding: 25px; margin-bottom: 30px;">
+        <h2 style="color: #ffffff; margin: 0 0 20px 0; font-size: 20px; font-weight: 600;">Flujo de Procesos del Sistema
+        </h2>
+        <div style="display: grid;">
+            <div class="metrics-grid">
+                <div class="metric-card"
+                    style="background: linear-gradient(135deg, rgba(74, 144, 226, 0.1) 0%, rgba(74, 144, 226, 0.05) 100%); border: 1px solid #4a90e2;">
+                    <div class="metric-title" style="color: #4a90e2;">Número de Obras</div>
+                    <div class="metric-value" style="color: #4a90e2;">{{ num_obras }}</div>
+                    <div class="metric-change" style="color: #6c757d;">Puntos con código de obra</div>
+                </div>
+
+                {% if pct_conectados >= 80 %}
+                <div class="metric-card"
+                    style="background: linear-gradient(135deg, rgba(78, 201, 176, 0.2) 0%, rgba(59, 168, 144, 0.1) 100%); border: 2px solid #4ec9b0;">
+                    {% elif pct_conectados >= 50 %}
+                    <div class="metric-card"
+                        style="background: linear-gradient(135deg, rgba(220, 220, 170, 0.2) 0%, rgba(196, 196, 138, 0.1) 100%); border: 2px solid #dcdcaa;">
+                        {% else %}
+                        <div class="metric-card"
+                            style="background: linear-gradient(135deg, rgba(244, 135, 113, 0.2) 0%, rgba(214, 107, 85, 0.1) 100%); border: 2px solid #f48771;">
+                            {% endif %}
+                            <div class="metric-title" style="color: #2c3e50;">% Conectados</div>
+                            <div class="metric-value">{{ pct_conectados }}%</div>
+                            <div class="metric-change" style="color: #6c757d;">
+                                {{ pct_conectados_count }} de {{ pct_conectados_total }} puntos con telemetría activa
+                            </div>  
+
+                            <div
+                                style="margin-top: 10px; font-size: 11px; text-align: left; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.1);">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                    <span style="color: #5a32a3;">Nettra:</span> <span style="font-weight: 600;">{{provider_counts.thethings }}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                    <span style="color: #3273a3;">Novus:</span> <span style="font-weight: 600;">{{provider_counts.novus }}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                    <span style="color: #32a345;">Twin:</span> <span style="font-weight: 600;">{{provider_counts.tdata }}</span>
+                                </div>
+                                <div
+                                    style="display: flex; justify-content: space-between; margin-top: 4px; color: #dc3545; font-weight: 600;">
+                                    <span>Desconectados (Total):</span> <span>{{ desconectados_count }}</span>
+                                </div>
+                                <div
+                                    style="display: flex; justify-content: space-between; margin-top: 2px; color: #ffc107; font-weight: 600;">
+                                    <span>Parciales:</span> <span>{{ desconectados_parciales }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card"
+                            style="background: linear-gradient(135deg, rgba(74, 144, 226, 0.1) 0%, rgba(74, 144, 226, 0.05) 100%); border: 1px solid #4a90e2;">
+                            <div class="metric-title" style="color: #2c3e50;">% DGA</div>
+                            <div class="metric-value">{{ pct_dga }}%</div>
+                            <div class="metric-change" style="color: #6c757d;">
+                                {{ pct_dga_count }} de {{ pct_dga_total }} puntos con cumplimiento activo
+                            </div>
+
+                            {% if dga_breakdown %}
+                            <div
+                                style="margin-top: 10px; font-size: 11px; text-align: left; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.1);">
+                                {% for item in dga_breakdown %}
+                                <div
+                                    style="display: flex; justify-content: space-between; margin-bottom: 3px; color: #212529;">
+                                    <span style="font-weight: 600;">{{ item.label }}:</span>
+                                    <span style="font-size: 10px;">
+                                        <span style="color: #4ec9b0; font-weight: 600;">✓ {{ item.connected }}</span> •
+                                        <span style="color: #dc3545; font-weight: 600;">✗ {{ item.disconnected }}</span>
+                                        /
+                                        <span style="font-weight: 700;">{{ item.total }}</span>
+                                    </span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        {% if pct_veracidad >= 70 %}
+                        <div class="metric-card"
+                            style="background: linear-gradient(135deg, rgba(78, 201, 176, 0.2) 0%, rgba(59, 168, 144, 0.1) 100%); border: 2px solid #4ec9b0;">
+                            {% elif pct_veracidad >= 50 %}
+                            <div class="metric-card"
+                                style="background: linear-gradient(135deg, rgba(220, 220, 170, 0.2) 0%, rgba(196, 196, 138, 0.1) 100%); border: 2px solid #dcdcaa;">
+                                {% else %}
+                                <div class="metric-card"
+                                    style="background: linear-gradient(135deg, rgba(244, 135, 113, 0.2) 0%, rgba(214, 107, 85, 0.1) 100%); border: 2px solid #f48771;">
+                                    {% endif %}
+                                    <div class="metric-title" style="color: #2c3e50;">
+                                        % Veracidad
+                                        {% if use_historical_veracidad %}
+                                        <span style="font-size: 10px; color: #4ec9b0; margin-left: 5px;">(Histórico: {{period_days }} días)</span>
+                                        {% else %}
+                                        <span style="font-size: 10px; color: #858585; margin-left: 5px;">(Último
+                                            registro)</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="metric-value">{{ pct_veracidad }}%</div>
+                                    <div class="metric-change"
+                                        style="line-height: 1.6; font-size: 11px; color: #6c757d;">
+                                        <div style="margin-bottom: 4px;"><strong>{{ pct_veracidad_total }}</strong>
+                                            puntos
+                                            con CAUDAL/PROMEDIO</div>
+                                        <div style="margin-bottom: 4px;"><strong>{{ pct_veracidad_con_d5 }}</strong> con
+                                            diámetro flujómetro (d5)</div>
+                                        <div style="margin-bottom: 4px;">{{ pct_veracidad_count }} de {{pct_veracidad_con_d5 }} no superan el caudal probable</div>
+                                        <div style="color: #dcdcaa; font-weight: 600;">⚠️ {{pct_veracidad_pasan_probable }} pasan el caudal probable</div>
+                                    </div>
+                                </div>
+
+                                {% if stats_caudal_probable.con_desconexion > 0 %}
+                                <div class="metric-card"
+                                    style="background: linear-gradient(135deg, rgba(244, 135, 113, 0.2) 0%, rgba(214, 107, 85, 0.1) 100%); border: 2px solid #f48771;">
+                                    {% else %}
+                                    <div class="metric-card"
+                                        style="background: linear-gradient(135deg, rgba(78, 201, 176, 0.2) 0%, rgba(59, 168, 144, 0.1) 100%); border: 2px solid #4ec9b0;">
+                                        {% endif %}
+                                        <div class="metric-title" style="color: #2c3e50;">🔴 Desconexión Total</div>
+                                        <div class="metric-value">{{ stats_caudal_probable.con_desconexion }}</div>
+                                        <div class="metric-change" style="color: #6c757d;">puntos con falla completa > 1 día
+                                        </div>
+                                    </div>
+
+                                {% if stats_caudal_probable.desconexiones_parciales > 0 %}
+                                <div class="metric-card"
+                                    style="background: linear-gradient(135deg, rgba(220, 220, 170, 0.2) 0%, rgba(196, 196, 138, 0.1) 100%); border: 2px solid #dcdcaa;">
+                                    {% else %}
+                                    <div class="metric-card"
+                                        style="background: linear-gradient(135deg, rgba(78, 201, 176, 0.2) 0%, rgba(59, 168, 144, 0.1) 100%); border: 2px solid #4ec9b0;">
+                                        {% endif %}
+                                        <div class="metric-title" style="color: #2c3e50;">⚠️ Desconexión Parcial</div>
+                                        <div class="metric-value">{{ stats_caudal_probable.desconexiones_parciales_global }}</div>
+                                        <div class="metric-change" style="color: #6c757d;">puntos con algunas variables caídas
+                                        </div>
+                                        <a href="{% url 'admin:core_interactiondetail_changelist' %}?disconnection_type=partial" 
+                                           target="_blank" 
+                                           style="display: inline-block; margin-top: 8px; padding: 4px 12px; background: #ffc107; color: black; text-decoration: none; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                                            🔍 Ver Parciales
+                                        </a>
+                                    </div>
+                                    {% if dga_stats.inactive > 0 %}
+                                    <div class="metric-card"
+                                        style="background: linear-gradient(135deg, rgba(244, 135, 113, 0.2) 0%, rgba(214, 107, 85, 0.1) 100%); border: 2px solid #f48771;">
+                                        {% else %}
+                                        <div class="metric-card"
+                                            style="background: linear-gradient(135deg, rgba(78, 201, 176, 0.2) 0%, rgba(59, 168, 144, 0.1) 100%); border: 2px solid #4ec9b0;">
+                                            {% endif %}
+                                            <div class="metric-title" style="color: #2c3e50;">DGA Inactivo
+                                            </div>
+                                            <div class="metric-value">{{ dga_stats.inactive }}</div>
+                                            <div class="metric-change" style="color: #6c757d;">puntos sin cumplimiento
+                                            </div>
+                                        </div>
+
+                                        {% if registro_errores > 0 %}
+                                        <div class="metric-card"
+                                            style="background: linear-gradient(135deg, rgba(244, 135, 113, 0.2) 0%, rgba(214, 107, 85, 0.1) 100%); border: 2px solid #f48771;">
+                                            {% else %}
+                                            <div class="metric-card"
+                                                style="background: linear-gradient(135deg, rgba(78, 201, 176, 0.2) 0%, rgba(59, 168, 144, 0.1) 100%); border: 2px solid #4ec9b0;">
+                                                {% endif %}
+                                                <div class="metric-title" style="color: #2c3e50;">Registro Errores</div>
+                                                <div class="metric-value">{{ registro_errores }}</div>
+                                                <div class="metric-change" style="color: #6c757d;">registros con errores</div>
+                                                <a href="{% url 'admin:core_interactiondetail_changelist' %}?is_error__exact=1{% if selected_project_id %}&catchment_point__project__id__exact={{ selected_project_id }}{% endif %}" 
+                                                   target="_blank" 
+                                                   style="display: inline-block; margin-top: 8px; padding: 4px 12px; background: #4ec9b0; color: white; text-decoration: none; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                                                    🔍 Ver Detalle
+                                                </a>
+                                            </div>
+
+                                            <div class="metric-card"
+                                                style="background: linear-gradient(135deg, rgba(74, 144, 226, 0.1) 0%, rgba(74, 144, 226, 0.05) 100%); border: 1px solid #4a90e2;">
+                                                <div class="metric-title" style="color: #2c3e50;">Cola DGA</div>
+                                                <div class="metric-value">{{ pct_cola_dga_count}}</div>
+                                                <div class="metric-change" style="color: #6c757d;">registros en preparación para envío</div>
+                                                <a href="{% url 'admin:core_interactiondetail_changelist' %}?send_dga__exact=1{% if selected_project_id %}&catchment_point__project__id__exact={{ selected_project_id }}{% endif %}" 
+                                                   target="_blank" 
+                                                   style="display: inline-block; margin-top: 8px; padding: 4px 12px; background: #4a90e2; color: white; text-decoration: none; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                                                    🔍 Ver Cola
+                                                </a>
+                                            </div>
+
+                                            {% if notificaciones_pendientes > 0 %}
+                                            <div class="metric-card"
+                                                style="background: linear-gradient(135deg, rgba(220, 220, 170, 0.2) 0%, rgba(196, 196, 138, 0.1) 100%); border: 2px solid #dcdcaa;">
+                                                {% else %}
+                                                <div class="metric-card"
+                                                    style="background: #ffffff; border: 1px solid #dee2e6;">
+                                                    {% endif %}
+                                                    <div class="metric-title" style="color: #2c3e50;">Notificaciones
+                                                        Pendientes
+                                                    </div>
+                                                    <div class="metric-value">{{ notificaciones_pendientes }}</div>
+                                                    <div class="metric-change" style="color: #6c757d;">errores sin
+                                                        incidencias
+                                                    </div>
+                                                    <a href="{% url 'admin:core_notificationscatchment_changelist' %}?status__exact=pending{% if selected_project_id %}&catchment_point__project__id__exact={{ selected_project_id }}{% endif %}" 
+                                                       target="_blank" 
+                                                       style="display: inline-block; margin-top: 8px; padding: 4px 12px; background: #dcdcaa; color: #2c3e50; text-decoration: none; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                                                        🔍 Ver Notificaciones
+                                                    </a>
+                                                </div>
+                                            </div>
+
+                                            <!-- Lista Combinada: Registros con Errores y Excesos de Caudal -->
+                                            {% if errores_y_excesos_combinados %}
+                                            <div class="chart-card" style="margin-bottom: 30px;">
+                                                <div class="chart-title">Registros con Errores y Excesos de Caudal ({{errores_y_excesos_combinados|length }})</div>
+                                                <div style="padding: 20px;">
+                                                    <table style="width: 100%; border-collapse: collapse;">
+                                                        <thead>
+                                                            <tr style="background: #f8f9fa !important;">
+                                                                <th
+                                                                    style="padding: 12px; text-align: left; color: #858585; font-size: 12px; font-weight: 600;">
+                                                                    Punto</th>
+                                                                <th
+                                                                    style="padding: 12px; text-align: left; color: #858585; font-size: 12px; font-weight: 600;">
+                                                                    Proyecto</th>
+                                                                <th
+                                                                    style="padding: 12px; text-align: left; color: #858585; font-size: 12px; font-weight: 600;">
+                                                                    Código Obra</th>
+                                                                <th
+                                                                    style="padding: 12px; text-align: left; color: #858585; font-size: 12px; font-weight: 600;">
+                                                                    Variables</th>
+                                                                <th
+                                                                    style="padding: 12px; text-align: left; color: #858585; font-size: 12px; font-weight: 600;">
+                                                                    Medición</th>
+                                                                <th
+                                                                    style="padding: 12px; text-align: center; color: #858585; font-size: 12px; font-weight: 600;">
+                                                                    Exceso</th>
+                                                                <th
+                                                                    style="padding: 12px; text-align: left; color: #858585; font-size: 12px; font-weight: 600;">
+                                                                    Tipo</th>
+                                                                <th
+                                                                    style="padding: 12px; text-align: center; color: #858585; font-size: 12px; font-weight: 600;">
+                                                                    Acciones</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {% for registro in errores_y_excesos_combinados %}
+                                                            <tr style="border-bottom: 1px solid #e9ecef !important;">
+                                                                <td
+                                                                    style="padding: 12px; color: #212529 !important; font-size: 13px; font-weight: 600; background: #ffffff !important;">
+                                                                    {{ registro.nombre|default:registro.punto }}</td>
+                                                                <td
+                                                                    style="padding: 12px; color: #495057 !important; font-size: 12px; background: #ffffff !important;">
+                                                                    {{ registro.proyecto|default:"-" }}</td>
+                                                                <td style="padding: 12px;">
+                                                                    {% if registro.codigo_obra %}
+                                                                    <span
+                                                                        style="color: #4ec9b0; font-size: 12px; font-weight: 600;">{{registro.codigo_obra }}</span>
+                                                                    {% else %}
+                                                                    <span
+                                                                        style="color: #858585; font-size: 12px;">-</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td style="padding: 12px;">
+                                                                    <div
+                                                                        style="display: flex; flex-direction: column; gap: 3px;">
+                                                                        {% for var_type in registro.variables %}
+                                                                        {% if var_type == 'CAUDAL' or var_type == 'CAUDAL_PROMEDIO' %}
+                                                                        <span style="display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; background: #4ec9b0; color: #1e1e1e;">{{var_type }}</span>
+                                                                        {% elif var_type == 'NIVEL' %}
+                                                                        <span style="display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; background: #569cd6; color: #ffffff;">{{var_type }}</span>
+                                                                        {% else %}
+                                                                        <span style="display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; background: #858585; color: #ffffff;">{{var_type }}</span>
+                                                                        {% endif %}
+                                                                        {% endfor %}
+                                                                    </div>
+                                                                </td>
+                                                                <td
+                                                                    style="padding: 12px; color: #212529 !important; font-size: 12px; background: #ffffff !important;">
+                                                                    {% if registro.horario %}
+                                                                    <div><strong>{{ registro.horario }}</strong></div>
+                                                                    {% else %}
+                                                                    {% if registro.fecha %}
+                                                                    <div><strong>{{ registro.fecha|date:"d/m/Y H:i"
+                                                                            }}</strong>
+                                                                    </div>
+                                                                    {% endif %}
+                                                                    {% endif %}
+                                                                    <div style="color: #858585; margin-top: 3px;">
+                                                                        Pulsos: {{ registro.pulses|default:0 }}</div>
+                                                                    {% if registro.nivel %}
+                                                                    <div style="color: #569cd6; margin-top: 3px;">Nivel:
+                                                                        {{ registro.nivel|floatformat:2 }} m</div>
+                                                                    {% endif %}
+                                                                    {% if registro.caudal_medido %}
+                                                                    <div
+                                                                        style="color: #4ec9b0; font-weight: 600; margin-top: 3px;">
+                                                                        Caudal: {{ registro.caudal_medido }} L/s</div>
+                                                                    <div
+                                                                        style="color: #858585; font-size: 11px; margin-top: 2px;">
+                                                                        Probable: {{ registro.caudal_probable }} L/s
+                                                                    </div>
+                                                                    {% else %}
+                                                                    {% if registro.caudal_real %}
+                                                                    <div
+                                                                        style="color: #4ec9b0; font-weight: 600; margin-top: 3px;">
+                                                                        Caudal: {{ registro.caudal_real }} L/s</div>
+                                                                    {% if registro.caudal_probable %}
+                                                                    <div
+                                                                        style="color: #858585; font-size: 11px; margin-top: 2px;">
+                                                                        Probable: {{ registro.caudal_probable }} L/s
+                                                                    </div>
+                                                                    {% endif %}
+                                                                    {% endif %}
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td style="padding: 12px; text-align: center;">
+                                                                    {% if registro.exceso %}
+                                                                    <span
+                                                                        style="display: inline-block; padding: 6px 12px; background: #f8f9fa !important; color: #212529 !important; border-radius: 4px; font-size: 12px; font-weight: 600; border: 2px solid #dee2e6 !important;">
+                                                                        +{{ registro.exceso }} L/s
+                                                                        {% if registro.pct_exceso %}
+                                                                        <br><span
+                                                                            style="font-size: 11px; color: #6c757d !important;">(+{{registro.pct_exceso }}%)</span>
+                                                                        {% endif %}
+                                                                    </span>
+                                                                    {% else %}
+                                                                    <span style="color: #6c757d !important;">-</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td style="padding: 12px;">
+                                                                {% if registro.tipo_error == 'Exceso Caudal' or registro.tipo_error == 'Caudal Excedido' or registro.tipo_error == 'Caudal Imposible' %}
+                                                                    <span class="status-badge error">{{registro.tipo_error }}</span>
+                                                                    {% else %}
+                                                                    <span class="status-badge warning">{{registro.tipo_error }}</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td style="padding: 12px; text-align: center;">
+                                                                    {% if registro.record_id %}
+                                                                    <a href="{% url 'admin:core_interactiondetail_change' registro.record_id %}" 
+                                                                       target="_blank"
+                                                                       style="display: inline-block; padding: 6px 12px; background: #4a90e2; color: #ffffff; border-radius: 4px; text-decoration: none; font-size: 12px; font-weight: 600; transition: all 0.2s;"
+                                                                       onmouseover="this.style.background='#357abd'"
+                                                                       onmouseout="this.style.background='#4a90e2'">
+                                                                        🔍 Ver Detalle
+                                                                    </a>
+                                                                    {% else %}
+                                                                    <span style="color: #6c757d;">-</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                            </tr>
+                                                            {% endfor %}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                            {% endif %}
+
+                                            <!-- Registros recientes -->
+                                            <div class="recent-table">
+                                                <div class="recent-table-header">
+                                                    <h3>📋 Registros Recientes ({{ enhanced_interactions|length }})</h3>
+                                                </div>
+                                                <div class="recent-table-content">
+                                                    <div
+                                                        style="padding: 15px; border-bottom: 1px solid #eee; background-color: #fff;">
+                                                        <form method="get" id="filterForm"
+                                                            style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin: 0;">
+                                                            {% if request.GET.point %}<input type="hidden" name="point"
+                                                                value="{{ request.GET.point }}">{% endif %}
+                                                            {% if request.GET.project %}<input type="hidden"
+ name="project" value="{{ request.GET.project }}">{% endif %}
+
+                                                            <div style="display: flex; align-items: center; gap: 8px;">
+                                                                <label
+                                                                    style="font-weight: 600; font-size: 13px; color: #495057; margin: 0;">Variable:</label>
+                                                                <select name="variable_filter" class="form-control"
+                                                                    style="width: 150px; height: 32px; font-size: 13px; padding: 0 8px;">
+ <option value="all" {% if variable_filter == 'all' %}selected{% endif %}>Todas</option>
+ <option value="caudal" {% if variable_filter == 'caudal' %}selected{% endif %}>
+                                                                        Caudal</option>
+ <option value="promedio" {% if variable_filter == 'promedio' %}selected{% endif %}>
+                                                                        Caudal Promedio</option>
+                                                                </select>
+                                                            </div>
+
+                                                            <div style="display: flex; align-items: center; gap: 8px;">
+                                                                <label
+                                                                    style="font-weight: 600; font-size: 13px; color: #495057; margin: 0;">Proveedor:</label>
+                                                                <select name="provider_filter" class="form-control"
+                                                                    style="width: 150px; height: 32px; font-size: 13px; padding: 0 8px;">
+ <option value="all" {% if provider_filter == 'all' %}selected{% endif %}>Todos</option>
+ <option value="thethings" {% if provider_filter == 'thethings' %}selected{% endif %}>
+                                                                        Nettra (The Things)</option>
+ <option value="novus" {% if provider_filter == 'novus' %}selected{% endif %}>Novus</option>
+ <option value="tdata" {% if provider_filter == 'tdata' %}selected{% endif %}>Twin (T-Data)</option>
+                                                                </select>
+                                                            </div>
+
+                                                            <button type="submit" class="btn btn-primary btn-sm"
+                                                                style="background-color: #4a90e2; border: none; padding: 4px 15px; height: 32px;">Filtrar</button>
+
+ {% if variable_filter != 'all' or provider_filter != 'all' %}
+                                                            <a href="?{% if request.GET.project %}project={{ request.GET.project }}{% endif %}{% if request.GET.point %}&point={{ request.GET.point }}{% endif %}"
+                                                                class="btn btn-secondary btn-sm"
+                                                                style="padding: 4px 10px; font-size: 12px; height: 32px; display: flex; align-items: center;">Limpiar</a>
+                                                            {% endif %}
+                                                        </form>
+                                                    </div>
+                                                    <table style="width: 100%; min-width: 1400px;">
+                                                        <thead>
+                                                            <tr>
+                                                                <th style="min-width: 180px;">Información</th>
+                                                                <th style="min-width: 100px;">Variables</th>
+                                                                <th style="min-width: 140px;">Fechas</th>
+                                                                <th style="min-width: 70px;">Pulsos</th>
+                                                                <th style="min-width: 90px;">Total (m³)</th>
+                                                                <th style="min-width: 90px;">Consumo (m³)</th>
+                                                                <th style="min-width: 150px;">Nivel</th>
+                                                                <th style="min-width: 150px;">Caudal</th>
+                                                                <th style="min-width: 120px;">Voucher DGA</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {% for item in enhanced_interactions %}
+                                                            {% with interaction=item.interaction %}
+                                                            <tr>
+                                                                <td>
+                                                                    <div
+                                                                        style="display: flex; flex-direction: column; gap: 4px;">
+                                                                        <div>
+                                                                            <a href="/admin/core/interactiondetail/{{ interaction.id }}/change/"
+                                                                                style="color: #4ec9b0; text-decoration: none; font-weight: 600;">
+                                                                                {{ interaction.catchment_point.title }}
+                                                                            </a>
+                                                                        </div>
+                                                                        <div style="margin-top: 2px;">
+                                                                        {% if interaction.catchment_point.is_thethings %}
+                                                                            <span
+                                                                                style="display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; background: #e0d0f5; color: #5a32a3; border: 1px solid #d1c0e8;">Nettra</span>
+ {% elif interaction.catchment_point.is_novus %}
+                                                                            <span
+                                                                                style="display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; background: #d0e8f5; color: #3273a3; border: 1px solid #c0dce8;">Novus</span>
+ {% elif interaction.catchment_point.is_tdata %}
+                                                                            <span
+                                                                                style="display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; background: #d0f5d6; color: #32a345; border: 1px solid #c0e8c6;">Twin</span>
+                                                                            {% endif %}
+                                                                        </div>
+                                                                        <div
+                                                                            style="color: #495057 !important; font-size: 12px;">
+                                                                            {{interaction.catchment_point.project.name|default:"Sin proyecto" }}
+                                                                        </div>
+                                                                        <div>
+                                                                            {% if item.codigo_obra %}
+                                                                            <span
+                                                                                style="color: #4ec9b0; font-weight: 600; font-size: 11px;">{{item.codigo_obra }}</span>
+                                                                            {% if item.dga_active %}
+                                                                            <div
+                                                                                style="font-size: 10px; color: #4ec9b0; margin-top: 2px;">
+                                                                                ● Activo DGA</div>
+                                                                            {% endif %}
+                                                                            {% if item.estandar %}
+                                                                            <div
+                                                                                style="color: #6c757d !important; font-size: 10px; margin-top: 2px;">
+                                                                                {{ item.estandar }}
+                                                                            </div>
+                                                                            {% endif %}
+                                                                            {% else %}
+                                                                            <span
+                                                                                style="color: #6c757d !important; font-size: 11px;">-</span>
+                                                                            {% endif %}
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                                <td>
+                                                                    <div
+                                                                        style="display: flex; flex-direction: column; gap: 4px;">
+                                                                        {% for var in item.variables_with_status %}
+                                                                        {% if var.is_failing %}
+                                                                        <div title="Desconectado ({{ var.days }}d)"
+                                                                             style="display: flex; justify-content: space-between; align-items: center; padding: 3px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; background: #dc3545; color: #ffffff; min-width: 140px;">
+                                                                             <div style="display: flex; align-items: center; gap: 4px;">
+                                                                                 <span>✖</span>
+                                                                                 <span>{{ var.type }}</span>
+                                                                             </div>
+                                                                             <div style="opacity: 0.9; margin-left: 8px;">{{ var.days }}d</div>
+                                                                        </div>
+                                                                        {% else %}
+                                                                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 3px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; background: #569cd6; color: #ffffff; min-width: 140px;">
+                                                                             <div style="display: flex; align-items: center; gap: 4px;">
+                                                                                 <span>✔</span>
+                                                                                 <span>{{ var.type }}</span>
+                                                                             </div>
+                                                                             <div style="opacity: 0.9; margin-left: 8px;">OK</div>
+                                                                        </div>
+                                                                        {% endif %}
+                                                                        {% empty %}
+                                                                        <span
+                                                                            style="color: #6c757d !important; font-size: 11px;">-</span>
+                                                                        {% endfor %}
+                                                                    </div>
+                                                                </td>
+                                                                <td style="white-space: nowrap;">
+                                                                    <div
+                                                                        style="display: flex; flex-direction: column; gap: 3px; font-size: 11px;">
+                                                                        <div style="color: #212529 !important;">
+                                                                            <strong>Medición:</strong> {{interaction.date_time_medition|date:"d/m/Y H:i" }}
+                                                                        </div>
+                                                                        <div style="color: #495057 !important;">
+                                                                            <strong>Logger:</strong> {% if interaction.date_time_last_logger %}{{interaction.date_time_last_logger|date:"d/m/Y H:i" }}{% else %}-{% endif %}
+                                                                        </div>
+                                                                        <div style="margin-top: 5px;">
+                                                                        {% if interaction.days_not_conection and interaction.days_not_conection > 0 %}
+                                                                            {% if interaction.is_partial %}
+                                                                            <span
+                                                                                style="display: inline-block; padding: 4px 8px; background: #ffc107; color: #1e1e1e; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                                                                                ⚠️ Parcial ({{interaction.days_not_conection }}d)
+                                                                            </span>
+                                                                            {% else %}
+                                                                            <span
+                                                                                style="display: inline-block; padding: 4px 8px; background: #f48771; color: #ffffff; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                                                                                🔴 Desconectado ({{interaction.days_not_conection }}d)
+                                                                            </span>
+                                                                            {% endif %}
+                                                                            {% else %}
+                                                                            <span
+                                                                                style="display: inline-block; padding: 4px 8px; background: #4ec9b0; color: #1e1e1e; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                                                                                Conectado
+                                                                            </span>
+                                                                            {% endif %}
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                                <td style="white-space: nowrap;">
+                                                                    <div>{{ item.pulses|default:"-" }}</div>
+                                                                    {% if item.pulses_days_unchanged is not None or item.pulses_hours_unchanged is not None %}
+                                                                        {% if item.pulses_days_unchanged > 1 %}
+                                                                        <div style="color: #f48771; font-size: 10px; margin-top: 3px; font-weight: 600;">
+                                                                            ⚠️ {{ item.pulses_days_unchanged }}d {{ item.pulses_hours_unchanged|default:0 }}h
+                                                                        </div>
+                                                                        {% else %}
+                                                                        <div style="color: #4ec9b0; font-size: 10px; margin-top: 3px;">
+                                                                            {% if item.pulses_days_unchanged > 0 %}{{ item.pulses_days_unchanged }}d {% endif %}{{ item.pulses_hours_unchanged|default:0 }}h
+                                                                        </div>
+                                                                        {% endif %}
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td>{{ item.total|default:"-" }}</td>
+                                                                <td>{{ item.total_diff|floatformat:0|default:"-" }}</td>
+                                                                <td style="white-space: nowrap;">
+                                                                    {% if 'NIVEL' in item.variables %}
+                                                                    <div
+                                                                        style="display: flex; flex-direction: column; gap: 3px; font-size: 11px;">
+                                                                        <div style="color: #2b7bc0; font-weight: 700;">
+                                                                            <strong>Nivel:</strong> {{item.nivel|floatformat:2|default:"-" }} m
+                                                                        </div>
+                                                                        {% if item.d3_posicionamiento %}
+                                                                        <div style="color: #9cdcfe;">
+                                                                            <strong>Posicionamiento:</strong> {{item.d3_posicionamiento|floatformat:2 }} m
+                                                                        </div>
+                                                                        {% endif %}
+                                                                        <div style="color: #858585;">
+                                                                            <strong>Freático:</strong> {{item.water_table|floatformat:2|default:"-" }} m
+                                                                        </div>
+                                                                        {% if item.nivel_veracidad_msg %}
+                                                                        {% if item.nivel_error_critico %}
+                                                                        <div style="color: #f48771 !important; font-weight: 700; font-size: 10px; margin-top: 3px; padding: 3px 5px; background: #ffe5e5; border-radius: 3px;">
+                                                                            ⚠️ {{ item.nivel_veracidad_msg }}
+                                                                        </div>
+                                                                        {% else %}
+                                                                        <div style="color: #4ec9b0 !important; font-weight: 600; font-size: 10px; margin-top: 3px;">
+                                                                            ✓ {{ item.nivel_veracidad_msg }}
+                                                                        </div>
+                                                                        {% endif %}
+                                                                        {% endif %}
+                                                                        {% if item.nivel_days_unchanged is not None or item.nivel_hours_unchanged is not None %}
+                                                                            {% if item.nivel_days_unchanged > 1 %}
+                                                                            <div style="color: #f48771; font-size: 10px; margin-top: 3px; font-weight: 600;">
+                                                                                ⚠️ Sin Δ: {{ item.nivel_days_unchanged }}d {{ item.nivel_hours_unchanged|default:0 }}h
+                                                                            </div>
+                                                                            {% else %}
+                                                                            <div style="color: #4ec9b0; font-size: 10px; margin-top: 3px;">
+                                                                                Δ: {% if item.nivel_days_unchanged > 0 %}{{ item.nivel_days_unchanged }}d {% endif %}{{ item.nivel_hours_unchanged|default:0 }}h
+                                                                            </div>
+                                                                            {% endif %}
+                                                                        {% endif %}
+                                                                    </div>
+                                                                    {% else %}
+                                                                    <span style="color: #6c757d !important;">-</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td style="white-space: nowrap;">
+                                                                    <div
+                                                                        style="display: flex; flex-direction: column; gap: 3px; font-size: 11px;">
+                                                                        {% if item.has_caudal_promedio %}
+                                                                        <div style="margin-bottom: 3px;">
+                                                                            <span style="display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; background: #dcdcaa; color: #1e1e1e;">PROMEDIO</span>
+                                                                        </div>
+                                                                        {% elif 'CAUDAL' in item.variables %}
+                                                                        <div style="margin-bottom: 3px;">
+                                                                            <span style="display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; background: #4ec9b0; color: #1e1e1e;">INSTANTÁNEO</span>
+                                                                        </div>
+                                                                        {% endif %}
+                                                                        {% if item.caudal_autorizado_dga %}
+                                                                        <div style="color: #569cd6; font-weight: 600;">
+                                                                            <strong>Autorizado:</strong> {{item.caudal_autorizado_dga|floatformat:2 }} L/s
+                                                                        </div>
+                                                                        {% endif %}
+                                                                        {% if item.caudal_probable %}
+                                                                        <div style="color: #9cdcfe; font-weight: 600;">
+                                                                            <strong>Probable:</strong> {{item.caudal_probable|floatformat:2 }} L/s
+                                                                        </div>
+                                                                        {% endif %}
+                                                                        <div style="color: #212529 !important;">
+                                                                            <strong>Medido:</strong>
+                                                                            {% if item.has_caudal_promedio and not item.has_d6 %}
+                                                                            <span style="color: #858585;">N/A</span>
+                                                                            {% else %}
+                                                                            {% if item.flow is not None %}
+                                                                            {{ item.flow|floatformat:2 }} L/s
+                                                                            {% else %}
+                                                                            <span
+                                                                                style="color: #6c757d !important;">-</span>
+                                                                            {% endif %}
+                                                                            {% endif %}
+                                                                        </div>
+                                                                        {% if item.pct_usado_caudal_dga is not None %}
+                                                                        {% if item.pct_usado_caudal_dga >= 80 %}
+                                                                        <div
+                                                                            style="color: #f48771 !important; font-weight: 700;">
+                                                                            <strong>Usado:</strong> {{item.pct_usado_caudal_dga|floatformat:1 }}%
+                                                                        </div>
+                                                                        {% else %}
+                                                                        <div
+                                                                            style="color: #495057 !important; font-weight: 600;">
+                                                                            <strong>Usado:</strong> {{item.pct_usado_caudal_dga|floatformat:1 }}%
+                                                                        </div>
+                                                                        {% endif %}
+                                                                        {% endif %}
+                                                                        {% if item.tiene_veracidad and item.veracidad_pct is not None %}
+                                                                        {% if item.veracidad_pct > 100 %}
+                                                                        <div style="color: #f48771 !important; font-weight: 600;">
+                                                                            <strong>Veracidad:</strong> {{item.veracidad_pct|floatformat:1 }}%
+                                                                        </div>
+                                                                        {% else %}
+                                                                        <div style="color: #4ec9b0 !important; font-weight: 600;">
+                                                                            <strong>Veracidad:</strong> {{item.veracidad_pct|floatformat:1 }}%
+                                                                        </div>
+                                                                        {% endif %}
+                                                                        {% else %}
+                                                                        {% if item.flow is not None and item.flow > 0 %}
+                                                                        <div style="color: #858585; font-size: 10px; font-style: italic; margin-top: 3px;">
+                                                                            Sin diámetro flujómetro
+                                                                        </div>
+                                                                        {% endif %}
+                                                                        {% endif %}
+                                                                        {% if item.flow_days_unchanged is not None or item.flow_hours_unchanged is not None %}
+                                                                            {% if item.flow_days_unchanged > 1 %}
+                                                                            <div style="color: #f48771; font-size: 10px; margin-top: 3px; font-weight: 600;">
+                                                                                ⚠️ Sin Δ: {{ item.flow_days_unchanged }}d {{ item.flow_hours_unchanged|default:0 }}h
+                                                                            </div>
+                                                                            {% else %}
+                                                                            <div style="color: #4ec9b0; font-size: 10px; margin-top: 3px;">
+                                                                                Δ: {% if item.flow_days_unchanged > 0 %}{{ item.flow_days_unchanged }}d {% endif %}{{ item.flow_hours_unchanged|default:0 }}h
+                                                                            </div>
+                                                                            {% endif %}
+                                                                        {% endif %}
+                                                                    </div>
+                                                                </td>
+                                                                <td style="white-space: nowrap; word-break: break-all;">
+                                                                    {% if item.last_voucher %}
+                                                                    <div style="display: flex; flex-direction: column;">
+                                                                        <span
+                                                                            style="color: #4ec9b0; font-weight: 600; font-size: 11px;">{{item.last_voucher }}</span>
+                                                                        {% if item.last_voucher_date %}
+                                                                        <span
+                                                                            style="color: #858585; font-size: 9px; margin-top: 2px;">{{item.last_voucher_date|date:"d/m/Y H:i"}}</span>
+                                                                        {% endif %}
+                                                                        {% if item.last_voucher_obj %}
+                                                                        <div
+                                                                            style="font-size: 9px; color: #a0a0a0; margin-top: 2px;">
+                                                                            {% if item.last_voucher_obj.flow is not None %}{% if "Promedio" in item.variables|join:"" %}Q Promedio{% else %}Caudal{% endif %}: {{ item.last_voucher_obj.flow|floatformat:2 }}<br>{% endif %}
+                                                                            {% if item.last_voucher_obj.total is not None %}Total: {{ item.last_voucher_obj.total }}<br>{% endif %}
+                                                                            {% if item.last_voucher_obj.water_table is not None %}Freático: {{ item.last_voucher_obj.water_table|floatformat:2 }}<br>{% endif %}
+                                                                            {% if item.last_voucher_obj.nivel is not None %}Nivel: {{ item.last_voucher_obj.nivel|floatformat:2 }}{% endif %}
+                                                                        </div>
+                                                                        {% endif %}
+                                                                    </div>
+                                                                    {% else %}
+                                                                    <span style="color: #6c757d !important;">-</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                            </tr>
+                                                            {% endwith %}
+                                                            {% empty %}
+                                                            <tr>
+                                                                <td colspan="9"
+                                                                    style="text-align: center; padding: 20px; color: #858585;">
+                                                                    No hay registros recientes
+                                                                </td>
+                                                            </tr>
+                                                            {% endfor %}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                       
+                                        {% endblock %}

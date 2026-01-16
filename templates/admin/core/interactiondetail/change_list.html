@@ -1,0 +1,242 @@
+{% extends "admin/change_list.html" %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'admin/css/admin_indicators.css' %}">
+{% endblock %}
+
+{% block content %}
+<!-- Indicadores en la cabecera -->
+{% if indicators %}
+<div class="admin-indicators-container">
+    <div class="admin-indicators-grid">
+        {% for indicator in indicators %}
+        <div class="indicator-card indicator-{{ indicator.color }}">
+            <div class="indicator-icon">
+                <i class="{{ indicator.icon }}"></i>
+            </div>
+            <div class="indicator-content">
+                <div class="indicator-value">{{ indicator.value }}</div>
+                <div class="indicator-label">{{ indicator.label }}</div>
+            </div>
+            {% if indicator.url %}
+            <a href="{{ indicator.url }}" class="indicator-link">
+                <i class="fas fa-arrow-right"></i>
+            </a>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Gráficos para InteractionDetail -->
+{% if charts_data %}
+<div class="admin-charts-container">
+    <div class="charts-grid">
+        <!-- Gráfico de Caudal -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3><i class="fas fa-tint"></i> Caudal (L/s)</h3>
+            </div>
+            <div class="chart-body">
+                <canvas id="flow-chart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Gráfico de Totalizado -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3><i class="fas fa-chart-bar"></i> Consumo (m³)</h3>
+            </div>
+            <div class="chart-body">
+                <canvas id="total-chart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Gráfico de Nivel -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3><i class="fas fa-ruler-vertical"></i> Nivel (m)</h3>
+            </div>
+            <div class="chart-body">
+                <canvas id="nivel-chart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Gráfico de Errores -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3><i class="fas fa-exclamation-triangle"></i> Errores</h3>
+            </div>
+            <div class="chart-body">
+                <canvas id="errors-chart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Lista normal de registros -->
+<div
+    style="background: #ffffff !important; color: #212529 !important; display: block !important; visibility: visible !important; opacity: 1 !important;">
+{{ block.super }}
+</div>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+{% if charts_data %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script>
+    (function () {
+    // Datos de los gráficos desde el contexto
+    let chartsData;
+    try {
+        chartsData = JSON.parse('{{ charts_data|escapejs }}');
+    } catch (e) {
+        console.error('Error parsing charts data:', e);
+        chartsData = {
+                flow_chart: { labels: [], data: [] },
+                total_chart: { labels: [], data: [] },
+                nivel_chart: { labels: [], data: [] },
+                errors_chart: { labels: [], data: [] }
+        };
+    }
+    
+    // Configuración común para gráficos de línea
+    const lineChartConfig = {
+        type: 'line',
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    };
+    
+    // Configuración común para gráficos de barras
+    const barChartConfig = {
+        type: 'bar',
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    };
+    
+    // Gráfico de Caudal
+    if (chartsData.flow_chart && chartsData.flow_chart.labels.length > 0) {
+        const flowCtx = document.getElementById('flow-chart').getContext('2d');
+        new Chart(flowCtx, {
+            ...lineChartConfig,
+            data: {
+                labels: chartsData.flow_chart.labels,
+                datasets: [{
+                    label: 'Caudal (L/s)',
+                    data: chartsData.flow_chart.data,
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    tension: 0.1
+                }]
+            }
+        });
+    }
+    
+    // Gráfico de Totalizado
+    if (chartsData.total_chart && chartsData.total_chart.labels.length > 0) {
+        const totalCtx = document.getElementById('total-chart').getContext('2d');
+        new Chart(totalCtx, {
+            ...barChartConfig,
+            data: {
+                labels: chartsData.total_chart.labels,
+                datasets: [{
+                    label: 'Consumo (m³)',
+                    data: chartsData.total_chart.data,
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            }
+        });
+    }
+    
+    // Gráfico de Nivel
+    if (chartsData.nivel_chart && chartsData.nivel_chart.labels.length > 0) {
+        const nivelCtx = document.getElementById('nivel-chart').getContext('2d');
+        new Chart(nivelCtx, {
+            ...lineChartConfig,
+            data: {
+                labels: chartsData.nivel_chart.labels,
+                datasets: [{
+                    label: 'Nivel (m)',
+                    data: chartsData.nivel_chart.data,
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    tension: 0.1
+                }]
+            }
+        });
+    }
+    
+    // Gráfico de Errores
+    if (chartsData.errors_chart && chartsData.errors_chart.labels.length > 0) {
+        const errorsCtx = document.getElementById('errors-chart').getContext('2d');
+        new Chart(errorsCtx, {
+            ...barChartConfig,
+            data: {
+                labels: chartsData.errors_chart.labels,
+                datasets: [{
+                    label: 'Errores',
+                    data: chartsData.errors_chart.data,
+                    backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }]
+            }
+        });
+    }
+    
+    // Función para actualizar gráficos cuando cambian los filtros
+    function updateChartsOnFilterChange() {
+        // Observar cambios en el formulario de filtros
+        const filterForm = document.querySelector('#changelist-filter');
+        if (filterForm) {
+                filterForm.addEventListener('change', function () {
+                // Recargar la página para obtener nuevos datos
+                // En una implementación más avanzada, se podría hacer AJAX
+                    setTimeout(function () {
+                    window.location.reload();
+                }, 500);
+            });
+        }
+    }
+    
+    // Inicializar actualización de gráficos
+    updateChartsOnFilterChange();
+})();
+</script>
+{% endif %}
+{% endblock %}

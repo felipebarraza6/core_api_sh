@@ -1,0 +1,238 @@
+/* ========================================
+   ESTILOS PARA INDICADORES EN ADMIN
+   ======================================== */
+
+/* Contenedor de indicadores */
+.admin-indicators-container {
+    margin-bottom: 30px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.admin-indicators-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+/* Tarjetas de indicadores */
+.indicator-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+
+.indicator-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.indicator-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--indicator-color, #6c757d);
+}
+
+/* Colores de indicadores */
+.indicator-card.indicator-primary::before {
+    background: #007bff;
+}
+
+.indicator-card.indicator-success::before {
+    background: #28a745;
+}
+
+.indicator-card.indicator-info::before {
+    background: #17a2b8;
+}
+
+.indicator-card.indicator-warning::before {
+    background: #ffc107;
+}
+
+.indicator-card.indicator-danger::before {
+    background: #dc3545;
+}
+
+.indicator-card.indicator-secondary::before {
+    background: #6c757d;
+}
+
+/* Icono del indicador */
+.indicator-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: white;
+    background: var(--indicator-color, #6c757d);
+    flex-shrink: 0;
+}
+
+.indicator-card.indicator-primary .indicator-icon {
+    background: #007bff;
+}
+
+.indicator-card.indicator-success .indicator-icon {
+    background: #28a745;
+}
+
+.indicator-card.indicator-info .indicator-icon {
+    background: #17a2b8;
+}
+
+.indicator-card.indicator-warning .indicator-icon {
+    background: #ffc107;
+    color: #000;
+}
+
+.indicator-card.indicator-danger .indicator-icon {
+    background: #dc3545;
+}
+
+.indicator-card.indicator-secondary .indicator-icon {
+    background: #6c757d;
+}
+
+/* Contenido del indicador */
+.indicator-content {
+    flex: 1;
+}
+
+.indicator-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: #2c3e50;
+    line-height: 1.2;
+    margin-bottom: 5px;
+}
+
+.indicator-label {
+    font-size: 14px;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Enlace del indicador */
+.indicator-link {
+    color: #6c757d;
+    text-decoration: none;
+    font-size: 18px;
+    transition: color 0.2s;
+}
+
+.indicator-link:hover {
+    color: #007bff;
+}
+
+/* ========================================
+   ESTILOS PARA GRÁFICOS
+   ======================================== */
+
+.admin-charts-container {
+    margin-bottom: 30px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 20px;
+}
+
+.chart-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.chart-header {
+    padding: 15px 20px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.chart-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.chart-header h3 i {
+    color: #007bff;
+}
+
+.chart-body {
+    padding: 20px;
+    height: 300px;
+    position: relative;
+}
+
+.chart-body canvas {
+    max-height: 100%;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .admin-indicators-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .chart-body {
+        height: 250px;
+    }
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.indicator-card {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.chart-card {
+    animation: fadeIn 0.4s ease-out;
+}
+
+/* Estilos adicionales para integración con Jazzmin */
+.admin-indicators-container + .results {
+    margin-top: 0;
+}

@@ -1,3 +1,4 @@
+import logging
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from rest_framework.decorators import action
@@ -24,6 +25,8 @@ from api.core.models import User, ProfileIkoluCatchment
 
 # Serializers
 from api.core.serializers.users import UserProfile, UserLoginSerializer, UserModelSerializer, UserSignUpSerializer, CatchmentPointSerializerDetailCron
+
+logger = logging.getLogger(__name__)
 
 
 class UserViewSet(mixins.RetrieveModelMixin,
@@ -55,10 +58,12 @@ class UserViewSet(mixins.RetrieveModelMixin,
         serializer.is_valid(raise_exception=True)
         user, token = serializer.save()
         data = {
+            'success': True,
+            'message': 'Login exitoso',
             'user': UserProfile(user, context={'user': user}).data,
             'access_token': token
         }
-        response = Response(data, status=status.HTTP_201_CREATED)
+        response = Response(data, status=status.HTTP_200_OK)
         response['Authorization'] = f'Bearer {token}'
         return response
 
@@ -74,7 +79,7 @@ class UserViewSet(mixins.RetrieveModelMixin,
         """Add extra data to the response."""
         response = super().retrieve(request, *args, **kwargs)
         user = self.get_object()
-        print(user)
+        logger.debug(f"User retrieve: {user.email} (ID: {user.id})")
         data = {
             'user': UserProfile(user, context={'user': user}).data,
         }

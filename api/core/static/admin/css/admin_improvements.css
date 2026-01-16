@@ -1,0 +1,116 @@
+/* ========================================
+   MEJORAS GENERALES PARA ADMIN - SmartHydro
+   Solo estilos cosméticos - NO layout overrides
+   ======================================== */
+
+/* ------------------------------------------------------------------
+   1. TYPOGRAPHY & COLORS
+   ------------------------------------------------------------------ */
+body,
+.content-wrapper,
+.main-header,
+.main-sidebar {
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+.content-wrapper {
+    background-color: #f4f6f9;
+}
+
+/* Enlaces */
+a {
+    transition: all 0.2s ease-in-out;
+}
+
+/* ------------------------------------------------------------------
+   2. TABLES
+   ------------------------------------------------------------------ */
+.table th {
+    background-color: #f8f9fa;
+    color: #495057;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+/* ------------------------------------------------------------------
+   3. FORMS & INPUTS
+   ------------------------------------------------------------------ */
+.form-control:focus,
+input:focus,
+textarea:focus,
+select:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* ------------------------------------------------------------------
+   4. CARDS - FIX: No forzar estilos que rompen Tabs
+   ------------------------------------------------------------------ */
+.card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border: none;
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* ------------------------------------------------------------------
+   5. DASHBOARD WIDGETS
+   ------------------------------------------------------------------ */
+.small-box {
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    transition: transform 0.2s;
+}
+
+.small-box:hover {
+    transform: translateY(-4px);
+}
+
+/* ------------------------------------------------------------------
+   6. LOGIN PAGE
+   ------------------------------------------------------------------ */
+.login-page {
+    background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+}
+
+.login-box {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+/* ------------------------------------------------------------------
+   7. BRANDING CUSTOMIZATION
+   ------------------------------------------------------------------ */
+/* Ocultar el icono "A" por defecto de Jazzmin/AdminLTE */
+.brand-link .brand-image,
+.brand-link .brand-image-xl,
+.brand-link .brand-image-xs,
+.login-logo img,
+.login-logo i,
+.brand-link i.fa-circle {
+    display: none !important;
+}
+
+/* Ajustar el padding del texto ya que no hay icono */
+.brand-link .brand-text {
+    margin-left: 10px;
+    font-weight: 700 !important;
+}
+
+/* Ajustar el logo del login si es necesario */
+.login-logo a {
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}

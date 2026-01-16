@@ -1,0 +1,56 @@
+{% extends "admin/change_form.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    /* Ocultar barra lateral izquierda en vista de detalle - Jazzmin */
+    #nav-sidebar,
+    .sidebar,
+    .main-sidebar,
+    aside.main-sidebar,
+    .sidebar-dark-primary {
+        display: none !important;
+        width: 0 !important;
+        min-width: 0 !important;
+    }
+    
+    /* Expandir contenido a ancho completo */
+    .main,
+    .content-wrapper,
+    body:not(.sidebar-mini-md):not(.sidebar-mini-xs):not(.layout-top-nav) .content-wrapper {
+        margin-left: 0 !important;
+    }
+    
+    #content,
+    .wrapper {
+        margin-left: 0 !important;
+    }
+    
+    /* Asegurar que el body use todo el ancho */
+    body {
+        padding-left: 0 !important;
+    }
+    
+    /* Extender header/navbar a ancho completo */
+    .main-header,
+    nav.main-header {
+        margin-left: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+    }
+    
+    /* Ocultar botón hamburguesa del menú */
+    .nav-link[data-widget="pushmenu"],
+    a[data-widget="pushmenu"],
+    .sidebar-toggle {
+        display: none !important;
+    }
+    
+    /* Ocultar el área del logo/brand (cuadradito blanco) */
+    .brand-link,
+    .navbar-brand,
+    a.brand-link {
+        display: none !important;
+    }
+</style>
+{% endblock %}

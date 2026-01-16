@@ -15,6 +15,9 @@ from typing import Any, Dict, Optional
 
 from api.core.models import InteractionDetail
 
+# ✅ Logging estructurado
+from api.cronjobs.utils.logging_config import telemetry_logger
+
 
 def get_data_with_retry(getter_func, *args, max_retries=3, backoff_factor=2):
     """
@@ -36,7 +39,7 @@ def get_data_with_retry(getter_func, *args, max_retries=3, backoff_factor=2):
                 return data
         except Exception as e:
             if attempt == max_retries - 1:
-                print(f"Error después de {max_retries} intentos: {e}")
+                telemetry_logger.error(f"Error después de {max_retries} intentos: {e}", exc_info=True)
                 return None
             time.sleep(backoff_factor**attempt)
     return None
@@ -60,13 +63,37 @@ def log_variable_processing(
         error_msg: Mensaje de error si falló
     """
     if success:
-        print(
-            f"✅ Punto {point_catchment_id} - {variable_type} '{variable_name}' procesada"
+        telemetry_logger.info(
+            f"Punto {point_catchment_id} - {variable_type} '{variable_name}' procesada"
         )
     else:
-        print(
-            f"❌ Punto {point_catchment_id} - Error en {variable_type} '{variable_name}': {error_msg}"
+        telemetry_logger.error(
+            f"Punto {point_catchment_id} - Error en {variable_type} '{variable_name}': {error_msg}"
         )
+        
+        # ✅ ALERTA A GOOGLE CHAT
+        try:
+            from api.core.utils.google_chat import check_and_notify_error
+            from api.core.models import CatchmentPoint
+            
+            # Necesitamos obtener info del punto para el mensaje
+            # Como esto es solo en error, el query extra es aceptable
+            point = CatchmentPoint.objects.select_related('project__client').filter(id=point_catchment_id).first()
+            if point:
+                p_name = point.title
+                c_name = point.project.client.name if (point.project and point.project.client) else "N/A"
+            else:
+                p_name = f"ID {point_catchment_id}"
+                c_name = "Unknown"
+                
+            check_and_notify_error(
+                point_id=point_catchment_id,
+                error_msg=f"{variable_type}: {error_msg}",
+                point_name=p_name,
+                client_name=c_name
+            )
+        except Exception as e:
+            telemetry_logger.error(f"Error enviando alerta chat: {e}")
 
 
 def validate_frequency(point_catchment: Dict[str, Any], current_time: datetime) -> bool:
@@ -108,7 +135,7 @@ def validate_frequency(point_catchment: Dict[str, Any], current_time: datetime) 
 
         return True  # SIN_ESTANDAR siempre procesa
     except Exception as e:
-        print(f"Error validando frecuencia: {e}")
+        telemetry_logger.error(f"Error validando frecuencia: {e}", exc_info=True)
         return True
 
 
@@ -139,7 +166,7 @@ def process_totalizado_variable(
     try:
         value = int(float(data.get("value", 0)))
     except (ValueError, TypeError) as e:
-        print(f"⚠️ Error convirtiendo valor {data.get('value')}: {e}")
+        telemetry_logger.warning(f"Error convirtiendo valor {data.get('value')}: {e}")
         value = 0
 
     # 2. ASIGNAR PULSOS AL REGISTRO
@@ -148,7 +175,7 @@ def process_totalizado_variable(
     # 3. CALCULAR TOTAL USANDO FÓRMULA UNIFICADA: (pulsos × factor) ÷ 1000
     pulses_factor = variable.get("pulses_factor", 1000)
     if not pulses_factor or pulses_factor <= 0:
-        print(f"⚠️ Factor de pulsos no válido: {pulses_factor}, usando 1000")
+        telemetry_logger.warning(f"Factor de pulsos no válido: {pulses_factor}, usando 1000")
         pulses_factor = 1000
     
     total_calculado = total_m3(pulses_factor, value, point_catchment)
@@ -168,11 +195,14 @@ def process_totalizado_variable(
         created_register["date_time_last_logger"] = data["date_time"]
         date_time_last_logger_total = data["date_time"]
     else:
-        date_time_last_logger_total = None
+        # Fallback: Usar fecha de medición si el logger no envía fecha
+        # Esto asegura que audits y history tengan fecha válida
+        created_register["date_time_last_logger"] = created_register["date_time_medition"]
+        date_time_last_logger_total = created_register["date_time_last_logger"]
 
     # 7. LOGGING DE ÉXITO
-    print(
-        f"✅ Punto {point_catchment['id']} - TOTALIZADO "
+    telemetry_logger.info(
+        f"Punto {point_catchment['id']} - TOTALIZADO "
         f"'{variable.get('str_variable')}' procesado: "
         f"pulsos={value}, factor={pulses_factor}, "
         f"total={total_calculado}, diff_hora={total_diff}, "
@@ -219,7 +249,7 @@ def process_nivel_variable(
 
         if nivel_mas_alto:
             nivel_value = nivel_mas_alto.nivel
-            print(f"Nivel negativo corregido usando valor más alto: {nivel_value}")
+            telemetry_logger.info(f"Nivel negativo corregido usando valor más alto: {nivel_value}")
         else:
             nivel_value = 0
 
@@ -240,7 +270,7 @@ def process_nivel_variable(
     # Validar d3 antes de calcular nivel freático
     d3 = point_catchment["profile_data_config"].get("d3", 0)
     if not d3 or float(d3 if d3 else 0) <= 0:
-        print(f"Error: d3 no válido para punto {point_catchment['id']}")
+        telemetry_logger.warning(f"Error: d3 no válido para punto {point_catchment['id']}")
         d3 = 0
 
     created_register["water_table"] = water_table(created_register["nivel"], d3)
@@ -292,6 +322,9 @@ def process_caudal_promedio_variable(
 ) -> Dict[str, Any]:
     """
     Procesar variable de tipo CAUDAL_PROMEDIO
+    
+    NOTA: Esta función NO guarda el flow en created_register.
+    El flow se calcula dinámicamente en serializers y cron_dga.
 
     Args:
         date_time_last_logger_total: Timestamp del último totalizado
@@ -299,17 +332,12 @@ def process_caudal_promedio_variable(
         point_catchment: Datos del punto de captación
 
     Returns:
-        created_register actualizado
+        created_register actualizado (sin flow asignado)
     """
-    from .flow import average_flow
-
-    if date_time_last_logger_total:
-        created_register["flow"] = average_flow(
-            point_catchment,
-            created_register["total"],
-            datetime.strptime(date_time_last_logger_total, "%Y-%m-%dT%H:%M:%S"),
-        )
-
+    # ✅ NO GUARDAR: Se calcula dinámicamente en serializers y cron_dga
+    # Esto asegura que siempre use la lógica más actualizada
+    # y no haya que reprocesar datos históricos si cambia la escala
+    
     log_variable_processing(
         point_catchment["id"],
         "CAUDAL_PROMEDIO",
@@ -364,7 +392,7 @@ def process_variable_safely(
             )
 
         else:
-            print("Invalid type_variable")
+            telemetry_logger.warning(f"Tipo de variable inválido: {type_variable}")
             log_variable_processing(
                 point_catchment["id"],
                 variable.get("str_variable"),
@@ -414,7 +442,7 @@ def calculate_days_not_connection(
                 days_not_conection = 0
             created_register["days_not_conection"] = days_not_conection
         except Exception as e:
-            print(f"Error calculando días sin conexión: {e}")
+            telemetry_logger.error(f"Error calculando días sin conexión: {e}", exc_info=True)
             created_register["days_not_conection"] = 0
 
     return created_register
@@ -442,5 +470,5 @@ def determine_dga_send(point_catchment: Dict[str, Any], chile_tz: Any) -> bool:
         # Solo enviar a DGA si está habilitado Y corresponde la frecuencia
         return get.send_dga and validate_frequency(point_catchment, current_time)
     except Exception as e:
-        print(f"Error determinando envío a DGA: {e}")
+        telemetry_logger.error(f"Error determinando envío a DGA: {e}", exc_info=True)
         return False

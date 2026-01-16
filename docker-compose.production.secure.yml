@@ -18,12 +18,14 @@ services:
       - nginx_proxy_html:/usr/share/nginx/html:ro
     networks:
       - frontend
+    labels:
+      - "com.github.nginx-proxy.docker-gen=true"
     restart: unless-stopped
     # ✅ SEGURIDAD: Usuario no-root
     # user: "101:101"
     # ✅ SEGURIDAD: Healthcheck
     healthcheck:
-      test: ["CMD-SHELL", "curl -f -L http://localhost/admin/ > /dev/null 2>&1 || exit 1"]
+      test: [ "CMD-SHELL", "curl -L http://localhost/ > /dev/null 2>&1 || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -42,6 +44,7 @@ services:
       - letsencrypt_data:/etc/acme.sh
     environment:
       - NGINX_PROXY_CONTAINER=nginx_proxy
+      - NGINX_DOCKER_GEN_CONTAINER=nginx_proxy
     networks:
       - frontend
     depends_on:
@@ -50,9 +53,23 @@ services:
     # ✅ SEGURIDAD: Usuario no-root
     # user: "101:101"
 
-  # ========================================
-  # POSTGRESQL 15 - ULTRA-SEGURO
-  # ========================================
+    # ========================================
+    # REDIS - CACHÉ Y COLAS
+    # ========================================
+  redis:
+    image: redis:7-alpine
+    container_name: redis_secure
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # ========================================
+    # POSTGRESQL 15 - ULTRA-SEGURO
+    # ========================================
   postgres:
     image: postgres:15-alpine
     container_name: postgres_secure
@@ -63,6 +80,12 @@ services:
       # ✅ SEGURIDAD: Variables adicionales
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
       PGDATA: /var/lib/postgresql/data/pgdata
+      # ✅ RENDIMIENTO: Optimizaciones de PostgreSQL
+      # shared_buffers: 25% de RAM (ajustar según servidor, típico: 256MB-1GB)
+      # work_mem: 4MB por conexión (ajustar según max_connections)
+      # effective_cache_size: 50% de RAM (ajustar según servidor)
+    command: >
+      postgres -c shared_buffers=6GB -c work_mem=64MB -c maintenance_work_mem=1GB -c effective_cache_size=10GB -c max_connections=100 -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c max_worker_processes=4 -c max_parallel_workers_per_gather=2 -c max_parallel_workers=4
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db-secure.sql:/docker-entrypoint-initdb.d/init-db-secure.sql:ro
@@ -72,7 +95,7 @@ services:
     restart: unless-stopped
     # ✅ SEGURIDAD: Healthcheck robusto
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U smarthydro_user -d smarthydro_prod"]
+      test: [ "CMD-SHELL", "pg_isready -U smarthydro_user -d smarthydro_prod" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -103,9 +126,10 @@ services:
       - LOCAL_DB_NAME=smarthydro_prod
       - LOCAL_DB_USER=smarthydro_user
       - LOCAL_DB_PASSWORD=${LOCAL_DB_PASSWORD}
-      - LOCAL_DB_HOST=postgres_secure
+      - LOCAL_DB_HOST=postgres
       - LOCAL_DB_PORT=5432
       - VIRTUAL_HOST=${VIRTUAL_HOST}
+      - VIRTUAL_PORT=8000
       - LETSENCRYPT_HOST=${LETSENCRYPT_HOST}
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
       - DJANGO_DEBUG=False
@@ -121,7 +145,11 @@ services:
       - DJANGO_SECURE_BROWSER_XSS_FILTER=True
       - DJANGO_SECURE_FRAME_DENY=True
       - DJANGO_SECURE_REFERRER_POLICY=strict-origin-when-cross-origin
+      # ✅ RENDIMIENTO: Variables de entorno para Gunicorn
+      - GUNICORN_LOG_LEVEL=info
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
+      - ./:/app
       - django_static:/app/staticfiles
       - django_media:/app/media
       - django_logs:/app/logs
@@ -132,18 +160,21 @@ services:
         condition: service_started
       letsencrypt:
         condition: service_started
+    expose:
+      - "80"
+      - "8000"
     networks:
       - frontend
       - backend
     restart: unless-stopped
     # ✅ SEGURIDAD: Healthcheck
     healthcheck:
-      test: ["CMD-SHELL", "curl -f -L http://localhost/admin/ > /dev/null 2>&1 || exit 1"]
+      test: [ "CMD-SHELL", "curl -f -L http://localhost:8000/admin/ > /dev/null 2>&1 || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
     # ✅ SEGURIDAD: Usuario no-root
-    # user: "1000:1000"
+    user: "1000:1000"
     # ✅ SEGURIDAD: Capabilities limitadas
     cap_drop:
       - ALL
@@ -151,6 +182,7 @@ services:
       - CHOWN
       - SETGID
       - SETUID
+      - DAC_OVERRIDE
     # ✅ SEGURIDAD: Read-only root filesystem
     # ✅ SEGURIDAD: Volumes temporales
     tmpfs:
@@ -158,7 +190,7 @@ services:
       - /var/tmp
       - /var/spool/cron
 
-# ========================================
+  # ========================================
 
   # ========================================
   # CRON JOBS - SOLO LOCAL SEGURO
@@ -171,12 +203,13 @@ services:
       - LOCAL_DB_NAME=smarthydro_prod
       - LOCAL_DB_USER=smarthydro_user
       - LOCAL_DB_PASSWORD=${LOCAL_DB_PASSWORD}
-      - LOCAL_DB_HOST=postgres_secure
+      - LOCAL_DB_HOST=postgres
       - LOCAL_DB_PORT=5432
       - USE_CLUSTER=false
       - DJANGO_DEBUG=False
       - DJANGO_ALLOWED_HOSTS=localhost
     volumes:
+      - ./:/app
       - cron_logs:/var/log/smarthydro
       - django_logs:/app/logs
     depends_on:
@@ -187,7 +220,7 @@ services:
       - default
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/smarthydro/twin_1.log && find /tmp/smarthydro/twin_1.log -mmin -5 -print -quit | grep -q twin_1.log"]
+      test: [ "CMD-SHELL", "test -f /tmp/smarthydro/twin_1.log && find /tmp/smarthydro/twin_1.log -mmin -5 -print -quit | grep -q twin_1.log" ]
       interval: 1m
       timeout: 10s
       retries: 3
@@ -197,6 +230,7 @@ services:
     cap_add:
       - SETGID
       - SETUID
+      - DAC_OVERRIDE
     tmpfs:
       - /tmp
       - /var/tmp
@@ -257,18 +291,6 @@ volumes:
 networks:
   frontend:
     driver: bridge
-    # ✅ SEGURIDAD: Red aislada
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
   backend:
     driver: bridge
-    # ✅ SEGURIDAD: Red privada
     internal: true
-    ipam:
-      config:
-        - subnet: 172.21.0.0/16
-
-# ========================================
-# CRON JOBS - DNS FIJO PARA RESOLVER API
-# ========================================

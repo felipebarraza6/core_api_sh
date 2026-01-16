@@ -148,47 +148,16 @@ def send(response):
                         print("DEBUG: Retornando True por duplicado exitoso")
                         return True
                     else:
-                        print(f"ERROR 400 REAL: {error_message}")
-                        # Continuar con reintentos para errores 400 reales
-                        continue
-                        
-                except json.JSONDecodeError:
-                    print("Error 400 sin JSON válido")
-                    continue
-            
-            # Si llegamos aquí y no es código 200, continuar con reintentos
-            elif response_api.status_code != 200:
-                print(f"Error HTTP {response_api.status_code}: {response_api.text}")
-                continue
+                        # 🔴 ERRORES ESPECÍFICOS PARA NO REINTENTAR
+                        if "Usuario no es el informante registrado en la Obra" in error_message:
+                            print(f"ERROR IRRECUPERABLE: {error_message}")
+                            InteractionDetail.objects.filter(id=id_interaction).update(
+                                return_dga=f"Error DGA Irrecuperable: {error_message}",
+                                send_dga=False,  # 🛑 Detener envíos para este registro
+                                is_error=True,
+                            )
+                            return False
 
-
-            # Manejar respuesta 400 para duplicados
-            if response_api.status_code == 400:
-                try:
-                    error_data = response_api.json()
-                    error_message = error_data.get("message", "Error 400")
-                    
-                    # Verificar si es registro duplicado
-                    if "Ya existe un registro" in error_message and "Comprobante:" in error_message:
-                        # Extraer comprobante
-                        import re
-                        comprobante_match = re.search(r'Comprobante: ([a-zA-Z0-9]+)', error_message)
-                        numero_comprobante = comprobante_match.group(1) if comprobante_match else "Duplicado"
-                        
-                        print(f"REGISTRO DUPLICADO - Ya enviado: {numero_comprobante}")
-                        
-                        # Marcar como enviado exitosamente
-                        InteractionDetail.objects.filter(id=id_interaction).update(
-                            return_dga=f"Duplicado: {error_message}",
-                            send_dga=False,  # Ya no pendiente
-                            n_voucher=numero_comprobante,
-                            is_error=False,  # Es éxito (ya estaba enviado)
-                        )
-                        
-                        time.sleep(12)  # Rate limit
-                        print("DEBUG: Retornando True por duplicado exitoso")
-                        return True
-                    else:
                         print(f"ERROR 400 REAL: {error_message}")
                         # Continuar con reintentos para errores 400 reales
                         continue
@@ -236,7 +205,8 @@ def send(response):
 
                 if is_send:
                     time.sleep(12)  # Esperar 12 segundos antes de continuar (rate limit DGA)
-                print(f"DEBUG: Retornando is_send={is_send}"); return is_send
+                print(f"DEBUG: Retornando is_send={is_send}")
+                return is_send
 
             except json.JSONDecodeError as e:
                 print(f"Error al parsear respuesta JSON: {e}")
@@ -250,12 +220,11 @@ def send(response):
                     send_dga=True,
                     is_error=True,
                 )
-                print("DEBUG: Retornando False por error JSON"); return False
+                print("DEBUG: Retornando False por error JSON")
+                return False
 
         except requests.RequestException as e:
-            print(f"ERROR 400 - Status: {response_api.status_code}")
-            print(f"ERROR 400 - Response: {response_api.text}")
-            print(f"ERROR 400 - Exception: {e}")
+            print(f"ERROR de conexión - Exception: {e}")
             time.sleep(12)  # Esperar 12 segundos antes de reintentar (rate limit DGA)
         except Exception as e:
             print(f"Error inesperado: {e}")
@@ -268,4 +237,5 @@ def send(response):
         send_dga=True,
         is_error=True,
     )
-    print("DEBUG: Retornando False por fallos en intentos"); return False  # MODIFICADO: Retornar False cuando fallan todos los intentos
+    print("DEBUG: Retornando False por fallos en intentos")
+    return False  # MODIFICADO: Retornar False cuando fallan todos los intentos

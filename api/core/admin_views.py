@@ -42,10 +42,7 @@ def safe_float(value, default=0.0):
 
 @staff_member_required
 def admin_dashboard_view(request):
-    """
-    Dashboard principal del admin con gráficos e indicadores relevantes.
-    Similar a Grafana, muestra métricas clave del sistema de telemetría.
-    """
+    """Vista personalizada para el dashboard con filtros y buscador"""
     try:
         chile_tz = pytz.timezone("America/Santiago")
         now = timezone.now()
@@ -55,6 +52,31 @@ def admin_dashboard_view(request):
         # ========================================
         project_id = request.GET.get('project', None)
         point_id = request.GET.get('point', None)
+        
+        # Normalizar strings vacíos a None
+        if project_id == '':
+            project_id = None
+        if point_id == '':
+            point_id = None
+        
+        logging.info(f"🔍 Valores recibidos - project_id: {project_id} (tipo: {type(project_id)}), point_id: {point_id} (tipo: {type(point_id)})")
+        
+        # Convertir a enteros para comparación correcta
+        if project_id:
+            try:
+                project_id = int(project_id)
+                logging.info(f"✅ project_id convertido a entero: {project_id}")
+            except (ValueError, TypeError):
+                logging.warning(f"❌ No se pudo convertir project_id '{project_id}' a entero")
+                project_id = None
+        
+        if point_id:
+            try:
+                point_id = int(point_id)
+                logging.info(f"✅ point_id convertido a entero: {point_id}")
+            except (ValueError, TypeError):
+                logging.warning(f"❌ No se pudo convertir point_id '{point_id}' a entero")
+                point_id = None
         
         # ========================================
         # FILTRO DE PERÍODO PARA VERACIDAD HISTÓRICA (NUEVA FUNCIONALIDAD)
@@ -78,11 +100,17 @@ def admin_dashboard_view(request):
         project_filter = Q()
         point_filter = Q()
         
+        
         if project_id:
             try:
                 selected_project = ProjectCatchments.objects.get(id=project_id)
                 project_filter = Q(catchment_point__project=selected_project)
+                logging.info(f"✅ Proyecto seleccionado: {selected_project.name} (ID: {project_id})")
             except ProjectCatchments.DoesNotExist:
+                logging.warning(f"❌ Proyecto con ID {project_id} no existe en la base de datos")
+                project_id = None
+            except Exception as e:
+                logging.error(f"❌ Error al obtener proyecto: {e}")
                 project_id = None
         
         if point_id:
@@ -137,29 +165,138 @@ def admin_dashboard_view(request):
     
         # 3. % DGA (de totalidad de números de obra, cuántos están con cumplimiento activo)
         # De todos los puntos con código de obra (num_obras), cuántos tienen cumplimiento activo (send_dga=True en perfil DGA)
+        # Prepare sets for counting
+        # unique_point_ids: points having code_dga
+        # active_points: points having code_dga AND send_dga=True (compliance active)
+        
+        unique_point_ids = set()
+        obras_points_ids = set()     # Set of IDs for fast lookup
+        obras_points_list = list(obras_points_qs) # Use existing FS
         obras_dga_active = 0
+        active_points = set() # ✅ FIX: Definir conjunto active_points
+        dga_active_status = {} # ✅ FIX: Definir status individual
+        
+        # dga_standards_count: conteo por 'standard' (Res. Mayor/Medio/Menor)
+        dga_standards_count = {}
+
+        # ========================================
+        # NUEVO: Calcular conteo por proveedor para puntos conectados
+        # ========================================
+
+        
+        # Filtrar puntos que tienen telemetría activa dentro del universo de obras
+        
+        # Filtrar puntos que tienen telemetría activa dentro del universo de obras
+        # Usar conteo manual seguro iterando sobre la lista ya obtenida para evitar problemas de filtrado reverso
+        provider_counts = {'thethings': 0, 'novus': 0, 'tdata': 0}
+        
+        # Re-usar lógica de obras_with_telemetry pero iterando para clasificar
+        # obras_points_list ya tiene TODOS los puntos con código de obra
+        
+        # Optimización: Cargar perfiles en memoria para evitar N+1
+        # Use the actual list of IDs from the queryset (line 119), not the empty set from line 142
+        obras_point_ids_list = dga_points_qs.values_list('point_catchment_id', flat=True).distinct()
+        profiles_map = {
+            p.point_catchment_id: p 
+            for p in ProfileDataConfigCatchment.objects.filter(point_catchment__in=obras_point_ids_list)
+        }
+        
         for point in obras_points_list:
+            profile = profiles_map.get(point.id)
+            if profile and profile.is_telemetry:
+                # Este punto cuenta como conectado
+                if point.is_thethings:
+                    provider_counts['thethings'] += 1
+                if point.is_novus:
+                    provider_counts['novus'] += 1
+                if point.is_tdata:
+                    provider_counts['tdata'] += 1
+
+        # Calcular desconectados (Universo - Conectados)
+        desconectados_count = num_obras - pct_conectados_count if num_obras >= pct_conectados_count else 0
+
+        for point in obras_points_list:
+            # We iterate over points that already have code_dga (filtered in dga_points_qs -> obras_points_qs)
+            unique_point_ids.add(point.id)
+            obras_points_ids.add(point.id)
+            
             dga_profile = point.dga_data_config_profiles.first()
-            # Verificar que tenga código DGA Y que tenga send_dga=True (cumplimiento activo)
-            if dga_profile and dga_profile.code_dga and dga_profile.send_dga:
-                obras_dga_active += 1
-    
-        pct_dga = (obras_dga_active / num_obras * 100) if num_obras > 0 else 0
-        pct_dga_count = obras_dga_active
-        pct_dga_total = num_obras
-    
-        # 4. % Veracidad (de puntos con código de obra que tienen telemetría activa, con CAUDAL o CAUDAL_PROMEDIO)
-        # Base: puntos con código de obra (obras_points_list)
-        # De esos, solo considerar los que tienen telemetría activa Y con variable CAUDAL o CAUDAL_PROMEDIO funcionando
-        # Usar la última medición de cada punto
-        # SIEMPRE usar diámetro del flujómetro (d5) para calcular el caudal probable
-        points_with_flow = 0  # Puntos con código de obra, telemetría activa y CAUDAL/CAUDAL_PROMEDIO
-        points_with_d5 = 0  # De esos, cuántos tienen d5 (diámetro del flujómetro)
+            if dga_profile:
+                # Check DGA Active
+                is_active = dga_profile.send_dga
+                dga_active_status[point.id] = is_active # ✅ FIX: Guardar status por ID
+                
+                if is_active:
+                    obras_dga_active += 1
+                    active_points.add(point.id) # ✅ FIX: Agregar ID al conjunto active_points
+                
+                # Contar por estándar (para breakdown) - MEJORADO: incluir estado de conexión
+                std = dga_profile.standard or 'SIN_ESTANDAR'
+                
+                # Inicializar estructura si no existe
+                if std not in dga_standards_count:
+                    dga_standards_count[std] = {'total': 0, 'connected': 0, 'disconnected': 0}
+                
+                # Incrementar total
+                dga_standards_count[std]['total'] += 1
+                
+                # Verificar si tiene telemetría activa
+                profile = profiles_map.get(point.id)
+                if profile and profile.is_telemetry:
+                    dga_standards_count[std]['connected'] += 1
+                else:
+                    dga_standards_count[std]['disconnected'] += 1
+            else:
+                dga_active_status[point.id] = False
+                # Sin perfil DGA
+                if 'SIN_ESTANDAR' not in dga_standards_count:
+                    dga_standards_count['SIN_ESTANDAR'] = {'total': 0, 'connected': 0, 'disconnected': 0}
+                dga_standards_count['SIN_ESTANDAR']['total'] += 1
+                
+                # Verificar telemetría para SIN_ESTANDAR también
+                profile = profiles_map.get(point.id)
+                if profile and profile.is_telemetry:
+                    dga_standards_count['SIN_ESTANDAR']['connected'] += 1
+                else:
+                    dga_standards_count['SIN_ESTANDAR']['disconnected'] += 1
+        
+        # Crear lista ordenada para la vista
+        dga_standards_breakdown = []
+        if dga_standards_count:
+            # Ordenar por conteo total descendente
+            sorted_standards = sorted(dga_standards_count.items(), key=lambda item: item[1]['total'], reverse=True)
+            for standard_code, stats in sorted_standards:
+                try:
+                    # Intentar obtener label legible
+                    label = standard_labels.get(standard_code, standard_code)
+                    
+                    dga_standards_breakdown.append({
+                        'label': label,
+                        'total': stats['total'],
+                        'connected': stats['connected'],
+                        'disconnected': stats['disconnected']
+                    })
+                except:
+                    dga_standards_breakdown.append({
+                        'label': standard_code,
+                        'total': stats['total'],
+                        'connected': stats['connected'],
+                        'disconnected': stats['disconnected']
+                    })
+
+        # ========================================
+        # NUEVAS MÉTRICAS: Desglose Proveedores y Desconectados DGA
+        # ========================================
+        # Calcular desglose de proveedores para puntos conectados (con código de obra)
+        # provider_counts already calculated above (lines 160-180)
+        
+        # ✅ FIX: Restaurar inicialización de contactadores de veracidad
+        points_with_flow = 0
+        points_with_d5 = 0
         points_flow_above_probable = 0
-        veracidad_dict = {}  # Diccionario para evitar duplicados: key=point.id, value=dict con info del punto
-    
-        # Filtrar puntos con código de obra que tienen telemetría activa Y con variable CAUDAL o CAUDAL_PROMEDIO
-        # ✅ FIX #1: ELIMINAR N+1 QUERIES - Obtener todos los últimos registros en 1 query
+        veracidad_dict = {} # ✅ FIX: Restaurar veracidad_dict
+        
+        # ✅ FIX: Restaurar la definición de obras_points_annotated
         from django.db.models import OuterRef, Subquery as DjangoSubquery
 
         # Obtener IDs de últimos registros para cada punto
@@ -271,6 +408,7 @@ def admin_dashboard_view(request):
                         'nivel': last_record.nivel or None,
                         'tipo': 'caudal',
                         'point_id': point.id if point else None,
+                        'record_id': last_record.id,  # Agregar record_id para botón "Ver Detalle"
                         'tipo_error': 'Exceso Caudal'  # Agregar tipo_error para compatibilidad
                     }
                     
@@ -321,7 +459,7 @@ def admin_dashboard_view(request):
                 
             except Exception as e:
                 # ✅ FIX #4 ADICIONAL: Si falla veracidad histórica, avisar al usuario
-                logger.error(f"Error calculando veracidad histórica: {e}", exc_info=True)
+                logging.error(f"Error calculando veracidad histórica: {e}", exc_info=True)
                 # Resetear flag y avisar al usuario (no ocultar error silenciosamente)
                 use_historical_veracidad = False
                 veracidad_periodo = None
@@ -344,36 +482,74 @@ def admin_dashboard_view(request):
             veracidad_puntos_con_d5 = points_with_d5
             veracidad_pasan_probable = points_flow_above_probable  # Puntos que SÍ pasan el caudal probable
     
-        # 5. Con Desconexión (de puntos con código de obra y DGA activo, cuántos están sin telemetría)
-        # Puntos con código de obra y DGA activo que están desconectados (sin telemetría o no cargan por formulario)
+        # 5. Con Desconexión (puntos con código de obra desconectados por más de 1 día)
+        # 5. Con Desconexión (puntos con código de obra desconectados por más de 1 día)
+        # Contar solo puntos que tienen código de obra Y están desconectados
         con_desconexion = 0
-        for point in obras_points_list:
-            dga_profile = point.dga_data_config_profiles.first()
-            if not dga_profile or not dga_profile.code_dga:
-                continue  # No tiene DGA activo
-            
-            profile = point.data_config_profiles.first()
-            # Verificar si tiene telemetría activa
-            if not profile or not profile.is_telemetry:
-                # No tiene telemetría activa, cuenta como desconectado
-                con_desconexion += 1
-                continue
-            
-            # Si tiene telemetría, verificar si está conectado
-            last_record = InteractionDetail.objects.filter(
-                catchment_point=point
-            ).order_by('-date_time_medition').first()
-            if not last_record:
-                # No tiene registros, cuenta como desconectado
-                con_desconexion += 1
-                continue
-            
-            # Verificar días de desconexión
-            if last_record.days_not_conection and last_record.days_not_conection > 0:
-                con_desconexion += 1
+        desconexiones_parciales = 0          # DGA Partials (para breakdown)
+        desconexiones_parciales_global = 0   # Global Partials (para tarjeta principal)
+
+        # ✅ FIX: Iterar TODOS los puntos visibles para obtener estadísticas globales
+        # Usar all_visible_points que ya está optimizado con select_related
         
+        # Primero definimos all_visible_points (movemos lógica hacia arriba)
+        all_visible_points = CatchmentPoint.objects.all().select_related('project')
+        if project_id:
+            all_visible_points = all_visible_points.filter(project=selected_project)
+        if point_id:
+            all_visible_points = all_visible_points.filter(id=point_id)
+        
+        # Pre-cargar últimos registros para TODOS (no solo obras)
+        all_visible_ids = [p.id for p in all_visible_points]
+        
+        # Optimizacion: Usar una sola query para obtener últimos registros de TODO el conjunto visible
+        from django.db.models import Subquery, OuterRef
+        latest_records_qs = InteractionDetail.objects.filter(
+            catchment_point_id=OuterRef('catchment_point_id')
+        ).order_by('-date_time_medition')
+        
+        # Opción más simple: traer los records directamente usando ID__in
+        # (InteractionDetail puede ser grande, así que filtramos por los puntos visibles)
+        # Para evitar N+1, usamos un diccionario
+        
+        # Subquery para obtener el ID del último registro de cada punto
+        latest_ids = InteractionDetail.objects.filter(
+            catchment_point__in=all_visible_ids
+        ).order_by('catchment_point', '-date_time_medition').distinct('catchment_point').values_list('id', flat=True)
+        
+        # Traer los objetos completos
+        latest_records_map = {
+            r.catchment_point_id: r 
+            for r in InteractionDetail.objects.filter(id__in=latest_ids)
+        }
+
+        for point in all_visible_points:
+            last_record = latest_records_map.get(point.id)
+            if not last_record:
+                continue
+
+            # Determinamos si es DGA (está en la lista de obras)
+            is_dga = point.id in obras_points_ids
+
+            # Lógica de conteo
+            if last_record.is_partial:
+                # Contar SIEMPRE en Global
+                desconexiones_parciales_global += 1
+                # Contar en DGA solo si es DGA
+                if is_dga:
+                    desconexiones_parciales += 1
+            
+            elif last_record.days_not_conection and last_record.days_not_conection > 0:
+                # Total Desconexión (Prioridad DGA por ahora?)
+                # El usuario quiere ver fallas operativas.
+                # Si queremos mantener % Conectados consistente (120 obras), solo sumamos si is_dga
+                if is_dga:
+                    con_desconexion += 1
+
         stats_caudal_probable = {
-            'con_desconexion': con_desconexion
+            'con_desconexion': con_desconexion,
+            'desconexiones_parciales': desconexiones_parciales,
+            'desconexiones_parciales_global': desconexiones_parciales_global # Nueva variable para contexto
         }
     
         # 7. Registro Errores (caudales y niveles imposibles)
@@ -402,10 +578,14 @@ def admin_dashboard_view(request):
             if not profile:
                 continue
             
-            # ✅ OPTIMIZACIÓN: Usar select_related para evitar N+1 queries
-            last_record = InteractionDetail.objects.filter(
-                catchment_point=point
-            ).select_related('catchment_point', 'catchment_point__project').order_by('-date_time_medition').first()
+            # ✅ OPTIMIZACIÓN: Usar diccionario pre-cargado en lugar de query
+            last_record = records_by_point_id.get(point.id)
+            if not last_record:
+                # Fallback solo si no está en el mapa (raro si tiene código DGA)
+                last_record = InteractionDetail.objects.filter(
+                    catchment_point=point
+                ).select_related('catchment_point', 'catchment_point__project').order_by('-date_time_medition').first()
+            
             if not last_record:
                 continue
             
@@ -484,7 +664,7 @@ def admin_dashboard_view(request):
                             'pulses': last_record.pulses or 0,
                             'nivel': last_record.nivel or None,
                             'tipo': 'caudal',
-                            'id': last_record.id,
+                            'record_id': last_record.id,
                             'point_id': point.id if point else None,
                             'priority': error_priority.get(error_tipo, 0),
                             'proyecto': str(point.project.name) if point and point.project and point.project.name else None,  # Agregar proyecto
@@ -544,7 +724,7 @@ def admin_dashboard_view(request):
                                 'variables': variable_types_error if variable_types_error else [],  # Asegurar que siempre sea una lista
                                 'pulses': last_record.pulses or 0,
                                 'tipo': 'nivel',
-                                'id': last_record.id,
+                                'record_id': last_record.id,
                                 'point_id': point.id if point else None,
                                 'priority': error_priority.get(error_tipo, 0),
                                 'proyecto': str(point.project.name) if point and point.project and point.project.name else None,  # Agregar proyecto
@@ -575,15 +755,16 @@ def admin_dashboard_view(request):
         # Ordenar por prioridad descendente (mayor prioridad primero)
         errores_y_excesos_combinados.sort(key=lambda x: x.get('priority', 0), reverse=True)
     
-        # 8. % Cola DGA (de últimos 1000 registros medidos)
-        # ✅ OPTIMIZACIÓN: Usar select_related para evitar N+1 queries
-        last_1000_records = InteractionDetail.objects.filter(
-        combined_filter
-        ).select_related('catchment_point', 'catchment_point__project').order_by('-date_time_medition')[:1000]
-        last_1000_list = list(last_1000_records)
-        records_in_dga_queue = sum(1 for r in last_1000_list if r.send_dga)
-        pct_cola_dga = (records_in_dga_queue / len(last_1000_list) * 100) if last_1000_list else 0
-        total_registros_cola_dga = len(last_1000_list)
+        # 8. Cola DGA - Total de registros preparados para envío a DGA
+        # Contar TODOS los registros con send_dga=True (no solo últimos 1000)
+        records_in_dga_queue = InteractionDetail.objects.filter(
+            combined_filter,
+            send_dga=True
+        ).count()
+        
+        # Total de registros para calcular porcentaje
+        total_registros_cola_dga = InteractionDetail.objects.filter(combined_filter).count()
+        pct_cola_dga = (records_in_dga_queue / total_registros_cola_dga * 100) if total_registros_cola_dga > 0 else 0
     
         # Paginación de registros con errores (10 por página)
         from django.core.paginator import Paginator
@@ -595,7 +776,7 @@ def admin_dashboard_view(request):
             try:
                 page_number = int(page_number)
             except (ValueError, TypeError):
-                logger.warning(f"Página inválida solicitada (no es número): {page_number}")
+                logging.warning(f"Página inválida solicitada (no es número): {page_number}")
                 page_number = 1
 
             error_page_obj = error_paginator.page(page_number)
@@ -603,9 +784,9 @@ def admin_dashboard_view(request):
             # Capturar solo excepciones esperadas de paginación
             from django.core.paginator import PageNotAnInteger, EmptyPage
             if isinstance(e, (PageNotAnInteger, EmptyPage)):
-                logger.warning(f"Página inválida: {page_number} - {str(e)}")
+                logging.warning(f"Página inválida: {page_number} - {str(e)}")
             else:
-                logger.error(f"Error inesperado en paginación: {str(e)}", exc_info=True)
+                logging.error(f"Error inesperado en paginación: {str(e)}", exc_info=True)
             error_page_obj = error_paginator.page(1)
     
         # 9. Notificaciones Pendientes
@@ -654,6 +835,27 @@ def admin_dashboard_view(request):
     
         if point_id:
             visible_points = visible_points.filter(id=point_id)
+
+        # START FILTER LOGIC
+        provider_filter = request.GET.get('provider_filter', 'all')
+        variable_filter = request.GET.get('variable_filter', 'all')
+        
+        # Filtro de Proveedor
+        if provider_filter == 'thethings':
+            visible_points = visible_points.filter(is_thethings=True)
+        elif provider_filter == 'novus':
+            visible_points = visible_points.filter(is_novus=True)
+        elif provider_filter == 'tdata':
+            visible_points = visible_points.filter(is_tdata=True)
+            
+        # Filtro de Variable (Caudal vs Caudal Promedio)
+        if variable_filter == 'caudal':
+            # Filtrar puntos que tengan configurada la variable CAUDAL
+            # catchments -> schemes -> variables
+            visible_points = visible_points.filter(schemes__variables__type_variable='CAUDAL').distinct()
+        elif variable_filter == 'promedio':
+            visible_points = visible_points.filter(schemes__variables__type_variable='CAUDAL_PROMEDIO').distinct()
+        # END FILTER LOGIC
     
         # Obtener SOLO el ÚLTIMO registro por punto (sin duplicados)
         # Filtrar solo puntos con código de obra
@@ -662,11 +864,6 @@ def admin_dashboard_view(request):
             dga_profile_check = point.dga_data_config_profiles.first()
             if dga_profile_check and dga_profile_check.code_dga:
                 visible_points_with_code.append(point.id)
-    
-        # LOGGING: Ver cuántos puntos con código de obra tenemos
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"🔍 Registros Recientes - Puntos con código de obra: {len(visible_points_with_code)}")
     
         # CORREGIDO: Obtener el último registro de cada punto de las últimas 24 horas
         # Usar annotate con Subquery para obtener correctamente un registro por punto
@@ -691,9 +888,6 @@ def admin_dashboard_view(request):
             
             if last_record:
                 recent_interactions.append(last_record)
-    
-        # LOGGING: Ver cuántos registros obtuvimos
-        logger.info(f"🔍 Registros Recientes - Registros obtenidos: {len(recent_interactions)}")
     
         # Optimizar con select_related y prefetch_related
         # Convertir a queryset para aplicar optimizaciones
@@ -735,11 +929,10 @@ def admin_dashboard_view(request):
                     point_ids_seen.add(point_id)
                     unique_interactions.append(interaction)
                 else:
-                    # Si hay duplicado, mantener el más reciente (ya está ordenado)
-                    logger.warning(f"⚠️ Duplicado detectado para punto {point_id}, manteniendo el más reciente")
+                    # If there's a duplicate, keep the more recent one (already sorted)
+                    pass
             
             recent_interactions = unique_interactions
-            logger.info(f"🔍 Registros Recientes - Después de eliminar duplicados: {len(recent_interactions)}")
         else:
             recent_interactions = []
     
@@ -752,6 +945,29 @@ def admin_dashboard_view(request):
         # Agregar información de variables configuradas y valores detallados
         from api.core.serializers.interaction_detail import InteractionDetailModelSerializer
     
+        # ========================================
+        # OPTIMIZACIÓN VOUCHERS: Obtener el último voucher válido para cada punto
+        # ========================================
+        # Obtener IDs de puntos para la consulta
+        point_ids_voucher = [i.catchment_point_id for i in recent_interactions]
+        unique_point_ids_voucher = list(set(point_ids_voucher))
+        
+        latest_vouchers_map = {}
+        if unique_point_ids_voucher:
+            try:
+                # Usar distinct on para Postgres (eficiente)
+                # Seleccionar el primer registro (más reciente) que tenga voucher no nulo
+                # REMOVED .only() to ensure full object availability
+                latest_vouchers_qs = InteractionDetail.objects.filter(
+                    catchment_point_id__in=unique_point_ids_voucher,
+                    n_voucher__isnull=False
+                ).exclude(n_voucher='').order_by('catchment_point_id', '-date_time_medition').distinct('catchment_point_id')
+                
+                latest_vouchers_map = {v.catchment_point_id: v for v in latest_vouchers_qs}
+            except Exception as e:
+                # Fallback por si la DB no soporta distinct on o hay error
+                pass
+
         enhanced_interactions = []
         for interaction in recent_interactions:
             # IMPORTANTE: No sobrescribir days_not_conection si ya tiene un valor
@@ -897,14 +1113,194 @@ def admin_dashboard_view(request):
                 # Porcentaje usado: cuánto del autorizado se está usando
                 pct_usado_caudal_dga = (flow_value_safe_enhanced / caudal_autorizado_safe * 100) if caudal_autorizado_safe > 0 else 0
             
+            # Calcular veracidad (si el caudal excede el probable)
+            veracidad_pct = None
+            tiene_veracidad = False
+            caudal_probable = None
+            if profile and profile.d5 and float(profile.d5) > 0 and flow_value_safe_enhanced > 0:
+                d5_safe = safe_float(profile.d5)
+                if d5_safe > 0:
+                    # calculate_probable_flow_by_velocity ya está importado al inicio del archivo
+                    caudal_probable = calculate_probable_flow_by_velocity(d5_safe, 2.5)
+                    if caudal_probable > 0:
+                        tiene_veracidad = True
+                        # Veracidad: porcentaje del caudal medido respecto al probable
+                        # Si es <= 100%, es veraz. Si es > 100%, excede el probable
+                        veracidad_pct = (flow_value_safe_enhanced / caudal_probable * 100)
+            
+            # Validar veracidad del nivel (nivel freático no puede exceder posicionamiento)
+            nivel_error_critico = False
+            nivel_veracidad_msg = None
+            water_table_safe = safe_float(interaction.water_table)
+            d3_posicionamiento_safe = safe_float(d3_posicionamiento)
+            if water_table_safe > 0 and d3_posicionamiento_safe > 0:
+                if water_table_safe > d3_posicionamiento_safe:
+                    nivel_error_critico = True
+                    nivel_veracidad_msg = "ERROR CRÍTICO: Nivel freático superior al posicionamiento"
+                else:
+                    # Calcular diferencia como porcentaje
+                    diferencia_nivel = d3_posicionamiento_safe - water_table_safe
+                    pct_diferencia = (diferencia_nivel / d3_posicionamiento_safe * 100) if d3_posicionamiento_safe > 0 else 0
+                    nivel_veracidad_msg = f"OK: {diferencia_nivel:.2f}m bajo posicionamiento ({pct_diferencia:.1f}%)"
+            
+            # ========================================
+            # CALCULAR TIEMPO SIN CAMBIO DE PULSOS (DÍAS Y HORAS)
+            # ========================================
+            pulses_days_unchanged = None
+            pulses_hours_unchanged = None
+            current_pulses = interaction.pulses  # Puede ser 0 o None
+            
+            # Siempre calcular el tiempo sin cambio (incluyendo cuando pulsos es 0)
+            try:
+                if current_pulses is not None:
+                    last_different_pulses_record = InteractionDetail.objects.filter(
+                        catchment_point_id=point.id,
+                        date_time_medition__lt=interaction.date_time_medition
+                    ).exclude(
+                        pulses=current_pulses
+                    ).order_by('-date_time_medition').first()
+                else:
+                    last_different_pulses_record = InteractionDetail.objects.filter(
+                        catchment_point_id=point.id,
+                        date_time_medition__lt=interaction.date_time_medition,
+                        pulses__isnull=False
+                    ).order_by('-date_time_medition').first()
+                
+                if last_different_pulses_record and last_different_pulses_record.date_time_medition:
+                    time_diff = interaction.date_time_medition - last_different_pulses_record.date_time_medition
+                    pulses_days_unchanged = time_diff.days
+                    pulses_hours_unchanged = time_diff.seconds // 3600
+                else:
+                    first_record = InteractionDetail.objects.filter(
+                        catchment_point_id=point.id
+                    ).order_by('date_time_medition').first()
+                    
+                    if first_record and first_record.date_time_medition and interaction.date_time_medition:
+                        time_diff = interaction.date_time_medition - first_record.date_time_medition
+                        pulses_days_unchanged = time_diff.days
+                        pulses_hours_unchanged = time_diff.seconds // 3600
+            except Exception as e:
+                pass
+            
+            # ========================================
+            # CALCULAR TIEMPO SIN CAMBIO DE NIVEL
+            # ========================================
+            nivel_days_unchanged = None
+            nivel_hours_unchanged = None
+            current_nivel = interaction.nivel  # Puede ser 0 o None
+            
+            # Siempre calcular el tiempo sin cambio (incluyendo cuando nivel es 0)
+            try:
+                if current_nivel is not None:
+                    last_different_nivel_record = InteractionDetail.objects.filter(
+                        catchment_point_id=point.id,
+                        date_time_medition__lt=interaction.date_time_medition
+                    ).exclude(
+                        nivel=current_nivel
+                    ).order_by('-date_time_medition').first()
+                else:
+                    last_different_nivel_record = InteractionDetail.objects.filter(
+                        catchment_point_id=point.id,
+                        date_time_medition__lt=interaction.date_time_medition,
+                        nivel__isnull=False
+                    ).order_by('-date_time_medition').first()
+                
+                if last_different_nivel_record and last_different_nivel_record.date_time_medition:
+                    time_diff = interaction.date_time_medition - last_different_nivel_record.date_time_medition
+                    nivel_days_unchanged = time_diff.days
+                    nivel_hours_unchanged = time_diff.seconds // 3600
+                else:
+                    first_record = InteractionDetail.objects.filter(
+                        catchment_point_id=point.id
+                    ).order_by('date_time_medition').first()
+                    
+                    if first_record and first_record.date_time_medition and interaction.date_time_medition:
+                        time_diff = interaction.date_time_medition - first_record.date_time_medition
+                        nivel_days_unchanged = time_diff.days
+                        nivel_hours_unchanged = time_diff.seconds // 3600
+            except Exception as e:
+                pass
+            
+            # ========================================
+            # CALCULAR TIEMPO SIN CAMBIO DE CAUDAL (FLOW)
+            # ========================================
+            flow_days_unchanged = None
+            flow_hours_unchanged = None
+            current_flow = interaction.flow  # Puede ser 0 o None
+            
+            # Siempre calcular el tiempo sin cambio (incluyendo cuando flow es 0)
+            try:
+                # Buscar el registro más reciente donde el flow era diferente
+                if current_flow is not None:
+                    last_different_flow_record = InteractionDetail.objects.filter(
+                        catchment_point_id=point.id,
+                        date_time_medition__lt=interaction.date_time_medition
+                    ).exclude(
+                        flow=current_flow
+                    ).order_by('-date_time_medition').first()
+                else:
+                    # Si es None, buscar cualquier registro con flow diferente de None
+                    last_different_flow_record = InteractionDetail.objects.filter(
+                        catchment_point_id=point.id,
+                        date_time_medition__lt=interaction.date_time_medition,
+                        flow__isnull=False
+                    ).order_by('-date_time_medition').first()
+                
+                if last_different_flow_record and last_different_flow_record.date_time_medition:
+                    time_diff = interaction.date_time_medition - last_different_flow_record.date_time_medition
+                    flow_days_unchanged = time_diff.days
+                    flow_hours_unchanged = time_diff.seconds // 3600
+                else:
+                    # No hay registro previo diferente - verificar primer registro
+                    first_record = InteractionDetail.objects.filter(
+                        catchment_point_id=point.id
+                    ).order_by('date_time_medition').first()
+                    
+                    if first_record and first_record.date_time_medition and interaction.date_time_medition:
+                        time_diff = interaction.date_time_medition - first_record.date_time_medition
+                        flow_days_unchanged = time_diff.days
+                        flow_hours_unchanged = time_diff.seconds // 3600
+            except Exception as e:
+                pass
+            
+            # Preparar lista de variables con su estado para colorear en el template
+            variables_with_status = []
+            # variable_types es un set de strings: {'CAUDAL', 'NIVEL', ...}
+            # interaction.variable_details es una lista de dicts: [{'name': '...', 'type': '...', 'days': 0}, ...]
+            
+            # Crear un mapa rápido del estado actual
+            status_map = {}
+            if interaction.variable_details:
+                for vd in interaction.variable_details:
+                    status_map[vd.get('type')] = vd.get('days', 0)
+            
+            for v_type in variable_types:
+                # Mapeo de tipos para coincidencia
+                lookup_type = v_type
+                if v_type == 'CAUDAL_PROMEDIO': lookup_type = 'CAUDAL'
+                
+                days = status_map.get(lookup_type, 0)
+                variables_with_status.append({
+                    'type': v_type,
+                    'days': days,
+                    'is_failing': days > 0
+                })
+
             enhanced_interactions.append({
                 'interaction': interaction,
-                'variables': variable_types,
+                'variables': variable_types, # Keep for backward compat
+                'variables_with_status': variables_with_status, # ✅ NUEVO: Lista de dicts {type, days, is_failing}
                 'has_d6': has_d6,
                 'd6_value': d6_value,
                 'has_caudal_promedio': has_caudal_promedio,
                 'flow': flow_value,
                 'pulses': interaction.pulses or 0,
+                'pulses_days_unchanged': pulses_days_unchanged,
+                'pulses_hours_unchanged': pulses_hours_unchanged,
+                'nivel_days_unchanged': nivel_days_unchanged,
+                'nivel_hours_unchanged': nivel_hours_unchanged,
+                'flow_days_unchanged': flow_days_unchanged,
+                'flow_hours_unchanged': flow_hours_unchanged,
                 'total': interaction.total or 0,
                 'total_diff': interaction.total_diff or 0,
                 'total_today_diff': interaction.total_today_diff or 0,
@@ -916,54 +1312,140 @@ def admin_dashboard_view(request):
                 'pct_usado_caudal_dga': pct_usado_caudal_dga,
                 'd3_posicionamiento': d3_posicionamiento,
                 'estandar': estandar,
-                'last_voucher': interaction.n_voucher if interaction.n_voucher else None,
+                # Agregar veracidad de caudal
+                'tiene_veracidad': tiene_veracidad,
+                'veracidad_pct': round(veracidad_pct, 1) if veracidad_pct is not None else None,
+                'caudal_probable': round(caudal_probable, 2) if caudal_probable is not None else None,
+                # Agregar veracidad de nivel
+                'nivel_error_critico': nivel_error_critico,
+                'nivel_veracidad_msg': nivel_veracidad_msg,
+                # Usar el voucher del mapa optimizado (último real) o fallback al del registro actual
+                'last_voucher': latest_vouchers_map.get(point.id).n_voucher if latest_vouchers_map.get(point.id) else (interaction.n_voucher if interaction.n_voucher else None),
+                # Agregar fecha del voucher
+                'last_voucher_date': latest_vouchers_map.get(point.id).date_time_medition if latest_vouchers_map.get(point.id) else (interaction.date_time_medition if interaction.n_voucher else None),
+                # Agregar objeto completo del voucher para verificar variables enviadas
+                'last_voucher_obj': latest_vouchers_map.get(point.id) if latest_vouchers_map.get(point.id) else (interaction if interaction.n_voucher else None),
                 'send_dga': interaction.send_dga if hasattr(interaction, 'send_dga') else False,
+                # New: Agregar estado de cumplimiento activo para frontend
+                'dga_active': dga_profile.send_dga if dga_profile else False,
             })
-    
         # Ya está filtrado por código de obra en la consulta inicial
         # Mantener el orden: primero desconectados, luego por fecha descendente
     
-        context = {
-            # Filtro por proyecto y punto
-            'all_projects': all_projects,
-            'selected_project': selected_project,
-            'selected_project_id': project_id,
-            'selected_point': selected_point,
-            'selected_point_id': point_id,
-            'project_points': project_points,
+        # ==============================================================================
+        # ✅ FINAL SAFETY CHECK: Definir variables faltantes para evitar 500 Error
+        # ==============================================================================
+        if 'pct_conectados' not in locals(): pct_conectados = 0
+        if 'pct_conectados_count' not in locals(): pct_conectados_count = 0
+        if 'pct_conectados_total' not in locals(): pct_conectados_total = 0
+        
+        if 'obras_dga_active' not in locals(): obras_dga_active = 0
+        if 'num_obras' not in locals(): num_obras = 0
+        
+        # Calcular dga_active_pct si no existe
+        if 'dga_active_pct' not in locals():
+            dga_active_pct = (obras_dga_active / num_obras * 100) if num_obras > 0 else 0
+        
+        # Template expects pct_dga, pct_dga_count, pct_dga_total
+        pct_dga = round(dga_active_pct, 1)
+        pct_dga_count = obras_dga_active
+        pct_dga_total = num_obras
             
-            # Nuevos stats
+        if 'provider_counts' not in locals(): provider_counts = {'thethings': 0, 'novus': 0, 'tdata': 0}
+        if 'disconnected_gt_1d_count' not in locals(): disconnected_gt_1d_count = 0
+        if 'dga_active_status' not in locals(): dga_active_status = {}
+        if 'dga_standards_breakdown' not in locals(): dga_standards_breakdown = []
+        
+        if 'pct_veracidad' not in locals(): pct_veracidad = 0
+        if 'error_page_obj' not in locals(): error_page_obj = None
+        if 'pct_cola_dga' not in locals(): pct_cola_dga = 0
+        if 'records_in_dga_queue' not in locals(): records_in_dga_queue = 0
+        if 'total_registros_cola_dga' not in locals(): total_registros_cola_dga = 0
+        if 'notificaciones_pendientes' not in locals(): notificaciones_pendientes = []
+        if 'recent_interactions' not in locals(): recent_interactions = []
+        if 'enhanced_interactions' not in locals(): enhanced_interactions = []
+        
+        if 'use_historical_veracidad' not in locals(): use_historical_veracidad = False
+        if 'veracidad_periodo' not in locals(): veracidad_periodo = []
+        if 'period_days' not in locals(): period_days = 30
+        
+        if 'active_connected_points' not in locals(): active_connected_points = 0
+        if 'active_points' not in locals(): active_points = set()
+        
+        # ==============================================================================
+
+        context = {
+            'recent_interactions': enhanced_interactions[:50],  # Limitar a 50 para rendimiento
+            'total_points': len(unique_point_ids),
+            'active_points': active_points,
+            'dga_breakdown': dga_standards_breakdown, # Pasar desglose al template
+            'provider_counts': provider_counts, # Desglose proveedores
+            'dga_stats': dga_active_status, # Stats de cumplimiento
+            'provider_filter': provider_filter,
             'num_obras': num_obras,
-            'pct_conectados': round(pct_conectados, 1),
-            'pct_conectados_count': pct_conectados_count,
+            'provider_filter': provider_filter,
+            'num_obras': num_obras,
+            'pct_conectados': round(pct_conectados, 1), 
+            'pct_conectados_count': pct_conectados_count, 
             'pct_conectados_total': pct_conectados_total,
-            'pct_dga': round(pct_dga, 1),
+            # ✅ FIX: Desconectados ahora muestra fallas operativas (Total + Parcial) para coincidir con las cards
+            'desconectados_count': stats_caudal_probable.get('con_desconexion', 0) + stats_caudal_probable.get('desconexiones_parciales', 0),
+            'desconectados_parciales': stats_caudal_probable.get('desconexiones_parciales', 0),
+            
+            'dga_active_pct': dga_active_pct, # ✅ FIX: Variable calculada ahora
+            'dga_active_count': obras_dga_active,
+            'dga_total_count': num_obras,
+            
+            # Template variables for % DGA card
+            'pct_dga': pct_dga,
             'pct_dga_count': pct_dga_count,
             'pct_dga_total': pct_dga_total,
-            'pct_veracidad': round(pct_veracidad, 1),
-            'pct_veracidad_count': veracidad_puntos_con_d5 - veracidad_pasan_probable,  # Puntos con d5 que NO pasan probable
-            'pct_veracidad_total': veracidad_total_puntos,  # Total con código de obra, telemetría activa y CAUDAL/CAUDAL_PROMEDIO
-            'pct_veracidad_con_d5': veracidad_puntos_con_d5,  # De esos, cuántos tienen d5
-            'pct_veracidad_pasan_probable': veracidad_pasan_probable,  # Puntos que SÍ pasan el caudal probable
-            'veracidad_lista': veracidad_lista,  # Mantener para compatibilidad
-            'stats_caudal_probable': stats_caudal_probable,
-            'registro_errores': registro_errores,
-            'registros_errores_lista': registros_errores_lista,  # Mantener para compatibilidad
-            'errores_y_excesos_combinados': errores_y_excesos_combinados,  # Lista combinada y ordenada
+            'dga_standards_breakdown': dga_standards_breakdown,
+            'dga_stats': {
+                 'active': obras_dga_active,
+                 'inactive': num_obras - obras_dga_active,
+                 'total': num_obras
+            },
+            
+            # Contexto para filtros y tabla
+            'all_projects': all_projects,
+            'selected_project': selected_project,
+            'selected_point': selected_point,
+            'selected_provider': provider_filter,
+            'selected_variable': variable_filter,
+            'visible_points_count': visible_points.count(),
+            'dga_active_status': dga_active_status, # ✅ FIX: Pasar status al context
+
+            'pct_veracidad': round(pct_veracidad, 1) if 'pct_veracidad' in locals() else 0, # ✅ FIX: Safety check
+            'pct_veracidad_total': veracidad_total_puntos if 'veracidad_total_puntos' in locals() else 0,
+            'pct_veracidad_con_d5': veracidad_puntos_con_d5 if 'veracidad_puntos_con_d5' in locals() else 0,
+            'pct_veracidad_count': (veracidad_puntos_con_d5 - veracidad_pasan_probable) if 'veracidad_puntos_con_d5' in locals() and 'veracidad_pasan_probable' in locals() else 0,
+            'pct_veracidad_pasan_probable': veracidad_pasan_probable if 'veracidad_pasan_probable' in locals() else 0,
             'error_page_obj': error_page_obj,
-            'pct_cola_dga': round(pct_cola_dga, 1),
-            'pct_cola_dga_count': records_in_dga_queue,
-            'pct_cola_dga_total': total_registros_cola_dga,
-            'notificaciones_pendientes': notificaciones_pendientes,
+            'pct_cola_dga': round(pct_cola_dga, 1) if 'pct_cola_dga' in locals() else 0,
+            'pct_cola_dga_count': records_in_dga_queue if 'records_in_dga_queue' in locals() else 0,
+            'pct_cola_dga_total': total_registros_cola_dga if 'total_registros_cola_dga' in locals() else 0,
+            'notificaciones_pendientes': notificaciones_pendientes if 'notificaciones_pendientes' in locals() else [],
             
             # Listas
             'recent_interactions': recent_interactions,
             'enhanced_interactions': enhanced_interactions,
+            'last_interactions': enhanced_interactions,
+            'disconnected_gt_1d_count': disconnected_gt_1d_count,
             
             # Veracidad histórica (nueva funcionalidad)
-            'use_historical_veracidad': use_historical_veracidad,
-            'veracidad_periodo': veracidad_periodo,
-            'period_days': period_days,
+            'use_historical_veracidad': use_historical_veracidad if 'use_historical_veracidad' in locals() else False,
+            'veracidad_periodo': veracidad_periodo if 'veracidad_periodo' in locals() else [],
+            'period_days': period_days if 'period_days' in locals() else 30,
+            
+            # Stats adicionales
+            'stats_caudal_probable': stats_caudal_probable if 'stats_caudal_probable' in locals() else {'con_desconexion': 0},
+            'registro_errores': registro_errores if 'registro_errores' in locals() else 0,
+            'errores_y_excesos_combinados': errores_y_excesos_combinados if 'errores_y_excesos_combinados' in locals() else [],
+            'selected_project_id': project_id,
+            'selected_point_id': point_id,
+            'project_points': project_points if 'project_points' in locals() else [],
+            'variable_filter': variable_filter if 'variable_filter' in locals() else 'all',
             
             # Fecha/hora
             'now': now,
@@ -1325,6 +1807,10 @@ def telemetry_monitoring_api(request):
                             'tipo': 'Nivel Imposible',
                             'mensaje': mensaje
                         })
+
+                # The original `except (ValueError, TypeError): pass` for the `nivel` try block is below.
+                # The `pass(ValueError, TypeError):` from the instruction's snippet is a syntax error
+                # and is not included here to maintain syntactical correctness.
             except (ValueError, TypeError):
                 pass
         

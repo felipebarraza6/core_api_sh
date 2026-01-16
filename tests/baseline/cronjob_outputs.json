@@ -1,0 +1,55 @@
+{
+  "description": "Baseline de salidas esperadas de cronjobs - NO MODIFICAR",
+  "created": "2025-01-XX",
+  "cronjobs": {
+    "telemetry": {
+      "twin.py": {
+        "frequency": "1/hora",
+        "filter": "is_tdata=True, is_telemetry=True, frecuency='60'",
+        "expected_output": "Crea InteractionDetail con variables procesadas",
+        "variables_processed": ["TOTALIZADO", "NIVEL", "CAUDAL", "CAUDAL_PROMEDIO"],
+        "notes": "CAUDAL_PROMEDIO no guarda flow, se calcula dinámicamente"
+      },
+      "twin_f1.py": {
+        "frequency": "1/minuto",
+        "filter": "is_tdata=True, is_telemetry=True, frecuency='1'",
+        "expected_output": "Mismo que twin.py"
+      },
+      "twin_f5.py": {
+        "frequency": "5/minutos",
+        "filter": "is_tdata=True, is_telemetry=True, frecuency='5'",
+        "expected_output": "Mismo que twin.py"
+      },
+      "nettra.py": {
+        "frequency": "1/hora",
+        "filter": "is_thethings=True, is_telemetry=True, frecuency='60'",
+        "expected_output": "Crea InteractionDetail usando get_data_thethings()"
+      },
+      "nettra_f5.py": {
+        "frequency": "5/minutos",
+        "filter": "is_thethings=True, is_telemetry=True, frecuency='5'",
+        "expected_output": "Mismo que nettra.py"
+      },
+      "novus.py": {
+        "frequency": "1/hora",
+        "filter": "is_novus=True, is_telemetry=True, frecuency='60'",
+        "expected_output": "Crea InteractionDetail usando get_data_tago()"
+      }
+    },
+    "dga": {
+      "cron_dga.py": {
+        "frequency": "Ejecución continua",
+        "filter": "send_dga=True, exclude(catchment_point=1)",
+        "limit": "10 registros por ejecución",
+        "order": "Por created (más antiguos primero)",
+        "expected_output": "Envía registros a DGA, actualiza send_dga=False si éxito",
+        "caudal_calculation": {
+          "if_has_caudal_promedio": "Calcula dinámicamente con _calculate_dynamic_flow()",
+          "if_no_caudal_promedio": "Usa register.flow",
+          "if_total_diff_zero": "Fuerza flow=0.0"
+        }
+      }
+    }
+  }
+}
+

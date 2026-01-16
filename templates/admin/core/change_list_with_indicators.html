@@ -1,0 +1,36 @@
+{% extends "admin/change_list.html" %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'admin/css/admin_indicators.css' %}">
+{% endblock %}
+
+{% block content %}
+<!-- Indicadores en la cabecera -->
+{% if indicators %}
+<div class="admin-indicators-container">
+    <div class="admin-indicators-grid">
+        {% for indicator in indicators %}
+        <div class="indicator-card indicator-{{ indicator.color }}">
+            <div class="indicator-icon">
+                <i class="{{ indicator.icon }}"></i>
+            </div>
+            <div class="indicator-content">
+                <div class="indicator-value">{{ indicator.value }}</div>
+                <div class="indicator-label">{{ indicator.label }}</div>
+            </div>
+            {% if indicator.url %}
+            <a href="{{ indicator.url }}" class="indicator-link">
+                <i class="fas fa-arrow-right"></i>
+            </a>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Lista normal de registros -->
+{{ block.super }}
+{% endblock %}

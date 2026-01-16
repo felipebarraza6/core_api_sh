@@ -1,0 +1,65 @@
+{
+  "description": "Baseline de estructuras de respuesta de endpoints - NO MODIFICAR",
+  "created": "2025-01-XX",
+  "endpoints": {
+    "/api/interaction_detail/": {
+      "method": "GET",
+      "response_structure": {
+        "count": "number",
+        "next": "string_or_null",
+        "previous": "string_or_null",
+        "results": [
+          {
+            "id": "integer",
+            "catchment_point": "integer",
+            "date_time_medition": "datetime_string",
+            "date_time_last_logger": "datetime_string_or_null",
+            "days_not_conection": "integer",
+            "flow": "decimal",
+            "pulses": "integer",
+            "total": "string",
+            "total_diff": "integer",
+            "total_today_diff": "integer",
+            "nivel": "decimal",
+            "water_table": "decimal",
+            "send_dga": "boolean",
+            "return_dga": "string_or_null",
+            "n_voucher": "string_or_null",
+            "is_error": "boolean",
+            "notification": "integer_or_null",
+            "is_average": "boolean",
+            "flow_type": "string"
+          }
+        ]
+      },
+      "notes": "Calcula flow dinámicamente si tiene CAUDAL_PROMEDIO. Suma d6 al total."
+    },
+    "/api/interaction_detail_json/": {
+      "method": "GET",
+      "response_structure": "same_as_interaction_detail",
+      "notes": "ViewSet con paginación estándar"
+    },
+    "/api/interaction_detail_override/": {
+      "method": "GET",
+      "response_structure": "array_of_results_no_pagination",
+      "notes": "Sin paginación, retorna todos los registros"
+    },
+    "/admin/dashboard/": {
+      "method": "GET",
+      "response_structure": "html_template",
+      "context_variables": [
+        "num_obras",
+        "pct_conectados",
+        "pct_dga",
+        "pct_veracidad",
+        "stats_caudal_probable",
+        "registro_errores",
+        "pct_cola_dga",
+        "notificaciones_pendientes",
+        "errores_y_excesos_combinados",
+        "enhanced_interactions"
+      ]
+    }
+  }
+}
+

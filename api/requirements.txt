@@ -20,8 +20,17 @@ requests>=2.31.0,<3.0.0
 openpyxl>=3.1.0,<4.0.0
 zeep>=4.2.0,<5.0.0
 drf-excel>=2.0.0,<3.0.0
+reportlab>=4.0.0,<5.0.0
+
+# Admin UI mejorado - Actualizado a 3.x para menús personalizados
+django-jazzmin>=3.0.0,<4.0.0
 
 # Desarrollo (opcional)
 # python-decouple>=3.8,<4.0.0  # Para variables de entorno
 # django-debug-toolbar>=4.0.0,<5.0.0  # Para desarrollo
 python-dotenv==1.0.0
+
+# Caching
+django-redis>=5.4.0,<6.0.0
+google-generativeai>=0.3.0
+

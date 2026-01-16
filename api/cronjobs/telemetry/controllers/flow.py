@@ -1,6 +1,16 @@
 from datetime import datetime
 from api.core.models import InteractionDetail
 import pytz
+import logging
+
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# CONSTANTES DE PROTECCIÓN ANTI-DISPARO
+# ============================================================================
+MAX_FLOW_LS = 150.0           # Máximo caudal razonable en L/s
+MAX_TIME_GAP_HOURS = 2        # Si Δt > 2 horas, no calcular (reconexión)
+MAX_DIFF_M3_PER_HOUR = 500    # Máximo consumo razonable por hora
 
 def instantaneous_flow_calculate(value, convert_to_lt, n_base):
     """
@@ -106,64 +116,150 @@ def instantaneous_flow(value, convert_to_lt, scale_divisor=None):
         return 0.0
 
 
-def average_flow(point_catchment, total, date_lg):
+
+def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logger_dt=None):
     """
-    Calculate the average flow based on the given point catchment, total, and date.
-
-    Args:
-        point_catchment (dict): The catchment point details.
-        total (int or float): The total value to be used in the calculation.
-        date_lg (datetime): The date and time of the logger.
-
-    Returns:
-        float: The calculated average flow value.
+    Caudal promedio (L/s) = ((total_actual - total_anterior) / Δt_seg) * 1000
+    Δt usa preferentemente la diferencia de date_time_last_logger si está disponible (mayor precisión),
+    sino usa date_time_medition.
     """
     try:
-        # Validate input types
         if not isinstance(point_catchment, dict) or "id" not in point_catchment:
-            raise ValueError("Invalid point_catchment format")
+            return 0.0
         if not isinstance(total, (int, float)):
-            raise ValueError("Total must be a number")
+            return 0.0
         if not isinstance(date_lg, datetime):
-            raise ValueError("date_lg must be a datetime object")
-
-        # Fetch the last interaction detail
-        get_last = InteractionDetail.objects.filter(
-            catchment_point=point_catchment["id"]
-        ).last()
-        if not get_last:
-            print("No previous interaction detail found.")
             return 0.0
 
-        # Convert dates to Chile timezone
         chile_tz = pytz.timezone('America/Santiago')
-        date_lg = date_lg.astimezone(chile_tz)
-        get_last.date_time_medition = get_last.date_time_medition.astimezone(chile_tz)
-        get_last.date_time_last_logger = get_last.date_time_last_logger.astimezone(chile_tz)
+        
+        # 1. Normalizar timestamp actual (date_lg / medition)
+        if date_lg.tzinfo is None:
+            curr_ts = chile_tz.localize(date_lg)
+        else:
+            curr_ts = date_lg.astimezone(chile_tz)
 
-        # Calculate time difference in seconds
-        time_difference = (date_lg - get_last.date_time_medition).total_seconds()
-        if time_difference <= 0:
-            raise ValueError("Time difference must be positive")
-
-        # Calculate flow
-        diff_cubics = int(total) - int(get_last.total)
-        divide = diff_cubics / time_difference
-        factor = divide * 1000
-        value = round(factor, 2)
-
-        # Ensure value is within the allowed range
-        if abs(value) >= 1000:
-            print("Calculated value exceeds the allowed range for the database field")
+        # 2. Buscar registro anterior
+        query = InteractionDetail.objects.filter(
+            catchment_point_id=point_catchment["id"],
+            date_time_medition__isnull=False,
+            date_time_medition__lt=date_lg
+        )
+        if exclude_id:
+            query = query.exclude(pk=exclude_id)
+            
+        get_last = query.order_by('-date_time_medition').first()
+        
+        if not get_last or get_last.total is None:
             return 0.0
 
-        return float(f"{value:.2f}")
+        # 3. Calcular Diferencia de Tiempo (Prioridad: Logger > Medition)
+        time_difference = 0.0
+        used_logger_diff = False
 
-    except (AttributeError, ValueError, TypeError) as e:
-        # Log the exception if needed
-        print(f"Error: {e}")
+        # Intentar usar fechas del logger si están disponibles (Mejor precisión para retardos)
+        if current_logger_dt and isinstance(current_logger_dt, datetime) and get_last.date_time_last_logger:
+            try:
+                # Normalizar current logger
+                if current_logger_dt.tzinfo is None:
+                    c_log = chile_tz.localize(current_logger_dt)
+                else:
+                    c_log = current_logger_dt.astimezone(chile_tz)
+                
+                # Normalizar prev logger
+                if get_last.date_time_last_logger.tzinfo is None:
+                    p_log = chile_tz.localize(get_last.date_time_last_logger)
+                else:
+                    p_log = get_last.date_time_last_logger.astimezone(chile_tz)
+
+                diff_log = (c_log - p_log).total_seconds()
+                
+                if diff_log > 0:
+                    time_difference = diff_log
+                    used_logger_diff = True
+            except Exception as e:
+                print(f"Warning: Error calculating logger diff: {e}")
+
+        # Si no se pudo usar logger (o dio <= 0), usar date_time_medition (Ingesta)
+        if time_difference <= 0:
+            prev_ts = get_last.date_time_medition
+            if prev_ts.tzinfo is None:
+                prev_ts = chile_tz.localize(prev_ts)
+            else:
+                prev_ts = prev_ts.astimezone(chile_tz)
+            
+            time_difference = (curr_ts - prev_ts).total_seconds()
+            
+            # Fallback extra: si medition es igual (<=0), intentar logger anterior vs este medition
+            # (Caso raro de duplicados de hora pero distinta data)
+            if time_difference <= 0:
+                alt_prev_ts = get_last.date_time_last_logger
+                if alt_prev_ts:
+                    if alt_prev_ts.tzinfo is None: alt_prev_ts = chile_tz.localize(alt_prev_ts)
+                    else: alt_prev_ts = alt_prev_ts.astimezone(chile_tz)
+                    time_difference = (curr_ts - alt_prev_ts).total_seconds()
+
+        if time_difference <= 0:
+            return 0.0
+
+        # ====================================================================
+        # VALIDACIONES ANTI-DISPARO (Reconexión / Reset)
+        # ====================================================================
+        
+        # 4a. Si hay brecha de tiempo muy grande (reconexión después de desconexión)
+        if time_difference > (MAX_TIME_GAP_HOURS * 3600):
+            logger.info(
+                f"⚠️ Punto {point_catchment['id']}: Gap de tiempo muy grande "
+                f"({time_difference/3600:.1f}h > {MAX_TIME_GAP_HOURS}h) - Caudal = 0"
+            )
+            return 0.0
+        
+        # 4b. Si el registro anterior tenía días sin conexión (logger desconectado)
+        if hasattr(get_last, 'days_not_conection') and get_last.days_not_conection and get_last.days_not_conection > 0:
+            logger.info(
+                f"⚠️ Punto {point_catchment['id']}: Reconexión detectada "
+                f"(días sin conexión anterior: {get_last.days_not_conection}) - Caudal = 0"
+            )
+            return 0.0
+
+        # 5. Calcular diferencia de volumen (m3)
+        last_total = float(get_last.total)
+        diff_cubics = float(total) - last_total
+
+        # Detector de reseteo
+        if diff_cubics < 0:
+            diff_cubics = float(total)
+
+        if diff_cubics <= 0:
+            return 0.0
+
+        # 5b. Validar que el consumo por hora sea razonable
+        consumption_per_hour = (diff_cubics / time_difference) * 3600
+        if consumption_per_hour > MAX_DIFF_M3_PER_HOUR:
+            logger.warning(
+                f"🚨 Punto {point_catchment['id']}: Consumo por hora excesivo "
+                f"({consumption_per_hour:.0f} m³/h > {MAX_DIFF_M3_PER_HOUR}) - Caudal = 0"
+            )
+            return 0.0
+
+        # 6. Calcular caudal (L/s)
+        value = round((diff_cubics / time_difference) * 1000.0, 2)
+
+        # 6b. Validar caudal máximo razonable
+        if value > MAX_FLOW_LS:
+            logger.warning(
+                f"🚨 Punto {point_catchment['id']}: Caudal excesivo "
+                f"({value:.2f} L/s > {MAX_FLOW_LS}) - Caudal = 0"
+            )
+            return 0.0
+
+        # Protección contra valores fuera de rango para la BD (max 999.99)
+        if abs(value) >= 1000:
+            return 0.0
+
+        return value
+
+    except Exception as e:
+        logger.error(f"Error in average_flow for point {point_catchment.get('id')}: {str(e)}")
         return 0.0
 
-    except (pytz.UnknownTimeZoneError, OverflowError, ZeroDivisionError) as e:
-        print(f"Unexpected error: {e}")
-        return 0.0

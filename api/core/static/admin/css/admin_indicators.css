@@ -1,0 +1,269 @@
+/* ========================================
+   ESTILOS PARA INDICADORES EN ADMIN - MEJORADO
+   ======================================== */
+
+/* Contenedor de indicadores */
+.admin-indicators-container {
+    margin-bottom: 30px;
+    padding: 20px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+    border: 1px solid #dee2e6;
+}
+
+.admin-indicators-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+/* Tarjetas de indicadores - Mejorado */
+.indicator-card {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid #e9ecef;
+}
+
+.indicator-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
+    border-color: #ced4da;
+}
+
+.indicator-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--indicator-color, #6c757d);
+}
+
+/* Colores de indicadores - Paleta SmartHydro armónica */
+.indicator-card.indicator-primary::before {
+    background: #3d7bb3;
+    /* SmartHydro Blue Dark */
+}
+
+.indicator-card.indicator-success::before {
+    background: #3ba890;
+    /* SmartHydro Green Dark */
+}
+
+.indicator-card.indicator-info::before {
+    background: #3d7bb3;
+    /* SmartHydro Blue Dark */
+}
+
+.indicator-card.indicator-warning::before {
+    background: #c4c48a;
+    /* SmartHydro Yellow Dark */
+}
+
+.indicator-card.indicator-danger::before {
+    background: #d66b55;
+    /* SmartHydro Red Dark */
+}
+
+.indicator-card.indicator-secondary::before {
+    background: #495057;
+    /* Gris armónico */
+}
+
+/* Icono del indicador - Mejorado */
+.indicator-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    color: white;
+    background: var(--indicator-color, #6c757d);
+    flex-shrink: 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s;
+}
+
+.indicator-card:hover .indicator-icon {
+    transform: scale(1.05);
+}
+
+.indicator-card.indicator-primary .indicator-icon {
+    background: linear-gradient(135deg, #3d7bb3 0%, #569cd6 100%);
+}
+
+.indicator-card.indicator-success .indicator-icon {
+    background: linear-gradient(135deg, #3ba890 0%, #4ec9b0 100%);
+}
+
+.indicator-card.indicator-info .indicator-icon {
+    background: linear-gradient(135deg, #3d7bb3 0%, #569cd6 100%);
+}
+
+.indicator-card.indicator-warning .indicator-icon {
+    background: linear-gradient(135deg, #c4c48a 0%, #dcdcaa 100%);
+    color: #000;
+}
+
+.indicator-card.indicator-danger .indicator-icon {
+    background: linear-gradient(135deg, #d66b55 0%, #f48771 100%);
+}
+
+.indicator-card.indicator-secondary .indicator-icon {
+    background: linear-gradient(135deg, #495057 0%, #6c757d 100%);
+}
+
+/* Contenido del indicador - Mejorado */
+.indicator-content {
+    flex: 1;
+}
+
+.indicator-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: #212529;
+    /* Negro más puro para mejor contraste */
+    line-height: 1.2;
+    margin-bottom: 6px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.indicator-label {
+    font-size: 13px;
+    color: #495057;
+    /* Gris más oscuro para mejor legibilidad */
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 600;
+}
+
+/* Enlace del indicador */
+.indicator-link {
+    color: #6c757d;
+    text-decoration: none;
+    font-size: 18px;
+    transition: color 0.2s;
+}
+
+.indicator-link:hover {
+    color: #007bff;
+}
+
+/* ========================================
+   ESTILOS PARA GRÁFICOS - MEJORADO
+   ======================================== */
+
+.admin-charts-container {
+    margin-bottom: 30px;
+    padding: 20px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+    border: 1px solid #dee2e6;
+}
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 24px;
+}
+
+.chart-card {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    border: 1px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.chart-card:hover {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
+    transform: translateY(-2px);
+}
+
+.chart-header {
+    padding: 18px 24px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-bottom: 2px solid #dee2e6;
+}
+
+.chart-header h3 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    color: #212529;
+    /* Mejor contraste */
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.chart-header h3 i {
+    color: #569cd6;
+    /* SmartHydro Blue */
+    font-size: 20px;
+}
+
+.chart-body {
+    padding: 20px;
+    height: 300px;
+    position: relative;
+}
+
+.chart-body canvas {
+    max-height: 100%;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .admin-indicators-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .chart-body {
+        height: 250px;
+    }
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.indicator-card {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.chart-card {
+    animation: fadeIn 0.4s ease-out;
+}
+
+/* Estilos adicionales para integración con Jazzmin */
+.admin-indicators-container+.results {
+    margin-top: 0;
+}

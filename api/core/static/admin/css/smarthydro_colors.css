@@ -1,0 +1,254 @@
+/* ========================================
+   PALETA DE COLORES SMARTYDRO - ARMÓNICA
+   ======================================== */
+
+:root {
+    /* Colores base SmartHydro */
+    --smarthydro-blue: #569cd6;
+    /* Azul principal - Info */
+    --smarthydro-green: #4ec9b0;
+    /* Verde - Success */
+    --smarthydro-yellow: #dcdcaa;
+    /* Amarillo - Warning */
+    --smarthydro-red: #f48771;
+    /* Rojo - Danger */
+
+    /* Variaciones más oscuras para mejor contraste */
+    --smarthydro-blue-dark: #3d7bb3;
+    /* Azul oscuro */
+    --smarthydro-green-dark: #3ba890;
+    /* Verde oscuro */
+    --smarthydro-yellow-dark: #c4c48a;
+    /* Amarillo oscuro */
+    --smarthydro-red-dark: #d66b55;
+    /* Rojo oscuro */
+
+    /* Variaciones más claras para fondos */
+    --smarthydro-blue-light: #e8f2fa;
+    /* Azul claro */
+    --smarthydro-green-light: #e6f7f4;
+    /* Verde claro */
+    --smarthydro-yellow-light: #f7f7ed;
+    /* Amarillo claro */
+    --smarthydro-red-light: #fce8e4;
+    /* Rojo claro */
+
+    /* Grises armónicos */
+    --smarthydro-gray-50: #f8f9fa;
+    --smarthydro-gray-100: #e9ecef;
+    --smarthydro-gray-200: #dee2e6;
+    --smarthydro-gray-300: #ced4da;
+    --smarthydro-gray-400: #adb5bd;
+    --smarthydro-gray-500: #6c757d;
+    --smarthydro-gray-600: #495057;
+    --smarthydro-gray-700: #343a40;
+    --smarthydro-gray-800: #212529;
+    --smarthydro-gray-900: #1a1d20;
+}
+
+/* Aplicar colores SmartHydro a indicadores */
+.indicator-card.indicator-primary::before,
+.indicator-card.indicator-primary .indicator-icon {
+    background: linear-gradient(135deg, var(--smarthydro-blue-dark) 0%, var(--smarthydro-blue) 100%);
+}
+
+.indicator-card.indicator-success::before,
+.indicator-card.indicator-success .indicator-icon {
+    background: linear-gradient(135deg, var(--smarthydro-green-dark) 0%, var(--smarthydro-green) 100%);
+}
+
+.indicator-card.indicator-info::before,
+.indicator-card.indicator-info .indicator-icon {
+    background: linear-gradient(135deg, var(--smarthydro-blue-dark) 0%, var(--smarthydro-blue) 100%);
+}
+
+.indicator-card.indicator-warning::before,
+.indicator-card.indicator-warning .indicator-icon {
+    background: linear-gradient(135deg, var(--smarthydro-yellow-dark) 0%, var(--smarthydro-yellow) 100%);
+    color: #000000;
+}
+
+.indicator-card.indicator-danger::before,
+.indicator-card.indicator-danger .indicator-icon {
+    background: linear-gradient(135deg, var(--smarthydro-red-dark) 0%, var(--smarthydro-red) 100%);
+}
+
+.indicator-card.indicator-secondary::before,
+.indicator-card.indicator-secondary .indicator-icon {
+    background: linear-gradient(135deg, var(--smarthydro-gray-600) 0%, var(--smarthydro-gray-500) 100%);
+}
+
+/* Aplicar colores SmartHydro a botones */
+.btn-primary {
+    background: linear-gradient(135deg, var(--smarthydro-blue-dark) 0%, var(--smarthydro-blue) 100%) !important;
+    border-color: var(--smarthydro-blue-dark) !important;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #2d5a8a 0%, var(--smarthydro-blue-dark) 100%) !important;
+    border-color: #2d5a8a !important;
+}
+
+.btn-success {
+    background: linear-gradient(135deg, var(--smarthydro-green-dark) 0%, var(--smarthydro-green) 100%) !important;
+    border-color: var(--smarthydro-green-dark) !important;
+}
+
+.btn-success:hover {
+    background: linear-gradient(135deg, #2a7a6a 0%, var(--smarthydro-green-dark) 100%) !important;
+    border-color: #2a7a6a !important;
+}
+
+.btn-info {
+    background: linear-gradient(135deg, var(--smarthydro-blue-dark) 0%, var(--smarthydro-blue) 100%) !important;
+    border-color: var(--smarthydro-blue-dark) !important;
+}
+
+.btn-info:hover {
+    background: linear-gradient(135deg, #2d5a8a 0%, var(--smarthydro-blue-dark) 100%) !important;
+    border-color: #2d5a8a !important;
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, var(--smarthydro-yellow-dark) 0%, var(--smarthydro-yellow) 100%) !important;
+    border-color: var(--smarthydro-yellow-dark) !important;
+    color: #000000 !important;
+}
+
+.btn-warning:hover {
+    background: linear-gradient(135deg, #a8a866 0%, var(--smarthydro-yellow-dark) 100%) !important;
+    border-color: #a8a866 !important;
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, var(--smarthydro-red-dark) 0%, var(--smarthydro-red) 100%) !important;
+    border-color: var(--smarthydro-red-dark) !important;
+}
+
+.btn-danger:hover {
+    background: linear-gradient(135deg, #b84d3a 0%, var(--smarthydro-red-dark) 100%) !important;
+    border-color: #b84d3a !important;
+}
+
+/* Aplicar colores SmartHydro a badges */
+.badge-primary {
+    background-color: var(--smarthydro-blue) !important;
+    color: #ffffff !important;
+}
+
+.badge-success {
+    background-color: var(--smarthydro-green) !important;
+    color: #ffffff !important;
+}
+
+.badge-info {
+    background-color: var(--smarthydro-blue) !important;
+    color: #ffffff !important;
+}
+
+.badge-warning {
+    background-color: var(--smarthydro-yellow) !important;
+    color: #000000 !important;
+}
+
+.badge-danger {
+    background-color: var(--smarthydro-red) !important;
+    color: #ffffff !important;
+}
+
+/* Aplicar colores SmartHydro a navbar */
+.navbar {
+    background: linear-gradient(135deg, var(--smarthydro-blue-dark) 0%, var(--smarthydro-blue) 100%) !important;
+}
+
+/* Aplicar colores SmartHydro a sidebar activo */
+.sidebar .nav-sidebar .nav-link.active {
+    background: linear-gradient(135deg, var(--smarthydro-blue-dark) 0%, var(--smarthydro-blue) 100%) !important;
+}
+
+/* Aplicar colores SmartHydro a links */
+a {
+    color: var(--smarthydro-blue) !important;
+}
+
+a:hover {
+    color: var(--smarthydro-blue-dark) !important;
+}
+
+/* Aplicar colores SmartHydro a focus states */
+.form-control:focus {
+    border-color: var(--smarthydro-blue) !important;
+    box-shadow: 0 0 0 0.2rem rgba(86, 156, 214, 0.25) !important;
+}
+
+/* Aplicar colores SmartHydro a paginación activa */
+.page-item.active .page-link {
+    background: linear-gradient(135deg, var(--smarthydro-blue-dark) 0%, var(--smarthydro-blue) 100%) !important;
+    border-color: var(--smarthydro-blue-dark) !important;
+}
+
+/* Aplicar colores SmartHydro a alertas */
+.alert-primary {
+    background-color: var(--smarthydro-blue-light) !important;
+    border-color: var(--smarthydro-blue) !important;
+    color: var(--smarthydro-blue-dark) !important;
+}
+
+.alert-success {
+    background-color: var(--smarthydro-green-light) !important;
+    border-color: var(--smarthydro-green) !important;
+    color: var(--smarthydro-green-dark) !important;
+}
+
+.alert-warning {
+    background-color: var(--smarthydro-yellow-light) !important;
+    border-color: var(--smarthydro-yellow) !important;
+    color: #664d03 !important;
+}
+
+.alert-danger {
+    background-color: var(--smarthydro-red-light) !important;
+    border-color: var(--smarthydro-red) !important;
+    color: var(--smarthydro-red-dark) !important;
+}
+
+.alert-info {
+    background-color: var(--smarthydro-blue-light) !important;
+    border-color: var(--smarthydro-blue) !important;
+    color: var(--smarthydro-blue-dark) !important;
+}
+
+/* Mejorar contraste manteniendo armonía */
+body {
+    color: var(--smarthydro-gray-800) !important;
+}
+
+.table th {
+    background: linear-gradient(135deg, var(--smarthydro-gray-50) 0%, var(--smarthydro-gray-100) 100%) !important;
+    color: var(--smarthydro-gray-800) !important;
+}
+
+.table td {
+    color: var(--smarthydro-gray-700) !important;
+}
+
+/* Mejorar contraste en cards */
+.card-header {
+    background: linear-gradient(135deg, var(--smarthydro-gray-50) 0%, var(--smarthydro-gray-100) 100%) !important;
+    color: var(--smarthydro-gray-800) !important;
+}
+
+/* Mejorar contraste en labels */
+label {
+    color: var(--smarthydro-gray-800) !important;
+}
+
+/* Mejorar contraste en títulos */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    color: var(--smarthydro-gray-800) !important;
+}

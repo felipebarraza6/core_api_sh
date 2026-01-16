@@ -84,6 +84,7 @@ class CatchmentPoint(ModelApi):
     FRECUENCY_OPTIONS = [
         ("1", "1 minuto"),
         ("5", "5 minutos"),
+        ("10", "10 minutos"),
         ("60", "60 minutos"),
     ]
 
@@ -400,6 +401,11 @@ class ProfileDataConfigCatchment(ModelApi):
     date_delivery_act = models.DateField(
         blank=True, null=True, verbose_name="Fecha acta de entrega"
     )
+    addition = models.IntegerField(
+        default=0,
+        verbose_name="Adicion (Reset)",
+        help_text="Valor acumulado automáticamente cuando el sensor se reinicia (glitch/reset)."
+    )
 
     class Meta:
         """Meta data profile data config"""
@@ -466,6 +472,9 @@ class DgaDataConfigCatchment(ModelApi):
     shac = models.CharField(
         max_length=1200, blank=True, null=True, verbose_name="Sector hidrologico(SHAC)"
     )
+    region_dga = models.CharField(
+        max_length=300, blank=True, null=True, verbose_name="DGA Región"
+    )
     date_start_compliance = models.DateField(
         blank=True, null=True, verbose_name="Fecha inicio envío DGA"
     )
@@ -479,7 +488,11 @@ class DgaDataConfigCatchment(ModelApi):
         max_length=1400, default="17352192-8", verbose_name="RUT"
     )
     password_dga_software = models.CharField(
-        max_length=1400, default="ZSQgCiDg7y", verbose_name="clave DGA"
+        max_length=1400,
+        default='',
+        blank=True,
+        verbose_name="clave DGA",
+        help_text='Contraseña software DGA. Dejar vacío para usar default del sistema.'
     )
 
     class Meta:
@@ -487,6 +500,19 @@ class DgaDataConfigCatchment(ModelApi):
 
         verbose_name = "Configuracion de datos DGA"
         verbose_name_plural = "Configuraciones de datos DGA"
+
+    def get_dga_password(self):
+        """
+        Obtener contraseña DGA.
+
+        Retorna la contraseña personalizada del punto o la contraseña
+        por defecto del sistema configurada en variables de entorno.
+
+        Returns:
+            str: Contraseña DGA a utilizar
+        """
+        from django.conf import settings
+        return self.password_dga_software or settings.DGA_DEFAULT_PASSWORD
 
     def __str__(self):
         return f"{self.point_catchment}"
@@ -561,12 +587,7 @@ class Variable(ModelApi):
         default=1000,
         verbose_name="Pulsos(solo aplica a totalizadores (pulsos*pulsos_factor)/1000)",
     )
-    addition = models.IntegerField(
-        blank=True,
-        null=True,
-        default=0,
-        verbose_name="Constante(solo aplica a totalizadores)",
-    )
+
 
     # Caudal
     convert_to_lt = models.BooleanField(

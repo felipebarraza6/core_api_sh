@@ -122,6 +122,10 @@ def get_data_novus(variables, token, point_catchment):
         "%Y-%m-%dT%H:00:00"
     )
 
+    max_days_not_conection = 0  # ✅ TRACK WORST CASE (MAXIMUM)
+    best_date_time_last_logger = None
+    variable_details = [] # ✅ TRACK INDIVIDUAL VARIABLE STATUS
+
     # DISABLED: Validación de frecuencia (mantener comentada como en twin_f1.py)
     # current_time = datetime.now(chile)
     # if not validate_frequency(point_catchment, current_time):
@@ -301,6 +305,7 @@ def get_data_novus(variables, token, point_catchment):
                 str(e),
             )
 
+        days_not_conection = 9999 # Default if no timestamp
         if created_register.get("date_time_last_logger"):
             date_time_medition = datetime.strptime(
                 created_register["date_time_medition"], "%Y-%m-%dT%H:00:00"
@@ -311,7 +316,67 @@ def get_data_novus(variables, token, point_catchment):
             days_not_conection = (date_time_medition - date_time_last_logger).days
             if days_not_conection < 0:
                 days_not_conection = 0
-            created_register["days_not_conection"] = days_not_conection
+            
+            # ✅ TRACK MAXIMUM DISCONNECTION (Worst case scenario)
+            if days_not_conection > max_days_not_conection:
+                max_days_not_conection = days_not_conection
+            
+            # ✅ TRACK BEST HEARTBEAT (Most recent data)
+            if best_date_time_last_logger is None or days_not_conection == 0:
+                 best_date_time_last_logger = date_time_last_logger
+        
+        # ✅ COLLECT INDIVIDUAL STATUS (Always)
+        variable_details.append({
+            "name": variable.get("str_variable", "Var " + type_variable),
+            "type": type_variable,
+            "days": days_not_conection,
+            "timestamp": created_register.get("date_time_last_logger")
+        })
+
+    # ✅ NOTIFICACIÓN DE RECONEXIÓN / DESCONEXIÓN (FUERA DEL LOOP)
+    if best_date_time_last_logger or variable_details:
+        created_register["days_not_conection"] = max_days_not_conection
+        if best_date_time_last_logger:
+            if isinstance(best_date_time_last_logger, str):
+                created_register["date_time_last_logger"] = best_date_time_last_logger
+            else:
+                created_register["date_time_last_logger"] = best_date_time_last_logger.strftime("%Y-%m-%dT%H:%M:%S")
+        
+        # ✅ CALCULATE is_partial: True if some vars OK and some not
+        ok_vars = sum(1 for v in variable_details if v.get('days', 9999) == 0)
+        failing_vars = sum(1 for v in variable_details if v.get('days', 9999) > 0)
+        created_register["is_partial"] = (ok_vars > 0 and failing_vars > 0)
+        created_register["variable_details"] = variable_details # ✅ SAVE JSON
+
+        try:
+            from api.core.utils.google_chat import check_and_notify_reconnection, check_and_notify_disconnection
+            
+            date_time_medition = datetime.strptime(
+                created_register["date_time_medition"], "%Y-%m-%dT%H:00:00"
+            )
+            
+            check_and_notify_reconnection(
+                point_id=point_catchment["id"],
+                new_days_not_conection=max_days_not_conection,
+                point_name=point_catchment.get("title", "Sin nombre"),
+                client_name=point_catchment.get("project_info", {}).get("client_name", "N/A"),
+                flow=created_register.get("flow"),
+                nivel=created_register.get("nivel"),
+                total=created_register.get("total"),
+                date_time_medition=date_time_medition,
+                date_time_last_logger=best_date_time_last_logger,
+                variable_details=variable_details # ✅ PASS DETAILS
+            )
+            check_and_notify_disconnection(
+                point_id=point_catchment["id"],
+                new_days_not_conection=max_days_not_conection,
+                point_name=point_catchment.get("title", "Sin nombre"),
+                client_name=point_catchment.get("project_info", {}).get("client_name", "N/A"),
+                date_time_medition=date_time_medition,
+                variable_details=variable_details # ✅ PASS DETAILS
+            )
+        except Exception as e:
+            print(f"Error en alerta reconexión/desconexión: {e}")
 
     get = DgaDataConfigCatchment.objects.get(point_catchment__id=point_catchment["id"])
     current_time = datetime.now(chile)

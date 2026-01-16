@@ -10,3 +10,4 @@ from .catchment_points import (ClientSerializer, ProjectCatchmentsSerializer,
                                DgaDataConfigCatchmentSerializer,
                                SchemesCatchmentSerializer, VariableSerializer,
                                RegisterPersonsSerializer)
+from .management import ManagementViewSet

@@ -26,7 +26,7 @@ from .getters.thingsio import get_data_thethings
 def run():
     """Punto de inicio de la ejecución frecuencia 1/min"""
     get_data = CatchmentPoint.objects.filter(
-        is_tdata=True, data_config_profiles__is_telemetry=True, frecuency="1"
+        is_tdata=True, is_thethings=False, is_novus=False, data_config_profiles__is_telemetry=True, frecuency="1"
     )
 
     serializer = CatchmentPointSerializerDetailCron(get_data, many=True)
@@ -81,6 +81,25 @@ def log_variable_processing(
         print(
             f"❌ Punto {point_catchment_id} - Error en {variable_type} '{variable_name}': {error_msg}"
         )
+        # ✅ ALERTA A GOOGLE CHAT (Solo en error)
+        try:
+            from api.core.utils.google_chat import check_and_notify_error
+            from api.core.models import CatchmentPoint
+            try:
+                point = CatchmentPoint.objects.select_related('project__client').get(id=point_catchment_id)
+                p_name = point.title
+                c_name = point.project.client.name if (point.project and point.project.client) else "N/A"
+            except:
+                p_name = f"ID {point_catchment_id}"
+                c_name = "Unknown"
+            check_and_notify_error(
+                point_id=point_catchment_id,
+                error_msg=f"{variable_type} Error: {error_msg}",
+                point_name=p_name,
+                client_name=c_name
+            )
+        except Exception as e:
+            print(f"Error sending chat alert: {e}")
 
 
 def validate_frequency(point_catchment, current_time):
@@ -124,6 +143,10 @@ def get_data_twin(variables, token, point_catchment):
         "%Y-%m-%dT%H:%M:00"
     )
 
+    max_days_not_conection = 0  # ✅ TRACK WORST CASE (MAXIMUM)
+    best_date_time_last_logger = None
+    variable_details = [] # ✅ TRACK INDIVIDUAL VARIABLE STATUS
+
     # DISABLED: Validación de frecuencia (mantener comentada como en twin.py)
     # current_time = datetime.now(chile)
     # if not validate_frequency(point_catchment, current_time):
@@ -132,6 +155,8 @@ def get_data_twin(variables, token, point_catchment):
 
     for variable in variables:
         data = None  # Inicializar data
+        variable_metadata = {} # ✅ Inicializar metadata extra
+
 
         if variable.get("token_service"):
             if (
@@ -188,10 +213,19 @@ def get_data_twin(variables, token, point_catchment):
                     value = 0
 
                 created_register["pulses"] = value
-                # ✅ FÓRMULA CORRECTA: (pulsos * factor) / 1000
-                created_register["total"] = total_m3(
-                    variable.get("pulses_factor"), value, point_catchment
+                # ✅ FÓRMULA CORRECTA CON METADATA
+                total_val, total_meta = total_m3(
+                    variable.get("pulses_factor"), 
+                    value, 
+                    point_catchment, 
+                    variable_id=variable.get("id"),
+                    return_full_details=True
                 )
+                created_register["total"] = total_val
+                
+                # Guardar metadata temporalmente para agregarla a variable_details
+                variable_metadata = total_meta
+
                 # ✅ DIFERENCIA POR HORA (consumo actual)
                 created_register["total_diff"] = total_hour(
                     created_register["total"], point_catchment
@@ -279,21 +313,17 @@ def get_data_twin(variables, token, point_catchment):
                 )
 
             elif type_variable == "CAUDAL_PROMEDIO":
-                if date_time_last_logger_total:
-                    created_register["flow"] = average_flow(
-                        point_catchment,
-                        created_register["total"],
-                        datetime.strptime(
-                            date_time_last_logger_total, "%Y-%m-%dT%H:%M:%S"
-                        ),
-                    )
-
+                # ✅ NO GUARDAR: Se calcula dinámicamente en serializers y cron_dga
+                # Esto asegura que siempre use la lógica más actualizada
+                # y no haya que reprocesar datos históricos si cambia la escala
                 log_variable_processing(
                     point_catchment["id"],
                     variable.get("str_variable"),
                     "CAUDAL_PROMEDIO",
                     True,
                 )
+                # NO asignar created_register["flow"] aquí
+                # El flow se calculará dinámicamente cuando se consulte o envíe
 
             else:
                 print("Invalid type_variable")
@@ -314,6 +344,7 @@ def get_data_twin(variables, token, point_catchment):
                 str(e),
             )
 
+        days_not_conection = 9999 # Default if no timestamp
         if created_register.get("date_time_last_logger"):
             date_time_medition = datetime.strptime(
                 created_register["date_time_medition"], "%Y-%m-%dT%H:%M:00"
@@ -324,16 +355,112 @@ def get_data_twin(variables, token, point_catchment):
             days_not_conection = (date_time_medition - date_time_last_logger).days
             if days_not_conection < 0:
                 days_not_conection = 0
-            created_register["days_not_conection"] = days_not_conection
+            
+            # ✅ TRACK MAXIMUM DISCONNECTION (Worst case scenario)
+            if days_not_conection > max_days_not_conection:
+                max_days_not_conection = days_not_conection
+            
+            # ✅ TRACK BEST HEARTBEAT (Most recent data)
+            if best_date_time_last_logger is None or days_not_conection == 0:
+                 best_date_time_last_logger = date_time_last_logger
+        
+        # ✅ COLLECT INDIVIDUAL STATUS (Always)
+        val_detail = {
+            "name": variable.get("str_variable", "Var " + type_variable),
+            "type": type_variable,
+            "days": days_not_conection,
+            "timestamp": created_register.get("date_time_last_logger")
+        }
+        # Merge extra metadata if available
+        if variable_metadata:
+            val_detail.update(variable_metadata)
+            
+        variable_details.append(val_detail)
 
-    get = DgaDataConfigCatchment.objects.get(point_catchment__id=point_catchment["id"])
-    current_time = datetime.now(chile)
+    # ✅ NOTIFICACIÓN DE RECONEXIÓN / DESCONEXIÓN (FUERA DEL LOOP)
+    # Solo si encontramos al menos un timestamp válido
+    if best_date_time_last_logger or variable_details:
+        created_register["days_not_conection"] = max_days_not_conection
+        if best_date_time_last_logger:
+            if isinstance(best_date_time_last_logger, str):
+                created_register["date_time_last_logger"] = best_date_time_last_logger
+            else:
+                created_register["date_time_last_logger"] = best_date_time_last_logger.strftime("%Y-%m-%dT%H:%M:%S")
+        
+        # ✅ CALCULATE is_partial: True if some vars OK and some not
+        ok_vars = sum(1 for v in variable_details if v.get('days', 9999) == 0)
+        failing_vars = sum(1 for v in variable_details if v.get('days', 9999) > 0)
+        created_register["is_partial"] = (ok_vars > 0 and failing_vars > 0)
+        created_register["variable_details"] = variable_details # ✅ SAVE JSON
+        
+        try:
+            from api.core.utils.google_chat import check_and_notify_reconnection, check_and_notify_disconnection
+            
+            date_time_medition = datetime.strptime(
+                created_register["date_time_medition"], "%Y-%m-%dT%H:%M:00"
+            )
+            
+            check_and_notify_reconnection(
+                point_id=point_catchment["id"],
+                new_days_not_conection=max_days_not_conection,
+                point_name=point_catchment.get("title", "Sin nombre"),
+                client_name=point_catchment.get("project_info", {}).get("client_name", "N/A"),
+                flow=created_register.get("flow"),
+                nivel=created_register.get("nivel"),
+                total=created_register.get("total"),
+                date_time_medition=date_time_medition,
+                date_time_last_logger=best_date_time_last_logger,
+                variable_details=variable_details # ✅ PASS DETAILS
+            )
+            check_and_notify_disconnection(
+                point_id=point_catchment["id"],
+                new_days_not_conection=max_days_not_conection,
+                point_name=point_catchment.get("title", "Sin nombre"),
+                client_name=point_catchment.get("project_info", {}).get("client_name", "N/A"),
+                date_time_medition=date_time_medition,
+                variable_details=variable_details # ✅ PASS DETAILS
+            )
+        except Exception as e:
+            print(f"Error en alerta reconexión/desconexión: {e}")
 
-    # Solo enviar a DGA si está habilitado Y corresponde la frecuencia
-    if get.send_dga and validate_frequency(point_catchment, current_time):
-        created_register["send_dga"] = True
-    else:
+    # DEBUG: Agregar logs para diagnosticar problema DGA
+    print(f"🔍 DEBUG PUNTO {point_catchment['id']}: Iniciando lógica DGA")
+    
+    try:
+        get = DgaDataConfigCatchment.objects.get(point_catchment__id=point_catchment["id"])
+        # Usar la hora del registro, no la hora actual del sistema
+        record_time = datetime.strptime(created_register["date_time_medition"], "%Y-%m-%dT%H:%M:00")
+        
+        print(f"🔍 DEBUG PUNTO {point_catchment['id']}: Config DGA encontrada - send_dga={get.send_dga}, standard={get.standard}")
+        print(f"🔍 DEBUG PUNTO {point_catchment['id']}: Hora del registro={record_time}, minuto={record_time.minute}")
+        
+        # Solo enviar a DGA si está habilitado Y corresponde la frecuencia
+        freq_valid = validate_frequency(point_catchment, record_time)
+        should_send = get.send_dga and freq_valid
+        
+        print(f"🔍 DEBUG PUNTO {point_catchment['id']}: Frecuencia válida={freq_valid}, Debería enviar={should_send}")
+        
+        if should_send:
+            created_register["send_dga"] = True
+            print(f"✅ PUNTO {point_catchment['id']}: Agregado a cola DGA")
+        else:
+            created_register["send_dga"] = False
+            print(f"ℹ️ PUNTO {point_catchment['id']}: NO agregado a cola DGA (frecuencia no corresponde)")
+            
+    except Exception as e:
+        print(f"❌ ERROR PUNTO {point_catchment['id']}: Error en lógica DGA: {e}")
+        # En caso de error, NO enviar a DGA por seguridad
         created_register["send_dga"] = False
+
+    # Check if record already exists for this time
+    exists = InteractionDetail.objects.filter(
+        catchment_point_id=point_catchment["id"],
+        date_time_medition=created_register["date_time_medition"]
+    ).exists()
+    
+    if exists:
+        print(f"⚠️ PUNTO {point_catchment['id']}: Registro ya existe para {created_register['date_time_medition']}. Saltando creación para evitar duplicados.")
+        return
 
     InteractionDetail.objects.create(
         catchment_point_id=point_catchment["id"], **created_register
