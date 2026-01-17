@@ -92,9 +92,7 @@ def run():
     Minimiza errores y maneja excepciones para ejecución continua.
     """
     try:
-        # Obtener registros pendientes de envío (máximo 10 por ejecución)
-        
-        
+        # Obtener registros pendientes de envío
         data_for_send = InteractionDetail.objects.filter(send_dga=True).exclude(catchment_point=1).order_by(
             "created"
         )
@@ -103,8 +101,9 @@ def run():
             dga_logger.info("No hay registros pendientes de envío a DGA")
             return
 
-        # Limitar a 10 registros por ejecución para evitar timeouts
-        data_for_send = data_for_send[:10]
+        # Aumentado a 30 registros por ejecución para procesar backlog más rápido
+        # Con rate limit de 12s, son ~6 min por batch (aceptable para cron de 3 min)
+        data_for_send = data_for_send[:30]
 
         dga_logger.info(f"Procesando {len(data_for_send)} registros para envío a DGA")
 

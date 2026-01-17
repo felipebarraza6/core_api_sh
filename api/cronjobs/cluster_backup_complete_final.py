@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
+"""
+RESPALDO DUAL SIMPLIFICADO
+==========================
+telemetry_api      → Solo datos operativos (config)
+data_store_telemetry → Solo mediciones (InteractionDetail)
+"""
 
 import os
 import time
 import psycopg2
 import psycopg2.extras
 
-# ORDEN DE TABLAS PARA RESPALDO (sin tocar InteractionDetail que ya funciona)
-CORE_OPERATIONAL_TABLES = [
+# TABLAS OPERATIVAS (solo para telemetry_api)
+OPERATIONAL_TABLES = [
     'core_client',
     'core_user', 
     'core_user_groups',
     'core_user_user_permissions',
     'core_typefilecatchment',
     'core_registerpersons',
-    'core_variable',
+    'core_projectcatchments',
     'core_schemescatchment',
+    'core_variable',
     'core_catchmentpoint',
     'core_dgadataconfigcatchment',
     'core_profiledataconfigcatchment',
@@ -22,17 +29,16 @@ CORE_OPERATIONAL_TABLES = [
     'core_filecatchment',
     'core_catchmentpoint_users_viewers',
     'core_schemescatchment_points_catchment',
-    'core_projectcatchments',
     'core_notificationscatchment',
     'core_responsenotificationscatchment'
 ]
+
 
 def load_env():
     """Cargar variables de entorno desde archivo .env"""
     env_file = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"
     )
-
     if os.path.exists(env_file):
         with open(env_file, "r") as f:
             for line in f:
@@ -40,6 +46,7 @@ def load_env():
                 if line and not line.startswith("#") and "=" in line:
                     key, value = line.split("=", 1)
                     os.environ[key] = value
+
 
 load_env()
 
@@ -51,115 +58,36 @@ LOCAL_DB = {
     "database": os.environ.get("LOCAL_DB_NAME", "smarthydro_prod"),
 }
 
-CLUSTER_DB_PRIMARY = {
-    "host": os.environ.get("CLUSTER_DB_HOST", "db-postgresql.com"),
-    "port": os.environ.get("CLUSTER_DB_PORT", "123"),
-    "user": os.environ.get("CLUSTER_DB_USER", "admin"),
+# telemetry_api = Solo config operativa
+CLUSTER_DB_CONFIG = {
+    "host": os.environ.get("CLUSTER_DB_HOST"),
+    "port": os.environ.get("CLUSTER_DB_PORT", "25060"),
+    "user": os.environ.get("CLUSTER_DB_USER", "api_principal"),
     "password": os.environ.get("CLUSTER_DB_PASSWORD", ""),
     "database": os.environ.get("CLUSTER_DB_NAME", "telemetry_api"),
     "sslmode": os.environ.get("CLUSTER_DB_SSLMODE", "require"),
 }
 
-CLUSTER_DB_BACKUP = {
-    "host": os.environ.get("CLUSTER_DB_HOST", "db-postgresql.com"),
-    "port": os.environ.get("CLUSTER_DB_PORT", "123"),
-    "user": os.environ.get("CLUSTER_DB_USER_BACKUP", "data_store_telemetry"),
+# data_store_telemetry = Solo mediciones
+CLUSTER_DB_TELEMETRY = {
+    "host": os.environ.get("CLUSTER_DB_HOST"),
+    "port": os.environ.get("CLUSTER_DB_PORT", "25060"),
+    "user": os.environ.get("CLUSTER_DB_USER_BACKUP", "api_principal"),
     "password": os.environ.get("CLUSTER_DB_PASSWORD_BACKUP", ""),
     "database": "data_store_telemetry",
     "sslmode": os.environ.get("CLUSTER_DB_SSLMODE", "require"),
 }
 
-def create_core_table_if_not_exists(local_cursor, cluster_cursor, table_name, db_name):
-    """Crear tabla core_ si no existe, copiando estructura del local"""
-    try:
-        # Verificar si existe en cluster
-        cluster_cursor.execute("""
-            SELECT EXISTS (
-                SELECT 1 FROM information_schema.tables 
-                WHERE table_name = %s AND table_schema = 'public'
-            )
-        """, (table_name,))
-        
-        if cluster_cursor.fetchone()[0]:
-            return True
-        
-        # Obtener CREATE TABLE simplificado
-        local_cursor.execute(f"""
-            SELECT column_name, data_type, is_nullable, column_default
-            FROM information_schema.columns 
-            WHERE table_name = '{table_name}' AND table_schema = 'public'
-            ORDER BY ordinal_position
-        """)
-        
-        columns_info = local_cursor.fetchall()
-        if not columns_info:
-            return False
-        
-        # Construir CREATE TABLE básico
-        columns_def = []
-        for col_name, data_type, is_nullable, col_default in columns_info:
-            col_def = f"{col_name} "
-            
-            # Mapear tipos básicos
-            if 'character varying' in data_type:
-                col_def += "TEXT"
-            elif 'integer' in data_type:
-                if col_name == 'id':
-                    col_def += "SERIAL PRIMARY KEY"
-                else:
-                    col_def += "INTEGER"
-            elif 'bigint' in data_type:
-                col_def += "BIGINT"
-            elif 'boolean' in data_type:
-                col_def += "BOOLEAN"
-            elif 'timestamp' in data_type:
-                col_def += "TIMESTAMP WITH TIME ZONE"
-            elif 'numeric' in data_type or 'decimal' in data_type:
-                col_def += "NUMERIC"
-            elif 'text' in data_type:
-                col_def += "TEXT"
-            else:
-                col_def += "TEXT"  # Fallback
-            
-            if is_nullable == 'NO' and col_name != 'id':
-                col_def += " NOT NULL"
-            
-            columns_def.append(col_def)
-        
-        create_sql = f"CREATE TABLE {table_name} ({', '.join(columns_def)})"
-        
-        # Ejecutar creación
-        cluster_cursor.execute(create_sql)
-        print(f"✅ {db_name}: {table_name} creada")
-        return True
-        
-    except Exception as e:
-        print(f"❌ {db_name}: Error creando {table_name}: {e}")
-        return False
 
-def ensure_core_tables_exist(local_cursor, cluster_cursor, db_name):
-    """Asegurar que todas las tablas core_ existen"""
-    print(f"🔧 {db_name}: Verificando tablas core_...")
-    
-    tables_to_check = CORE_OPERATIONAL_TABLES + ['core_interactiondetail']
-    success_count = 0
-    
-    for table_name in tables_to_check:
-        if create_core_table_if_not_exists(local_cursor, cluster_cursor, table_name, db_name):
-            success_count += 1
-    
-    print(f"✅ {db_name}: {success_count}/{len(tables_to_check)} tablas verificadas")
-    return success_count == len(tables_to_check)
-
-def backup_operational_tables(local_cursor, cluster_cursor, db_name):
-    """Respaldar tablas operativas core_"""
-    print(f"🔧 {db_name}: Respaldando tablas operativas...")
+def backup_operational_to_telemetry_api(local_cursor, cluster_conn, cluster_cursor):
+    """Respaldar tablas operativas a telemetry_api"""
+    print("🔧 telemetry_api: Respaldando configuración operativa...")
     
     success_count = 0
     
-    for table_name in CORE_OPERATIONAL_TABLES:
+    for table_name in OPERATIONAL_TABLES:
         try:
-            # Verificar si existe en local
+            # Verificar existencia
             local_cursor.execute("""
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.tables 
@@ -170,7 +98,7 @@ def backup_operational_tables(local_cursor, cluster_cursor, db_name):
             if not local_cursor.fetchone()[0]:
                 continue
             
-            # Contar registros
+            # Contar local
             local_cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
             local_count = local_cursor.fetchone()[0]
             
@@ -178,101 +106,83 @@ def backup_operational_tables(local_cursor, cluster_cursor, db_name):
                 success_count += 1
                 continue
             
-            # Truncar tabla cluster
-            try:
-                cluster_cursor.execute(f"TRUNCATE TABLE {table_name} RESTART IDENTITY CASCADE")
-            except:
-                pass
+            # Obtener columnas
+            local_cursor.execute(f"""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = '{table_name}' 
+                ORDER BY ordinal_position
+            """)
+            columns = [row[0] for row in local_cursor.fetchall()]
             
-            # Copiar datos
-            local_cursor.execute(f"SELECT * FROM {table_name} ORDER BY id")
+            # Obtener max ID en cluster
+            try:
+                cluster_cursor.execute(f"SELECT COALESCE(MAX(id), 0) FROM {table_name}")
+                max_cluster_id = cluster_cursor.fetchone()[0]
+            except:
+                max_cluster_id = 0
+            
+            # Obtener registros nuevos
+            local_cursor.execute(f"SELECT * FROM {table_name} WHERE id > {max_cluster_id} ORDER BY id")
             rows = local_cursor.fetchall()
             
-            if rows:
-                # Obtener columnas
-                local_cursor.execute(f"""
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = '{table_name}' 
-                    ORDER BY ordinal_position
-                """)
-                columns = [row[0] for row in local_cursor.fetchall()]
-                columns_str = ", ".join(columns)
-                placeholders = ", ".join(["%s"] * len(columns))
-                
-                insert_query = f"INSERT INTO {table_name} ({columns_str}) VALUES ({placeholders})"
-                
-                inserted = 0
-                for row in rows:
-                    try:
-                        cluster_cursor.execute(insert_query, row)
-                        inserted += 1
-                    except:
-                        pass
-                
-                print(f"✅ {db_name}: {table_name} - {inserted} registros")
+            if not rows:
+                success_count += 1
+                continue
+            
+            # INSERT con ON CONFLICT
+            columns_str = ", ".join(columns)
+            placeholders = ", ".join(["%s"] * len(columns))
+            update_cols = [c for c in columns if c != 'id']
+            update_str = ", ".join([f"{c} = EXCLUDED.{c}" for c in update_cols]) if update_cols else "id = EXCLUDED.id"
+            
+            insert_query = f"""
+                INSERT INTO {table_name} ({columns_str}) 
+                VALUES ({placeholders})
+                ON CONFLICT (id) DO UPDATE SET {update_str}
+            """
+            
+            inserted = 0
+            for row in rows:
+                try:
+                    cluster_cursor.execute(insert_query, row)
+                    inserted += 1
+                except:
+                    pass
+            
+            cluster_conn.commit()
+            
+            if inserted > 0:
+                print(f"  ✅ {table_name}: +{inserted} nuevos")
             
             success_count += 1
             
         except Exception as e:
-            print(f"❌ {db_name}: Error en {table_name}: {e}")
+            print(f"  ⚠️ {table_name}: {str(e)[:50]}")
     
+    print(f"✅ telemetry_api: {success_count}/{len(OPERATIONAL_TABLES)} tablas procesadas")
     return success_count
 
-def backup_to_database(cluster_db_config, db_name):
-    """Conectar a base del cluster"""
-    print(f"=== CONECTANDO A {db_name.upper()} ===")
-    try:
-        cluster_conn = psycopg2.connect(**cluster_db_config)
-        cluster_cursor = cluster_conn.cursor()
-        
-        try:
-            cluster_cursor.execute("SELECT COUNT(*) FROM core_interactiondetail;")
-            cluster_total = cluster_cursor.fetchone()[0]
-            print(f"✅ {db_name}: {cluster_total:,} registros InteractionDetail")
-        except:
-            cluster_total = 0
-            print(f"✅ {db_name}: Conectado (InteractionDetail no existe aún)")
-        
-        return cluster_conn, cluster_cursor, cluster_total
-    except Exception as e:
-        print(f"❌ ERROR conectando a {db_name}: {e}")
-        return None, None, 0
 
-def sync_to_database(local_conn, local_cursor, cluster_conn, cluster_cursor, db_name, local_total):
-    """Sincronización completa: tablas core_ + InteractionDetail"""
-    print(f"=== SINCRONIZANDO {db_name.upper()} ===")
+def backup_telemetry_to_data_store(local_cursor, cluster_conn, cluster_cursor, local_total):
+    """Respaldar InteractionDetail a data_store_telemetry"""
+    print("📊 data_store_telemetry: Respaldando mediciones...")
     
     try:
-        # PASO 0: Crear tablas si no existen
-        print(f"🔧 {db_name}: PASO 0 - Verificando estructura")
-        if not ensure_core_tables_exist(local_cursor, cluster_cursor, db_name):
-            print(f"❌ {db_name}: Error en estructura de tablas")
-            return False
-        cluster_conn.commit()
-        
-        # PASO 1: Respaldar tablas operativas
-        print(f"🔧 {db_name}: PASO 1 - Tablas operativas")
-        operational_success = backup_operational_tables(local_cursor, cluster_cursor, db_name)
-        cluster_conn.commit()
-        print(f"✅ {db_name}: {operational_success} tablas operativas procesadas")
-        
-        # PASO 2: InteractionDetail (tu código original)
-        print(f"📊 {db_name}: PASO 2 - InteractionDetail")
-        
         cluster_cursor.execute("SELECT COUNT(*) FROM core_interactiondetail;")
         cluster_total = cluster_cursor.fetchone()[0]
-        missing_count = local_total - cluster_total
-        
-        print(f"📊 {db_name}: Local {local_total:,} vs Cluster {cluster_total:,}")
-        print(f"📊 FALTANTES: {missing_count:,}")
-        
-        if missing_count <= 0:
-            print(f"✅ {db_name}: InteractionDetail ya sincronizada")
-            return True
-        
-        # Limpiar huérfanos
-        print(f"🧹 {db_name}: Limpiando huérfanos...")
+    except:
+        cluster_total = 0
+    
+    missing_count = local_total - cluster_total
+    print(f"  Local: {local_total:,} | Cluster: {cluster_total:,} | Pendientes: {missing_count:,}")
+    
+    if missing_count <= 0:
+        print("✅ data_store_telemetry: Ya sincronizado")
+        return True
+    
+    # Limpiar huérfanos si hay
+    try:
         cluster_cursor.execute("SELECT id FROM core_interactiondetail ORDER BY id;")
         cluster_ids = set(row[0] for row in cluster_cursor.fetchall())
         
@@ -280,74 +190,87 @@ def sync_to_database(local_conn, local_cursor, cluster_conn, cluster_cursor, db_
         local_ids = set(row[0] for row in local_cursor.fetchall())
         
         orphan_ids = cluster_ids - local_ids
-        if orphan_ids:
-            print(f"🗑️ {db_name}: Eliminando {len(orphan_ids)} huérfanos...")
+        if orphan_ids and len(orphan_ids) < 10000:
             orphan_list = list(orphan_ids)
             for i in range(0, len(orphan_list), 1000):
                 batch = orphan_list[i:i + 1000]
                 placeholders = ",".join(["%s"] * len(batch))
                 cluster_cursor.execute(f"DELETE FROM core_interactiondetail WHERE id IN ({placeholders})", batch)
             cluster_conn.commit()
+            print(f"  🧹 Eliminados {len(orphan_ids)} huérfanos")
+    except:
+        pass
+    
+    # Obtener registros faltantes
+    cluster_cursor.execute("SELECT COALESCE(MAX(id), 0) FROM core_interactiondetail;")
+    max_cluster_id = cluster_cursor.fetchone()[0]
+    
+    local_cursor.execute("""
+        SELECT id, created, modified, date_time_medition, date_time_last_logger,
+               flow, total, total_diff, total_today_diff, nivel, water_table,
+               send_dga, return_dga, n_voucher, is_error, catchment_point_id,
+               notification_id, pulses, days_not_conection
+        FROM core_interactiondetail
+        WHERE id > %s
+        ORDER BY id
+    """, (max_cluster_id,))
+    
+    missing_records = local_cursor.fetchall()
+    
+    if not missing_records:
+        print("✅ data_store_telemetry: Sin registros nuevos")
+        return True
+    
+    # Migrar en lotes de 50K
+    insert_query = """
+        INSERT INTO core_interactiondetail 
+        (id, created, modified, date_time_medition, date_time_last_logger,
+         flow, total, total_diff, total_today_diff, nivel, water_table,
+         send_dga, return_dga, n_voucher, is_error, catchment_point_id,
+         notification_id, pulses, days_not_conection)
+        VALUES %s
+        ON CONFLICT (id) DO NOTHING
+    """
+    
+    BATCH_SIZE = 50000
+    total_records = len(missing_records)
+    total_inserted = 0
+    start_time = time.time()
+    
+    for i in range(0, total_records, BATCH_SIZE):
+        batch = missing_records[i:i + BATCH_SIZE]
+        batch_num = (i // BATCH_SIZE) + 1
+        total_batches = (total_records + BATCH_SIZE - 1) // BATCH_SIZE
         
-        # Buscar registros faltantes
-        cluster_cursor.execute("SELECT MAX(id) FROM core_interactiondetail;")
-        max_id_result = cluster_cursor.fetchone()
-        max_cluster_id = max_id_result[0] if max_id_result[0] else 0
-        
-        local_cursor.execute("""
-            SELECT id, created, modified, date_time_medition, date_time_last_logger,
-                   flow, total, total_diff, total_today_diff, nivel, water_table,
-                   send_dga, return_dga, n_voucher, is_error, catchment_point_id,
-                   notification_id, pulses, days_not_conection
-            FROM core_interactiondetail
-            WHERE id > %s
-            ORDER BY id
-        """, (max_cluster_id,))
-        
-        missing_records = local_cursor.fetchall()
-        
-        if missing_records:
-            print(f"📥 {db_name}: Migrando {len(missing_records):,} registros...")
-            
-            insert_query = """
-                INSERT INTO core_interactiondetail 
-                (id, created, modified, date_time_medition, date_time_last_logger,
-                 flow, total, total_diff, total_today_diff, nivel, water_table,
-                 send_dga, return_dga, n_voucher, is_error, catchment_point_id,
-                 notification_id, pulses, days_not_conection)
-                VALUES %s
-                ON CONFLICT (id) DO NOTHING
-            """
-            
-            start_time = time.time()
+        try:
             psycopg2.extras.execute_values(
-                cluster_cursor, insert_query, missing_records, page_size=1000
+                cluster_cursor, insert_query, batch, page_size=1000
             )
             cluster_conn.commit()
-            end_time = time.time()
-            
-            rate = len(missing_records) / (end_time - start_time) if end_time > start_time else 0
-            print(f"🚀 {db_name}: {len(missing_records):,} en {end_time - start_time:.1f}s ({rate:.0f} reg/s)")
-        
-        # Verificación final
-        cluster_cursor.execute("SELECT COUNT(*) FROM core_interactiondetail;")
-        final_total = cluster_cursor.fetchone()[0]
-        print(f"📊 {db_name}: FINAL - Local {local_total:,} vs Cluster {final_total:,}")
-        
-        return final_total >= local_total * 0.99
-        
-    except Exception as e:
-        print(f"❌ {db_name}: Error: {e}")
-        return False
+            total_inserted += len(batch)
+            print(f"  ✅ Batch {batch_num}/{total_batches}: {len(batch):,} registros")
+        except Exception as e:
+            print(f"  ⚠️ Batch {batch_num}: {str(e)[:60]}")
+            cluster_conn.rollback()
+    
+    elapsed = time.time() - start_time
+    rate = total_inserted / elapsed if elapsed > 0 else 0
+    print(f"🚀 data_store_telemetry: {total_inserted:,} en {elapsed:.1f}s ({rate:.0f} reg/s)")
+    
+    return total_inserted > 0
+
 
 def find_and_migrate_missing():
-    """Respaldo dual completo"""
-    print("=== RESPALDO DUAL COMPLETO ===")
-    print("✅ TODAS las tablas core_ + InteractionDetail")
+    """Respaldo dual simplificado"""
+    print("=" * 50)
+    print("RESPALDO DUAL SIMPLIFICADO")
+    print("telemetry_api → Config operativa")
+    print("data_store_telemetry → Mediciones")
+    print("=" * 50)
     print()
     
     try:
-        # Conectar local (SOLO LECTURA)
+        # Conectar local
         local_conn = psycopg2.connect(**LOCAL_DB)
         local_cursor = local_conn.cursor()
         
@@ -358,59 +281,70 @@ def find_and_migrate_missing():
         
         results = []
         
-        # Respaldo primario
-        print("🔄 RESPALDO PRIMARIO (telemetry_api)")
-        conn1, cursor1, total1 = backup_to_database(CLUSTER_DB_PRIMARY, "telemetry_api")
-        if conn1 and cursor1:
-            result1 = sync_to_database(local_conn, local_cursor, conn1, cursor1, "telemetry_api", local_total)
-            results.append(("telemetry_api", result1))
-            cursor1.close()
-            conn1.close()
-        else:
-            results.append(("telemetry_api", False))
+        # === TELEMETRY_API: Solo config ===
+        print("🔄 RESPALDO 1: telemetry_api (config)")
+        try:
+            config_conn = psycopg2.connect(**CLUSTER_DB_CONFIG)
+            config_cursor = config_conn.cursor()
+            
+            result1 = backup_operational_to_telemetry_api(local_cursor, config_conn, config_cursor)
+            results.append(("telemetry_api (config)", result1 > 0))
+            
+            config_cursor.close()
+            config_conn.close()
+        except Exception as e:
+            print(f"❌ telemetry_api: {e}")
+            results.append(("telemetry_api (config)", False))
         
         print()
         
-        # Respaldo secundario
-        print("🔄 RESPALDO SECUNDARIO (data_store_telemetry)")
-        conn2, cursor2, total2 = backup_to_database(CLUSTER_DB_BACKUP, "data_store_telemetry")
-        if conn2 and cursor2:
-            result2 = sync_to_database(local_conn, local_cursor, conn2, cursor2, "data_store_telemetry", local_total)
-            results.append(("data_store_telemetry", result2))
-            cursor2.close()
-            conn2.close()
-        else:
-            results.append(("data_store_telemetry", False))
+        # === DATA_STORE_TELEMETRY: Solo mediciones ===
+        print("🔄 RESPALDO 2: data_store_telemetry (mediciones)")
+        try:
+            telem_conn = psycopg2.connect(**CLUSTER_DB_TELEMETRY)
+            telem_cursor = telem_conn.cursor()
+            
+            result2 = backup_telemetry_to_data_store(local_cursor, telem_conn, telem_cursor, local_total)
+            results.append(("data_store_telemetry (mediciones)", result2))
+            
+            telem_cursor.close()
+            telem_conn.close()
+        except Exception as e:
+            print(f"❌ data_store_telemetry: {e}")
+            results.append(("data_store_telemetry (mediciones)", False))
         
         local_cursor.close()
         local_conn.close()
         
         # Resumen
         print()
-        print("=== RESUMEN RESPALDO DUAL ===")
-        success_count = sum(1 for _, result in results if result)
+        print("=" * 40)
+        print("RESUMEN RESPALDO DUAL")
+        print("=" * 40)
         
         for db_name, result in results:
-            status = "✅ EXITOSO" if result else "❌ FALLÓ"
-            print(f"📊 {db_name}: {status}")
+            status = "✅ OK" if result else "❌ FALLÓ"
+            print(f"  {status} {db_name}")
         
-        return success_count > 0
+        return all(r for _, r in results)
         
     except Exception as e:
         print(f"❌ ERROR: {e}")
         return False
 
+
 def run():
     """Función para cron"""
     try:
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Iniciando respaldo dual completo...")
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Iniciando respaldo dual...")
         result = find_and_migrate_missing()
-        status = "exitoso" if result else "falló"
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Respaldo dual completo {status}")
+        status = "exitoso" if result else "parcial"
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Respaldo dual {status}")
         return result
     except Exception as e:
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error: {e}")
         return False
+
 
 if __name__ == "__main__":
     find_and_migrate_missing()

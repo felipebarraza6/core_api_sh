@@ -186,8 +186,8 @@ def process_totalizado_variable(
     total_diff = total_hour(created_register["total"], point_catchment, current_dt)
     created_register["total_diff"] = total_diff
 
-    # 5. CALCULAR ACUMULADO DEL DÍA
-    total_today_diff = total_day(point_catchment, current_dt, total_diff)
+    # 5. CALCULAR ACUMULADO DEL DÍA (✅ CORRECCIÓN: Pasar total, no diff)
+    total_today_diff = total_day(point_catchment, current_dt, created_register["total"])
     created_register["total_today_diff"] = total_today_diff
 
     # 6. ASIGNAR TIMESTAMP DEL ÚLTIMO LOGGER

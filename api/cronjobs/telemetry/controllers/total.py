@@ -62,8 +62,6 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
 
         current_raw_m3 = (current_pulses * float(pulses_factor)) / 1000.0
 
-    # LÓGICA DE RESET
-
         # -- NUEVA LÓGICA: Usar ProfileDataConfigCatchment para el offset/addition --
         from api.core.models import ProfileDataConfigCatchment
         
@@ -77,6 +75,34 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
         # NOTE: Legacy fallback to variable.addition removed as per requirement.
         # offset remains 0 if profile is not found.
 
+        # ====================================================================
+        # VALIDACIÓN ANTI-SALTO MASIVO (ANTES DE ACEPTAR NUEVO VALOR)
+        # ====================================================================
+        MAX_DIFF_M3_PER_HOUR = 500  # Consumo máximo razonable por hora
+        
+        if last_interaction and last_interaction.total is not None:
+            last_total = float(last_interaction.total)
+            potential_new_total = current_raw_m3 + offset
+            diff = potential_new_total - last_total
+            
+            # Si el salto es > 500 m³, es sospechoso (probable glitch de sensor)
+            if diff > MAX_DIFF_M3_PER_HOUR:
+                logger.warning(
+                    f"🚨 SALTO MASIVO DETECTADO Punto {point_catchment['id']}: "
+                    f"Salto de {diff:.0f} m³ ({last_total:.0f} → {potential_new_total:.0f}). "
+                    f"Manteniendo último total válido para evitar corrupción."
+                )
+                # Retornar el valor anterior sin actualizar nada
+                if return_full_details:
+                    return int(round(last_total)), {
+                        "raw_pulses": current_pulses,
+                        "status": "MASSIVE_JUMP_BLOCKED",
+                        "diff_detected": diff,
+                        "logic": "kept_last_valid"
+                    }
+                return int(round(last_total))
+        
+        # LÓGICA DE RESET (solo si pasó la validación anti-salto)
         if last_interaction and last_interaction.pulses is not None:
             try:
                 last_pulses = float(last_interaction.pulses)
@@ -205,9 +231,12 @@ def total_hour(total, point_catchment, current_dt=None):
         return 0
 
 
-def total_day(point_catchment, current_dt=None, current_diff=None):
+def total_day(point_catchment, current_dt=None, current_total=None):
     """
     Acumulado del día = Total actual - Primer total del día
+    
+    ✅ CORRECCIÓN CRÍTICA: Recibe current_total (no current_diff).
+    Método más robusto y coherente que sumar diffs (que pueden estar clampeados).
     """
     try:
         if current_dt:
@@ -215,7 +244,7 @@ def total_day(point_catchment, current_dt=None, current_diff=None):
         else:
             dia = timezone.now().date()
         
-        # Primer total del día
+        # Obtener primer registro del día
         primer_total_dia = (
             InteractionDetail.objects.filter(
                 catchment_point_id=point_catchment["id"],
@@ -230,43 +259,46 @@ def total_day(point_catchment, current_dt=None, current_diff=None):
             return 0
         
         primer_total = float(primer_total_dia.total)
-        total_actual = float(current_diff) if current_diff else 0 # Wait, current_diff argument is ambiguous in call signature vs usage
         
-        # REVISAR: total_day se llama con (point, None, created_register["total_diff"]) en los cronjobs?
-        # NO, se llama con total_today_diff = total_day(point, None, total_diff)??
-        # ERROR en lógica anterior: usaba DB para buscar "ultimo_total_dia", pero estamos CALCULANDO el último
-        # Debemos usar el 'total' que acabamos de calcular, pero no lo pasamos como argumento.
-        # En los cronjobs: created_register["total_today_diff"] = total_day(point_catchment, None, created_register["total_diff"])
-        # El 3er argumento es 'current_diff' (consumo hora), NO el total acumulado.
+        # USAR TOTAL ACTUAL (no diff)
+        if current_total is not None:
+            total_actual = float(current_total)
+        else:
+            # Buscar último total del día en BD (fallback)
+            ultimo = (
+                InteractionDetail.objects.filter(
+                    catchment_point_id=point_catchment["id"],
+                    created__date=dia,
+                )
+                .exclude(total__isnull=True)
+                .order_by("-created", "-id")
+                .first()
+            )
+            if not ultimo:
+                return 0
+            total_actual = float(ultimo.total)
         
-        # CORRECCIÓN: Necesitamos el TOTAL ACUMULADO ACTUAL para hacer (Total Actual - Primer Total Día).
-        # Como no lo recibimos, debemos buscarlo o cambiar la firma.
-        # OPCIÓN SEGURA: Sumar los 'total_diff' del día. Es más robusto si 'total' tiene saltos.
+        # Cálculo directo: Total actual - Primer total del día
+        diff_dia = total_actual - primer_total
         
-        # Vamos a sumar los total_diff del día + el actual
-        suma_previos = (
-            InteractionDetail.objects.filter(
-                catchment_point_id=point_catchment["id"],
-                created__date=dia,
-            ).exclude(total_diff__isnull=True)
-            .values_list('total_diff', flat=True)
-        )
-        accum = sum([float(x) for x in suma_previos])
+        # Validación: No puede ser negativo
+        if diff_dia < 0:
+            logger.warning(f"Diff día negativo ({diff_dia}) en Punto {point_catchment['id']}. Clamp a 0.")
+            return 0
         
-        # Sumar el diff actual que se está procesando (si no se ha guardado aun en DB)
-        try:
-            current_d = float(current_diff) if current_diff is not None else 0
-        except:
-            current_d = 0
+        # Validación anti-salto: No puede ser > 10,000 m³
+        if diff_dia > 10000:
+            logger.warning(
+                f"🚨 DIFF DÍA EXCESIVA ({diff_dia} > 10,000) en Punto {point_catchment['id']}. "
+                "Probable error de datos. Clamp a 0."
+            )
+            return 0
             
-        return int(round(accum + current_d))
+        return int(round(diff_dia))
         
     except Exception as e:
-        logger.error(f"Error total_day optimizado para punto {point_catchment['id']}: {e}")
-        try:
-            return int(float(current_diff)) if current_diff else 0
-        except:
-            return 0
+        logger.error(f"Error total_day para punto {point_catchment['id']}: {e}")
+        return 0
 
 
 
