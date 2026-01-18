@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Prometheus Connection</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test de Conexión a Prometheus</h1>
+    <div id="results"></div>
+
+    <script>
+        const results = document.getElementById('results');
+
+        async function testEndpoint(url, description) {
+            try {
+                const response = await fetch(url);
+                const text = await response.text();
+                results.innerHTML += `<div class="success">✅ ${description}: ${response.status} ${response.statusText}</div>`;
+                if (text.length < 200) {
+                    results.innerHTML += `<div class="info">Respuesta: ${text.substring(0, 100)}...</div>`;
+                }
+            } catch (error) {
+                results.innerHTML += `<div class="error">❌ ${description}: Error - ${error.message}</div>`;
+            }
+        }
+
+        async function runTests() {
+            results.innerHTML = '<div class="info">🔄 Probando conexiones...</div><br>';
+
+            await testEndpoint('http://localhost:9090/-/healthy', 'Health Check');
+            await testEndpoint('http://localhost:9090/api/v1/targets', 'API Targets');
+            await testEndpoint('http://localhost:9090/metrics', 'Metrics Endpoint');
+            await testEndpoint('http://localhost:9090/query', 'Query Page');
+
+            results.innerHTML += '<br><div class="info">🏁 Tests completados. Si todos son ✅ entonces Prometheus funciona correctamente.</div>';
+            results.innerHTML += '<div class="info">Si la página /query aparece en blanco, es un problema del navegador (JavaScript o CORS).</div>';
+        }
+
+        runTests();
+    </script>
+</body>
+</html>

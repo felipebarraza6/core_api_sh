@@ -1,0 +1,49 @@
+{
+  "dashboard": {
+    "title": "SmartHydro Monitoring",
+    "tags": ["smarthydro"],
+    "timezone": "America/Santiago",
+    "panels": [
+      {
+        "title": "Django App Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"django_app\"}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "title": "PostgreSQL Connections",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "pg_stat_activity_count{datname=\"smarthydro_dev\"}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "title": "Redis Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "redis_memory_used_bytes",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "title": "Celery Tasks",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "celery_tasks_total",
+            "refId": "A"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,104 @@
+version: "3.8"
+
+services:
+  # ========================================
+  # PROMETHEUS - MONITOREO PRINCIPAL
+  # ========================================
+  prometheus_dev:
+    image: prom/prometheus:latest
+    container_name: prometheus_dev
+    volumes:
+      - /Users/felipebarraza/projects/core_api_sh/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus:rw
+    ports:
+      - "9090:9090"
+    networks:
+      - backend
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+
+  # ========================================
+  # GRAFANA - DASHBOARDS
+  # ========================================
+  grafana_dev:
+    image: grafana/grafana:latest
+    container_name: grafana_dev
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana:rw
+    ports:
+      - "3000:3000"
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # ========================================
+  # NODE EXPORTER - MÉTRICAS DEL SISTEMA
+  # ========================================
+  node_exporter_dev:
+    image: prom/node-exporter:latest
+    container_name: node_exporter_dev
+    ports:
+      - "9100:9100"
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # ========================================
+  # REDIS EXPORTER - MÉTRICAS DE REDIS
+  # ========================================
+  redis_exporter_dev:
+    image: oliver006/redis_exporter:latest
+    container_name: redis_exporter_dev
+    environment:
+      - REDIS_ADDR=redis_dev:6379
+      - REDIS_PASSWORD=
+    ports:
+      - "9121:9121"
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # ========================================
+  # POSTGRESQL EXPORTER - MÉTRICAS DE BD
+  # ========================================
+  postgres_exporter_dev:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres_exporter_dev
+    environment:
+      - DATA_SOURCE_NAME=postgresql://smarthydro_user:dev_password_123@postgres_dev:5432/smarthydro_dev?sslmode=disable
+    ports:
+      - "9187:9187"
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # ========================================
+  # FLOWER - MONITOR CELERY
+  # ========================================
+  flower_dev:
+    image: mher/flower:latest
+    container_name: flower_dev
+    environment:
+      - CELERY_BROKER_URL=redis://redis_dev:6379/0
+      - FLOWER_BASIC_AUTH=user:password
+      - FLOWER_PERSISTENT=True
+    ports:
+      - "5555:5555"
+    networks:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  backend:
+    driver: bridge

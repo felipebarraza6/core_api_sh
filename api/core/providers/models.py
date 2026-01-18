@@ -1,0 +1,335 @@
+"""
+Dynamic Provider Models
+
+These models replace the hardcoded provider fields in CatchmentPoint
+with a flexible, extensible architecture.
+"""
+
+from django.db import models
+from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError
+
+from ..models.utils import ModelApi
+from ..models.catchment_points import CatchmentPoint
+
+
+class TelemetryProvider(ModelApi):
+    """
+    Dynamic Telemetry Provider Configuration
+
+    Defines a telemetry provider that can be used by multiple points.
+    Supports different communication protocols and authentication methods.
+    """
+
+    # Basic Information
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        help_text="Unique identifier for the provider (e.g., 'nettra', 'twin', 'novus')"
+    )
+    display_name = models.CharField(
+        max_length=200,
+        help_text="Human-readable name (e.g., 'Nettra IoT Platform')"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Detailed description of the provider"
+    )
+
+    # Provider Type & Protocol
+    PROVIDER_TYPES = [
+        ('api', 'REST API'),
+        ('mqtt', 'MQTT'),
+        ('modbus', 'ModBus TCP'),
+        ('http', 'HTTP Endpoint'),
+        ('websocket', 'WebSocket'),
+    ]
+    provider_type = models.CharField(
+        max_length=20,
+        choices=PROVIDER_TYPES,
+        default='api',
+        help_text="Communication protocol used by the provider"
+    )
+
+    # Connection Configuration
+    base_url = models.URLField(
+        validators=[URLValidator()],
+        help_text="Base URL for API endpoints (e.g., https://api.nettra.cl)"
+    )
+    timeout_seconds = models.IntegerField(
+        default=30,
+        help_text="Request timeout in seconds"
+    )
+
+    # Authentication Configuration
+    AUTH_METHODS = [
+        ('none', 'No Authentication'),
+        ('bearer', 'Bearer Token'),
+        ('basic', 'Basic Authentication'),
+        ('api_key', 'API Key'),
+        ('oauth2', 'OAuth2'),
+        ('custom', 'Custom Authentication'),
+    ]
+    auth_method = models.CharField(
+        max_length=20,
+        choices=AUTH_METHODS,
+        default='bearer',
+        help_text="Authentication method to use"
+    )
+
+    auth_config = models.JSONField(
+        blank=True,
+        default=dict,
+        help_text="""
+        Authentication configuration as JSON. Examples:
+        - Bearer: {"token": "your_token"}
+        - Basic: {"username": "user", "password": "pass"}
+        - API Key: {"key": "api_key", "header": "X-API-Key"}
+        - OAuth2: {"client_id": "id", "client_secret": "secret", "token_url": "url"}
+        """
+    )
+
+    # Request/Response Configuration
+    endpoint_template = models.CharField(
+        max_length=500,
+        help_text="""
+        Template for building endpoint URLs. Use {variables}.
+        Examples:
+        - "/api/v1/devices/{device_id}/data"
+        - "/data?point={point_code}&variable={variable}"
+        """
+    )
+
+    request_template = models.JSONField(
+        blank=True,
+        default=dict,
+        help_text="""
+        Template for request payload as JSON.
+        Use {variables} for dynamic content.
+        Example: {"device_id": "{device_code}", "variable": "{variable_type}"}
+        """
+    )
+
+    response_mapping = models.JSONField(
+        blank=True,
+        default=dict,
+        help_text="""
+        Mapping for parsing API responses to standardized format.
+        Example: {
+            "timestamp": "data.time",
+            "value": "data.value",
+            "unit": "data.unit"
+        }
+        """
+    )
+
+    # Status & Configuration
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this provider is available for use"
+    )
+
+    max_retries = models.IntegerField(
+        default=3,
+        help_text="Maximum number of retry attempts for failed requests"
+    )
+
+    retry_delay_seconds = models.IntegerField(
+        default=1,
+        help_text="Delay between retry attempts in seconds"
+    )
+
+    # Metadata
+    version = models.CharField(
+        max_length=20,
+        default="1.0",
+        help_text="Provider API version"
+    )
+
+    documentation_url = models.URLField(
+        blank=True,
+        help_text="URL to provider documentation"
+    )
+
+    class Meta:
+        verbose_name = "Proveedor de Telemetría"
+        verbose_name_plural = "Proveedores de Telemetría"
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.display_name} ({self.name})"
+
+    def clean(self):
+        """Validate provider configuration."""
+        if self.auth_method != 'none' and not self.auth_config:
+            raise ValidationError("auth_config is required when auth_method is not 'none'")
+
+        if self.provider_type == 'api' and not self.endpoint_template:
+            raise ValidationError("endpoint_template is required for API providers")
+
+    def get_auth_headers(self):
+        """Generate authentication headers based on auth_method."""
+        if self.auth_method == 'bearer' and 'token' in self.auth_config:
+            return {'Authorization': f'Bearer {self.auth_config["token"]}'}
+
+        elif self.auth_method == 'basic':
+            import base64
+            username = self.auth_config.get('username', '')
+            password = self.auth_config.get('password', '')
+            credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+            return {'Authorization': f'Basic {credentials}'}
+
+        elif self.auth_method == 'api_key':
+            key_name = self.auth_config.get('header', 'X-API-Key')
+            key_value = self.auth_config.get('key', '')
+            return {key_name: key_value}
+
+        return {}
+
+    def build_endpoint_url(self, **kwargs):
+        """Build complete endpoint URL using template and variables."""
+        try:
+            return f"{self.base_url.rstrip('/')}{self.endpoint_template.format(**kwargs)}"
+        except KeyError as e:
+            raise ValueError(f"Missing required variable for endpoint template: {e}")
+
+    def build_request_payload(self, **kwargs):
+        """Build request payload using template and variables."""
+        if not self.request_template:
+            return {}
+
+        # Deep copy and format template
+        import json
+        template_str = json.dumps(self.request_template)
+        try:
+            formatted_str = template_str.format(**kwargs)
+            return json.loads(formatted_str)
+        except KeyError as e:
+            raise ValueError(f"Missing required variable for request template: {e}")
+
+
+class CatchmentPointProvider(ModelApi):
+    """
+    Association between Catchment Points and Telemetry Providers
+
+    Allows multiple providers per point with different configurations.
+    Supports provider failover and load balancing.
+    """
+
+    point = models.ForeignKey(
+        CatchmentPoint,
+        related_name="provider_configs",
+        on_delete=models.CASCADE,
+        verbose_name="Punto de Captación"
+    )
+
+    provider = models.ForeignKey(
+        TelemetryProvider,
+        on_delete=models.CASCADE,
+        verbose_name="Proveedor"
+    )
+
+    # Configuration Override
+    config_override = models.JSONField(
+        blank=True,
+        default=dict,
+        help_text="""
+        Override provider configuration for this specific point.
+        Same format as TelemetryProvider.auth_config.
+        """
+    )
+
+    # Point-specific Configuration
+    point_code = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Provider-specific identifier for this point (e.g., device ID, sensor code)"
+    )
+
+    device_config = models.JSONField(
+        blank=True,
+        default=dict,
+        help_text="Device-specific configuration (e.g., sensor mappings, calibration data)"
+    )
+
+    # Status & Priority
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this provider configuration is active for the point"
+    )
+
+    priority = models.IntegerField(
+        default=0,
+        help_text="Priority for load balancing/failover (higher = preferred)"
+    )
+
+    # Monitoring
+    last_success = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last successful data retrieval"
+    )
+
+    last_error = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last failed attempt"
+    )
+
+    error_count = models.IntegerField(
+        default=0,
+        help_text="Consecutive error count"
+    )
+
+    consecutive_successes = models.IntegerField(
+        default=0,
+        help_text="Consecutive successful requests"
+    )
+
+    class Meta:
+        verbose_name = "Configuración de Proveedor por Punto"
+        verbose_name_plural = "Configuraciones de Proveedor por Punto"
+        unique_together = ['point', 'provider']
+        ordering = ['-priority', 'provider__name']
+
+    def __str__(self):
+        status = "✅" if self.is_active else "❌"
+        return f"{status} {self.point} → {self.provider}"
+
+    def get_effective_config(self):
+        """Get merged configuration (provider + override)."""
+        base_config = self.provider.auth_config.copy()
+        base_config.update(self.config_override)
+        return base_config
+
+    def record_success(self):
+        """Record successful data retrieval."""
+        from django.utils import timezone
+        self.last_success = timezone.now()
+        self.last_error = None
+        self.error_count = 0
+        self.consecutive_successes += 1
+        self.save(update_fields=['last_success', 'last_error', 'error_count', 'consecutive_successes'])
+
+    def record_error(self, error_message=None):
+        """Record failed data retrieval."""
+        from django.utils import timezone
+        self.last_error = timezone.now()
+        self.error_count += 1
+        self.consecutive_successes = 0
+        self.save(update_fields=['last_error', 'error_count', 'consecutive_successes'])
+
+        # Log error if provided
+        if error_message:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Provider error for {self}: {error_message}")
+
+    @property
+    def is_healthy(self):
+        """Check if provider is healthy based on error rate."""
+        # Consider healthy if error rate < 20% in last 10 attempts
+        total_attempts = self.error_count + self.consecutive_successes
+        if total_attempts < 10:
+            return True  # Not enough data
+        return (self.error_count / total_attempts) < 0.2
