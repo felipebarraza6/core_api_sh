@@ -12,6 +12,6 @@ from .catchment_points import (ClientSerializer,
                                FileCatchmentSerializer,
                                ProfileDataConfigCatchmentSerializer,
                                DgaDataConfigCatchmentSerializer,
-                               SchemesCatchmentSerializer,
+                               VariableConfigSerializer,
                                VariableSerializer,
                                RegisterPersonsSerializer, CatchmentPointSerializerDetailCron, CatchmentPointIkoluSerializer,)

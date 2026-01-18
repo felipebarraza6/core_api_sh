@@ -47,8 +47,6 @@ router.register(r'profile_data_config_catchment', views_catchment.ProfileDataCon
                 basename='profile_data_config_catchment')
 router.register(r'dga_data_config_catchment',
                 views_catchment.DgaDataConfigCatchmentViewSet, basename='dga_data_config_catchment')
-router.register(r'schemes_catchment',
-                views_catchment.SchemesCatchmentViewSet, basename='schemes_catchment')
 router.register(r'variable', views_catchment.VariableViewSet,
                 basename='variable')
 router.register(r'register_persons',
@@ -60,5 +58,4 @@ router.register(r'management', views_management.ManagementViewSet, basename='man
 urlpatterns = [
     path('', include(router.urls))
 ]
-
 

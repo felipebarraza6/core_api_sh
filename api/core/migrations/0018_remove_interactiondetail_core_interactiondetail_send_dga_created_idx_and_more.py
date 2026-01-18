@@ -6,31 +6,44 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0017_add_interactiondetail_indexes'),
+        ("core", "0017_add_interactiondetail_indexes"),
     ]
 
     operations = [
         migrations.RemoveIndex(
-            model_name='interactiondetail',
-            name='core_interactiondetail_send_dga_created_idx',
+            model_name="interactiondetail",
+            name="core_interactiondetail_send_dga_created_idx",
         ),
         migrations.RemoveIndex(
-            model_name='interactiondetail',
-            name='core_interactiondetail_date_time_last_logger_idx',
+            model_name="interactiondetail",
+            name="core_interactiondetail_date_time_last_logger_idx",
         ),
-        migrations.RenameIndex(
-            model_name='interactiondetail',
-            new_name='core_intera_catchme_dd0553_idx',
-            old_name='core_interactiondetail_point_date_idx',
+        migrations.RemoveIndex(
+            model_name="interactiondetail",
+            name="core_interactiondetail_point_date_idx",
         ),
-        migrations.RenameIndex(
-            model_name='interactiondetail',
-            new_name='core_intera_date_ti_34a0f3_idx',
-            old_name='core_interactiondetail_date_time_medition_idx',
+        migrations.AddIndex(
+            model_name="interactiondetail",
+            index=models.Index(
+                fields=["catchment_point", "date_time_medition"],
+                name="core_intera_catchme_dd0553_idx",
+            ),
+        ),
+        migrations.RemoveIndex(
+            model_name="interactiondetail",
+            name="core_interactiondetail_date_time_medition_idx",
+        ),
+        migrations.AddIndex(
+            model_name="interactiondetail",
+            index=models.Index(
+                fields=["date_time_medition"], name="core_intera_date_ti_34a0f3_idx"
+            ),
         ),
         migrations.AddField(
-            model_name='dgadataconfigcatchment',
-            name='region_dga',
-            field=models.CharField(blank=True, max_length=300, null=True, verbose_name='DGA Región'),
+            model_name="dgadataconfigcatchment",
+            name="region_dga",
+            field=models.CharField(
+                blank=True, max_length=300, null=True, verbose_name="DGA Región"
+            ),
         ),
     ]

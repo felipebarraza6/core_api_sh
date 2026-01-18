@@ -69,10 +69,6 @@ class CatchmentPoint(ModelApi):
         User, verbose_name="usuario", related_name="viewed_catchment_points", blank=True
     )
 
-    is_thethings = models.BooleanField(default=False, verbose_name="Nettra")
-    is_tdata = models.BooleanField(default=False, verbose_name="Twin")
-    is_novus = models.BooleanField(default=False, verbose_name="Novus")
-
     lat = models.CharField(
         max_length=300, blank=True, null=True, verbose_name="latitud"
     )
@@ -363,7 +359,6 @@ class ProfileDataConfigCatchment(ModelApi):
         blank=True,
         null=True,
     )
-    token_service = models.CharField(max_length=400, blank=True, null=True)
     d1 = models.DecimalField(
         default=0.0, verbose_name="Profundidad(mt)", max_digits=5, decimal_places=2
     )
@@ -405,6 +400,15 @@ class ProfileDataConfigCatchment(ModelApi):
         default=0,
         verbose_name="Adicion (Reset)",
         help_text="Valor acumulado automáticamente cuando el sensor se reinicia (glitch/reset)."
+    )
+
+    # Telemetry Provider Token (V3.1 Unified System)
+    token_service = models.CharField(
+        max_length=500,
+        blank=True,
+        null=True,
+        verbose_name="Token del Proveedor de Telemetría",
+        help_text="Token para TData, TheThings, Tago, etc. según el proveedor configurado"
     )
 
     class Meta:
@@ -516,96 +520,6 @@ class DgaDataConfigCatchment(ModelApi):
 
     def __str__(self):
         return f"{self.point_catchment}"
-
-
-class SchemesCatchment(ModelApi):
-    """Schemes Model."""
-
-    points_catchment = models.ManyToManyField(
-        CatchmentPoint,
-        related_name="schemes",
-        verbose_name="Punto de captacion",
-        blank=True,
-    )
-    name = models.CharField(max_length=300, verbose_name="Nombre")
-    description = models.CharField(max_length=300, verbose_name="Descripción")
-
-    class Meta:
-        """Meta data schemes"""
-
-        verbose_name = "Esquema"
-        verbose_name_plural = "Esquemas"
-
-    def __str__(self):
-        return f"{self.name}"
-
-
-class Variable(ModelApi):
-    """Variable Model."""
-
-    scheme_catchment = models.ForeignKey(
-        SchemesCatchment,
-        related_name="variables",
-        on_delete=models.CASCADE,
-        verbose_name="Esquema",
-    )
-
-    PROVIDERS_CHOICES = [
-        ("NOVUS", "novus"),
-        ("NETTRA", "nettra"),
-        ("TWIN", "twin"),
-    ]
-    VARIABLES_CHOICES = [
-        ("NIVEL", "nivel"),
-        ("CAUDAL", "caudal"),
-        ("CAUDAL_PROMEDIO", "caudal_promedio((diff/3600)*1000)"),
-        ("TOTALIZADO", "totalizado"),
-    ]
-
-    str_variable = models.CharField(max_length=400, verbose_name="Variable (str)")
-    label = models.CharField(max_length=400, verbose_name="Etiqueta")
-
-    type_variable = models.CharField(
-        max_length=1200, choices=VARIABLES_CHOICES, verbose_name="Tipo variable"
-    )
-
-    token_service = models.CharField(
-        max_length=400, blank=True, null=True, verbose_name="Token"
-    )
-    service = models.CharField(
-        max_length=1200,
-        choices=PROVIDERS_CHOICES,
-        blank=True,
-        null=True,
-        verbose_name="Proveedor",
-    )
-
-    # Total
-    pulses_factor = models.IntegerField(
-        blank=True,
-        null=True,
-        default=1000,
-        verbose_name="Pulsos(solo aplica a totalizadores (pulsos*pulsos_factor)/1000)",
-    )
-
-
-    # Caudal
-    convert_to_lt = models.BooleanField(
-        default=False, verbose_name="Pasar de m3 a lt(solo aplica en caudal) litros/3,6"
-    )
-    # Nivel
-    calculate_nivel = models.IntegerField(
-        blank=True, null=True, verbose_name="Base Calculo nivel(n/base calculo)"
-    )
-
-    class Meta:
-        """Meta data variable"""
-
-        verbose_name = "Variable"
-        verbose_name_plural = "Variables"
-
-    def __str__(self):
-        return str(self.scheme_catchment)
 
 
 class RegisterPersons(ModelApi):
