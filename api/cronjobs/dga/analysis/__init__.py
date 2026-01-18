@@ -1,2 +1,0 @@
-# DGA analysis package
-

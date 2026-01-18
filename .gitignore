@@ -173,6 +173,16 @@ recalculo_diffs.log
 # Logs de health checks
 health_check.log
 
+# STATUS REPORTS
+# ==============
+# Archivos de reporte de estado temporales
+status_report_*.txt
+
+# CELERY SCHEDULES
+# ================
+# Archivos de scheduler de Celery (temporales)
+celerybeat-schedule*
+
 # EXCEPTIONS (KEEP THESE)
 # =======================
 # Archivos que SÍ deben estar en el repositorio

@@ -1,10 +1,48 @@
 """Models package."""
-from .utils import ModelApi
+
+from .catchment_points import (
+    CatchmentPoint,
+    Client,
+    DgaDataConfigCatchment,
+    FileCatchment,
+    NotificationsCatchment,
+    ProfileDataConfigCatchment,
+    ProfileIkoluCatchment,
+    ProjectCatchments,
+    RegisterPersons,
+    ResponseNotificationsCatchment,
+    TypeFileCatchment,
+)
+from .constants_system import (
+    ConstantApplication,
+    ConstantDefinition,
+    DataCorrectionLog,
+    ProviderDataSync,
+)
+from .enhanced_data_models import (
+    DataAggregation,
+    DataPoint,
+    DataQualityMetric,
+    DataStream,
+    SupportTicket,
+    TicketComment,
+    TicketSLA,
+    VariableDefinition,
+)
+from .management_super import (
+    AlertRule,
+    DeviceMaintenanceSchedule,
+    EquipmentModel,
+    EquipmentProvider,
+    IoTDevice,
+    MQTTConnection,
+    MQTTMessageLog,
+    SystemConfiguration,
+    SystemMetrics,
+)
+from .telemetry import (
+    Variable,
+    TelemetryRecord,
+)
 from .users import User
-from .interaction_detail import InteractionDetail
-from .catchment_points import (Client, ProjectCatchments, CatchmentPoint,
-                               ProfileIkoluCatchment, NotificationsCatchment,
-                               ResponseNotificationsCatchment, TypeFileCatchment,
-                               FileCatchment, ProfileDataConfigCatchment,
-                               DgaDataConfigCatchment, SchemesCatchment,
-                               Variable,  RegisterPersons)
+from .utils import ModelApi

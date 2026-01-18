@@ -25,14 +25,12 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
 
 # Configuración de seguridad para producción
-CSRF_TRUSTED_ORIGINS = ["https://*.smarthydro.app", "https://api.smarthydro.app", "https://ikolu.smarthydro.app"]
-ALLOWED_HOSTS = [
-    "api.smarthydro.app",
-    "ikolu.smarthydro.app",
-    "localhost",
-    "127.0.0.1",
-    "postgres",  # Para conexiones internas Docker
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.smarthydro.app",
+    "https://api.smarthydro.app",
+    "https://ikolu.smarthydro.app",
 ]
+ALLOWED_HOSTS = ["*"]
 
 # Security - Configuraciones de seguridad estrictas
 SESSION_COOKIE_HTTPONLY = True
@@ -63,7 +61,14 @@ THIRD_PARTY_APPS = [
     "django_rest_passwordreset",
 ]
 
-LOCAL_APPS = ["api.core.apps.CoreAppConfig", "django_crontab", "import_export"]
+LOCAL_APPS = [
+    "api.core.apps.CoreAppConfig",
+    "api.chatbot.apps.ChatbotConfig",
+    "api.reports.apps.ReportsConfig",
+    "api.telemetry.apps.TelemetryConfig",
+    "django_celery_beat",
+    "import_export",
+]
 
 # Configuración de correo para alertas - DESDE VARIABLES DE ENTORNO
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
@@ -80,117 +85,34 @@ CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "telemetry@smarthydro.app")
 # FEATURE FLAGS - Control de nuevas funcionalidades
 # ========================================
 # Flag para usar nuevo cálculo de caudal medio diario para estándar MEDIO
-USE_NEW_CAUDAL_CALCULATION_MEDIO = os.environ.get(
-    "USE_NEW_CAUDAL_CALCULATION_MEDIO", "True"
-).lower() == "true"
+USE_NEW_CAUDAL_CALCULATION_MEDIO = (
+    os.environ.get("USE_NEW_CAUDAL_CALCULATION_MEDIO", "True").lower() == "true"
+)
 
 # ========================================
 # DGA CONFIGURATION - Dirección General de Aguas
 # ========================================
 # Contraseña por defecto para software DGA
 # Cada punto puede tener su propia contraseña personalizada en el modelo
-DGA_DEFAULT_PASSWORD = os.environ.get('DGA_DEFAULT_PASSWORD', '')
+DGA_DEFAULT_PASSWORD = os.environ.get("DGA_DEFAULT_PASSWORD", "")
 
 # ========================================
 # USER CONFIGURATION (DEPRECATED)
 # ========================================
 # DEPRECATED: No usar para nuevos usuarios
 # Mantener solo para compatibilidad con datos existentes
-USER_DEFAULT_PASSWORD = os.environ.get('USER_DEFAULT_PASSWORD', 'pozos.2023')
+USER_DEFAULT_PASSWORD = os.environ.get("USER_DEFAULT_PASSWORD", "pozos.2023")
 
 # Configuración de logs para cron jobs
-CRONJOBS = [
-    # tdata 60 minutos
-    (
-        "0 * * * *",
-        "api.cronjobs.telemetry.twin.run",
-        ">> /tmp/smarthydro/twin_60.log 2>&1",
-    ),
-    # tdata 1 minuto
-    (
-        "* * * * *",
-        "api.cronjobs.telemetry.twin_f1.run",
-        ">> /tmp/smarthydro/twin_1.log 2>&1",
-    ),
-    # tdata 5 minutos
-    (
-        "*/5 * * * *",
-        "api.cronjobs.telemetry.twin_f5.run",
-        ">> /tmp/smarthydro/twin_5.log 2>&1",
-    ),
-    # tdata 10 minutos
-    (
-        "*/10 * * * *",
-        "api.cronjobs.telemetry.twin_f10.run",
-        ">> /tmp/smarthydro/twin_10.log 2>&1",
-    ),
-    # nettra 60 minutos
-    (
-        "0 * * * *",
-        "api.cronjobs.telemetry.nettra.run",
-        ">> /tmp/smarthydro/nettra_60.log 2>&1",
-    ),
-    # nettra 5 minutos
-    (
-        "*/5 * * * *",
-        "api.cronjobs.telemetry.nettra_f5.run",
-        ">> /tmp/smarthydro/nettra_5.log 2>&1",
-    ),
-    # novus 60 minutos
-    (
-        "0 * * * *",
-        "api.cronjobs.telemetry.novus.run",
-        ">> /tmp/smarthydro/novus_60.log 2>&1",
-    ),
-    # cola ejecución dga
-    (
-        "*/3 * * * *",
-        "api.cronjobs.dga.cron_dga.run",
-        ">> /tmp/smarthydro/dga.log 2>&1",
-    ),
-    # cola ejecución sma
-    (
-        "*/5 * * * *",
-        "api.cronjobs.sma.cron_sma.run",
-        ">> /tmp/smarthydro/sma.log 2>&1",
-    ),
-    # cluster_backup habilitado
-    (
-        "0 * * * *",
-        "api.cronjobs.cluster_backup_complete_final.run",
-        ">> /tmp/smarthydro/cluster_backup.log 2>&1",
-    ),
-    # alertas
-    (
-        "*/10 * * * *",
-        "api.cronjobs.alerts.cron_alerts.run",
-        ">> /tmp/smarthydro/alerts.log 2>&1",
-    ),
-    # boletín diario - 10:00 PM Chile (01:00 UTC)
-    (
-        "0 1 * * *",
-        "api.cronjobs.reports.daily_bulletin.run",
-        ">> /tmp/smarthydro/daily_bulletin.log 2>&1",
-    ),
-    # reporte diario chat - 09:00 AM Chile (12:00 UTC)
-    (
-        "0 12 * * *",
-        "api.cronjobs.reports.daily_chat_report.run",
-        ">> /tmp/smarthydro/daily_chat_report.log 2>&1",
-    ),
-    # reporte horario DGA MAYOR - cada hora a los :05 (reporta hora anterior)
-    (
-        "5 * * * *",
-        "api.cronjobs.reports.dga_mayor_hourly.run",
-        ">> /tmp/smarthydro/dga_mayor_hourly.log 2>&1",
-    ),
-]
+# CRONJOBS removed - replaced by Celery Beat
+
 
 # Reordenar apps para que "Operaciones y Telemetría" aparezca primero en el menú
 # LOCAL_APPS primero para que core.apps.CoreAppConfig aparezca antes que auth
 INSTALLED_APPS = LOCAL_APPS + DJANGO_APPS + THIRD_PARTY_APPS
 
 MIDDLEWARE = [
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",  # ✅ Prometheus: Before all
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.gzip.GZipMiddleware",  # ✅ RENDIMIENTO: Compresión de respuestas (debe ir temprano)
@@ -201,6 +123,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django_prometheus.middleware.PrometheusAfterMiddleware",  # ✅ Prometheus: After all
 ]
 
 # Configuración CORS más segura
@@ -241,7 +164,9 @@ CORS_ALLOW_HEADERS = [
 REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "api.core.exceptions.json_on_error_exception_handler",
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
-    "DEFAULT_AUTHENTICATION_CLASSES": ("rest_framework.authentication.TokenAuthentication",),
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework.authentication.TokenAuthentication",
+    ),
     "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
@@ -278,8 +203,12 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql_psycopg2",
         "NAME": os.environ.get("LOCAL_DB_NAME", "smarthydro_prod"),
-        "USER": os.environ.get("LOCAL_DB_USER", "smarthydro_user"),
-        "PASSWORD": os.environ.get("LOCAL_DB_PASSWORD"),
+        "USER": os.environ.get(
+            "LOCAL_DB_USER", os.environ.get("POSTGRES_USER", "smarthydro_user")
+        ),
+        "PASSWORD": os.environ.get(
+            "LOCAL_DB_PASSWORD", os.environ.get("POSTGRES_PASSWORD")
+        ),
         "HOST": os.environ.get("LOCAL_DB_HOST", "postgres_db_secure"),
         "PORT": os.environ.get("LOCAL_DB_PORT", "5432"),
         "OPTIONS": {
@@ -371,7 +300,7 @@ LOGGING = {
         "file": {
             "level": "INFO",
             "class": "logging.handlers.RotatingFileHandler",
-            "filename": "/app/logs/django.log",
+            "filename": os.environ.get("DJANGO_LOG_FILE", "/app/logs/django.log"),
             "maxBytes": 1024 * 1024 * 10,  # 10 MB
             "backupCount": 5,
             "formatter": "verbose",
@@ -420,167 +349,155 @@ JAZZMIN_SETTINGS = {
     "site_logo": None,
     "login_logo": None,
     "login_logo_dark": None,
-    
     # Tema y colores personalizados - Mejor contraste
     "theme": "flatly",  # Tema moderno y limpio con buen contraste
     "dark_mode_theme": "darkly",  # Tema oscuro alternativo
-    
     # Iconos
     "site_icon": None,  # Puedes agregar un favicon aquí
-    
     # Menú personalizado con grupos organizados
     "topmenu_links": [
         # Enlaces externos
-        {"name": "Panel de control", "url": "/admin/", "icon": "fas fa-home", "permissions": ["auth.view_user"]},
-        {"name": "Dashboard", "url": "/admin/dashboard/", "icon": "fas fa-chart-line", "permissions": ["auth.view_user"]},
-        {"name": "Monitoreo", "url": "/admin/telemetry-monitoring/", "icon": "fas fa-tachometer-alt", "permissions": ["auth.view_user"]},
-        {"name": "SmartHydro Web", "url": "https://smarthydro.cl", "new_window": True, "icon": "fas fa-globe"},
+        {
+            "name": "Panel de control",
+            "url": "/admin/",
+            "icon": "fas fa-home",
+            "permissions": ["auth.view_user"],
+        },
+        {
+            "name": "Dashboard",
+            "url": "/admin/dashboard/",
+            "icon": "fas fa-chart-line",
+            "permissions": ["auth.view_user"],
+        },
+        {
+            "name": "Monitoreo",
+            "url": "/admin/telemetry-monitoring/",
+            "icon": "fas fa-tachometer-alt",
+            "permissions": ["auth.view_user"],
+        },
+        {
+            "name": "SmartHydro Web",
+            "url": "https://smarthydro.cl",
+            "new_window": True,
+            "icon": "fas fa-globe",
+        },
     ],
-    
     # Menú lateral personalizado con grupos (Jazzmin 3.x)
-    "usermenu_links": [
-        {"model": "auth.user"}
-    ],
-    
+    "usermenu_links": [{"model": "auth.user"}],
     # Configuración del menú lateral
     "show_sidebar": True,
     "navigation_expanded": True,
-    
     # Orden y agrupación del menú - Organizado por flujo de trabajo
     "order_with_respect_to": [
         # OPERACIÓN DE TELEMETRÍA (Prioridad 1 - Lo más importante)
-        "core.InteractionDetail",      # Registros de telemetría
-        "core.CatchmentPoint",          # Puntos de captación
-        
+        "core.TelemetryRecord",  # Registros de telemetría
+        "core.CatchmentPoint",  # Puntos de captación
         # INGESTA DE DATOS (Prioridad 2 - Entrada de datos)
-        "core.Variable",                # Variables capturadas
-        
+        "core.Variable",  # Variables capturadas
         # PROCESAMIENTO (Prioridad 3 - Transformación de datos)
-        "core.SchemesCatchment",        # Esquemas de procesamiento
-        "core.ProfileDataConfigCatchment", # Configuración de procesamiento
-        
+        "core.ProfileDataConfigCatchment",  # Configuración de procesamiento
         # CONFIGURACIÓN (Prioridad 4 - Estructura)
-        "core.ProjectCatchments",       # Proyectos
-        "core.Client",                  # Clientes
-        
+        "core.ProjectCatchments",  # Proyectos
+        "core.Client",  # Clientes
         # PREPARACIÓN Y ENVÍO (Prioridad 5 - Preparación para DGA)
         "core.DgaDataConfigCatchment",  # Configuración DGA
-        "core.ProfileIkoluCatchment",   # Perfiles Ikolu
-        
+        "core.ProfileIkoluCatchment",  # Perfiles Ikolu
         # ALERTAS Y NOTIFICACIONES (Prioridad 6)
         "core.NotificationsCatchment",
         "core.ResponseNotificationsCatchment",
-        
         # DOCUMENTOS (Prioridad 7)
         "core.FileCatchment",
         "core.TypeFileCatchment",
-        
         # ADMINISTRACIÓN (Prioridad 8)
         "core.User",
         "auth.Group",
         "core.RegisterPersons",
     ],
-    
     # Personalización de modelos
     "custom_links": {
-        "core.CatchmentPoint": [{
-            "name": "Ver Dashboard",
-            "url": "/admin/dashboard/",
-            "icon": "fas fa-chart-line",
-        }],
-        "core.InteractionDetail": [{
-            "name": "Ver Dashboard",
-            "url": "/admin/dashboard/",
-            "icon": "fas fa-chart-line",
-        }],
+        "core.CatchmentPoint": [
+            {
+                "name": "Ver Dashboard",
+                "url": "/admin/dashboard/",
+                "icon": "fas fa-chart-line",
+            }
+        ],
+        "core.TelemetryRecord": [
+            {
+                "name": "Ver Dashboard",
+                "url": "/admin/dashboard/",
+                "icon": "fas fa-chart-line",
+            }
+        ],
     },
-    
     # Iconos personalizados para modelos - Organizados por flujo
     "icons": {
         # Autenticación
         "auth": "fas fa-users-cog",
         "auth.user": "fas fa-user",
         "auth.Group": "fas fa-users",
-        
         # Operación de Telemetría
-        "core.InteractionDetail": "fas fa-database",           # Registros
-        "core.CatchmentPoint": "fas fa-map-marker-alt",        # Puntos
-        "core.ProjectCatchments": "fas fa-project-diagram",     # Proyectos
-        "core.Client": "fas fa-building",                       # Clientes
-        
+        "core.TelemetryRecord": "fas fa-database",  # Registros
+        "core.CatchmentPoint": "fas fa-map-marker-alt",  # Puntos
+        "core.ProjectCatchments": "fas fa-project-diagram",  # Proyectos
+        "core.Client": "fas fa-building",  # Clientes
         # Ingesta
-        "core.Variable": "fas fa-signal",                      # Variables capturadas
-        
+        "core.Variable": "fas fa-signal",  # Variables capturadas
         # Procesamiento
-        "core.SchemesCatchment": "fas fa-sitemap",             # Esquemas
-        "core.ProfileDataConfigCatchment": "fas fa-cogs",      # Config procesamiento
-        
+        "core.ProfileDataConfigCatchment": "fas fa-cogs",  # Config procesamiento
         # Preparación y Envío
-        "core.DgaDataConfigCatchment": "fas fa-paper-plane",   # Envío DGA
-        "core.ProfileIkoluCatchment": "fas fa-user-cog",      # Perfiles
-        
+        "core.DgaDataConfigCatchment": "fas fa-paper-plane",  # Envío DGA
+        "core.ProfileIkoluCatchment": "fas fa-user-cog",  # Perfiles
         # Alertas
         "core.NotificationsCatchment": "fas fa-bell",
         "core.ResponseNotificationsCatchment": "fas fa-reply",
-        
         # Documentos
         "core.FileCatchment": "fas fa-file-alt",
         "core.TypeFileCatchment": "fas fa-folder-open",
-        
         # Administración
         "core.User": "fas fa-user-tie",
         "core.RegisterPersons": "fas fa-address-book",
     },
-    
     # Configuración de UI
     "default_icon_parents": "fas fa-chevron-circle-right",
     "default_icon_children": "fas fa-circle",
-    
     # Relaciones con modelos relacionados
     "related_modal_active": True,
-    
     # Personalización de la barra superior
     "custom_css": "admin/css/admin_improvements.css",  # CSS personalizado para mejoras generales
     "custom_js": None,  # Puedes agregar JavaScript personalizado aquí
-    
     # Mostrar UI personalizada
     "show_ui_builder": False,  # Desactivar el UI builder por defecto
-    
     # Cambiar el logo en la página de login
     "changeform_format": "horizontal_tabs",  # horizontal_tabs, collapsible, carousel, single
-    
     # Configuración de campos
     "changeform_format_overrides": {
         "auth.user": "collapsible",
         "auth.group": "vertical_tabs",
     },
-    
     # Idioma
     "language_chooser": False,  # Ya está en español
-    
     # Copyright
     "copyright": "SmartHydro - Sistema de Monitoreo Hidrológico",
-    
     # Mostrar sidebar
     "show_sidebar": True,
-    
     # Navegación
     "navigation_expanded": True,
-    
     # Filtros
     "filter_horizontal": True,
-    
     # Búsqueda
     # Búsqueda global desactivada para evitar problemas de layout
-    # "search_model": ["core.CatchmentPoint", "core.InteractionDetail", "core.Client"],
-    
+    # "search_model": ["core.CatchmentPoint", "core.TelemetryRecord", "core.Client"],
     # Personalización de la página de inicio
     "welcome_sign": "Bienvenido a SmartHydro - Panel de Control de Telemetría",
-    
     # Colores personalizados (opcional)
     "usermenu_links": [
         {"name": "Dashboard", "url": "/admin/dashboard/", "icon": "fas fa-chart-line"},
-        {"name": "Monitoreo", "url": "/admin/telemetry-monitoring/", "icon": "fas fa-tachometer-alt"},
+        {
+            "name": "Monitoreo",
+            "url": "/admin/telemetry-monitoring/",
+            "icon": "fas fa-tachometer-alt",
+        },
     ],
 }
 
@@ -613,7 +530,7 @@ JAZZMIN_UI_TWEAKS = {
         "info": "btn-info",
         "warning": "btn-warning",
         "danger": "btn-danger",
-        "success": "btn-success"
+        "success": "btn-success",
     },
     "actions_sticky_top": True,
 }
@@ -621,20 +538,20 @@ JAZZMIN_UI_TWEAKS = {
 # Configuración temporal para debug de CORS
 if not DEBUG:
     # Permitir X-Frame-Options para CORS
-    X_FRAME_OPTIONS = 'SAMEORIGIN'  # Cambiar de DENY a SAMEORIGIN
-    
+    X_FRAME_OPTIONS = "SAMEORIGIN"  # Cambiar de DENY a SAMEORIGIN
+
     # Configuraciones CORS adicionales para producción
     CORS_PREFLIGHT_MAX_AGE = 86400
     CORS_EXPOSE_HEADERS = [
-        'accept',
-        'accept-encoding', 
-        'authorization',
-        'content-type',
-        'dnt',
-        'origin',
-        'user-agent',
-        'x-csrftoken',
-        'x-requested-with',
+        "accept",
+        "accept-encoding",
+        "authorization",
+        "content-type",
+        "dnt",
+        "origin",
+        "user-agent",
+        "x-csrftoken",
+        "x-requested-with",
     ]
 
 # ========================================
@@ -642,3 +559,87 @@ if not DEBUG:
 # ========================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
+# ========================================
+# CELERY CONFIGURATION - Replaces Cronjobs
+# ========================================
+# Using Redis as message broker and result backend
+CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+
+# Celery Beat settings (replaces traditional cronjobs)
+from celery.schedules import crontab
+
+# Force PersistentScheduler instead of DatabaseScheduler
+CELERY_BEAT_SCHEDULER = 'celery.beat:PersistentScheduler'
+
+CELERY_BEAT_SCHEDULE = {
+    # Telemetry collection - replaces cronjobs/telemetry/
+    "collect-telemetry-1min": {
+        "task": "api.core.tasks.telemetry.collect_telemetry",
+        "schedule": 60.0,
+        "args": ("1",),
+    },
+    "collect-telemetry-5min": {
+        "task": "api.core.tasks.telemetry.collect_telemetry",
+        "schedule": 300.0,
+        "args": ("5",),
+    },
+    "collect-telemetry-60min": {
+        "task": "api.core.tasks.telemetry.collect_telemetry",
+        "schedule": crontab(minute=0),
+        "args": ("60",),
+    },
+    # DGA processing - replaces cronjobs/dga/
+    "process-dga-queue": {
+        "task": "api.core.tasks.dga.process_dga_queue",
+        "schedule": crontab(minute="*/3"),
+    },
+    # Alerts - replaces cronjobs/alerts/
+    "process-alerts": {
+        "task": "api.core.tasks.alerts.process_alerts",
+        "schedule": crontab(minute="*/10"),
+    },
+    # Reports - replaces cronjobs/reports/
+    "daily-bulletin": {
+        "task": "api.core.tasks.reports.generate_daily_bulletin",
+        "schedule": crontab(hour=1, minute=0),
+    },
+    "daily-chat-report": {
+        "task": "api.core.tasks.reports.generate_daily_chat_report",
+        "schedule": crontab(hour=12, minute=0),
+    },
+    "dga-major-hourly": {
+        "task": "api.core.tasks.reports.generate_dga_major_hourly",
+        "schedule": crontab(minute=5),
+    },
+    # SMA submission (replaces cronjobs/sma/cron_sma.py)
+    "process-sma-queue": {
+        "task": "api.core.tasks.sma.process_sma_queue",
+        "schedule": crontab(
+            minute="*/5"
+        ),  # Run every 5 minutes to catch :05, :10, etc.
+    },
+    # Maintenance tasks
+    "cleanup-old-data": {
+        "task": "api.core.tasks.maintenance.cleanup_old_telemetry",
+        "schedule": crontab(hour=2, minute=0),
+    },
+    "optimize-database": {
+        "task": "api.core.tasks.maintenance.optimize_database_weekly",
+        "schedule": crontab(hour=3, minute=0, day_of_week=0),
+    },
+    # Cluster Backup Sync (replaces cronjobs/cluster_backup_complete_final.py)
+    "cluster-sync": {
+        "task": "api.core.tasks.cluster_sync.run_cluster_sync",
+        "schedule": crontab(minute=0),  # Run hourly
+    },
+    # System monitoring
+    "health-check": {
+        "task": "api.core.tasks.monitoring.perform_health_check",
+        "schedule": 300.0,  # Every 5 minutes
+    },
+}

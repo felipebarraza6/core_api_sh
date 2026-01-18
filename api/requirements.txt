@@ -1,36 +1,27 @@
-# Django y REST Framework
-django>=4.2.0,<5.0.0
-djangorestframework>=3.14.0,<4.0.0
-django-cors-headers>=4.0.0,<5.0.0
-django-filter>=23.0,<24.0
-django-crontab>=0.7.1,<1.0.0
-django-import-export>=3.0.0,<4.0.0
-django-rest-passwordreset>=1.2.0,<2.0.0
-
-# Base de datos
-psycopg2-binary>=2.9.0,<3.0.0
-
-# Servidor y archivos
-gunicorn>=21.0.0,<22.0.0
-Pillow>=10.0.0,<11.0.0
-whitenoise>=6.5.0,<7.0.0
-
-# Utilidades
-requests>=2.31.0,<3.0.0
-openpyxl>=3.1.0,<4.0.0
-zeep>=4.2.0,<5.0.0
-drf-excel>=2.0.0,<3.0.0
-reportlab>=4.0.0,<5.0.0
-
-# Admin UI mejorado - Actualizado a 3.x para menús personalizados
-django-jazzmin>=3.0.0,<4.0.0
-
-# Desarrollo (opcional)
-# python-decouple>=3.8,<4.0.0  # Para variables de entorno
-# django-debug-toolbar>=4.0.0,<5.0.0  # Para desarrollo
-python-dotenv==1.0.0
-
-# Caching
-django-redis>=5.4.0,<6.0.0
+Django>=4.2
+djangorestframework>=3.12.4
+django-cors-headers>=3.7.0
+django-filter>=2.4.0
+psycopg2-binary>=2.9.1
+python-dotenv>=0.19.0
+requests>=2.26.0
+pytz>=2021.3
+openpyxl>=3.0.9
+reportlab>=3.6.2
+redis>=4.0.0
+django-redis>=5.0.0
+gunicorn>=20.1.0
+whitenoise>=5.3.0
+django-jazzmin>=2.5.0
+django-rest-passwordreset>=1.2.0
+celery>=5.2.0
+django-celery-beat>=2.2.1
+django-prometheus>=2.2.0
+django-import-export>=2.7.0
+google-auth>=2.3.0
+google-api-python-client>=2.32.0
+markdown>=3.3.4
+Pillow>=8.4.0
+drf-renderer-xlsx>=0.4.1
+psutil>=5.8.0
 google-generativeai>=0.3.0
-

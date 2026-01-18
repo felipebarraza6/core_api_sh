@@ -1,0 +1,262 @@
+version: "3.8"
+
+services:
+  # ========================================
+  # NGINX PROXY - DESARROLLO CON PUERTOS EXPUESTOS
+  # ========================================
+  nginx_proxy:
+    image: nginx:alpine
+    container_name: nginx_proxy_dev
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Puerto adicional para desarrollo
+    volumes:
+      - ./conf/nginx.production.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/ssl/certs:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - django-app
+    restart: unless-stopped
+
+  # ========================================
+  # DJANGO APPLICATION - DESARROLLO (USANDO IMAGEN EXISTENTE)
+  # ========================================
+  django-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    container_name: smarthydro_django_dev
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+      - django_logs:/app/logs
+    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    environment:
+      - DJANGO_SETTINGS_MODULE=api.settings
+      - DEBUG=True
+      - SECRET_KEY=dev-secret-key-for-local-testing-only-123456789012345678901234567890
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_DB=smarthydro_dev
+      - POSTGRES_USER=smarthydro_dev_user
+      - POSTGRES_PASSWORD=dev_password_123
+      - LOCAL_DB_HOST=postgres
+      - LOCAL_DB_NAME=smarthydro_dev
+      - LOCAL_DB_USER=smarthydro_dev_user
+      - LOCAL_DB_PASSWORD=dev_password_123
+      - EMAIL_HOST=localhost
+      - EMAIL_HOST_USER=
+      - EMAIL_HOST_PASSWORD=
+      - GEMINI_API_KEY=dev-api-key-placeholder
+      - MQTT_BROKER_HOST=localhost
+      - MQTT_BROKER_USERNAME=smarthydro
+      - MQTT_BROKER_PASSWORD=dev_mqtt_password
+
+  # ========================================
+  # CELERY BEAT - SCHEDULER
+  # ========================================
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    container_name: celery_beat_dev
+    command: celery -A api beat --loglevel=info --scheduler=celery.beat:PersistentScheduler
+    volumes:
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=api.settings
+      - ENVIRONMENT=development
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_DB=smarthydro_dev
+      - POSTGRES_USER=smarthydro_dev_user
+      - POSTGRES_PASSWORD=dev_password_123
+      - LOCAL_DB_HOST=postgres
+      - LOCAL_DB_NAME=smarthydro_dev
+      - LOCAL_DB_USER=smarthydro_dev_user
+      - LOCAL_DB_PASSWORD=dev_password_123
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+
+  # ========================================
+  # CELERY WORKERS - DESARROLLO
+  # ========================================
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    container_name: celery_worker_dev
+    command: celery -A api worker --loglevel=info --concurrency=2 --pool=prefork -Q telemetry,dga,alerts,reports,celery
+    volumes:
+      - .:/app
+      - celery_logs:/app/logs
+    environment:
+      - DJANGO_SETTINGS_MODULE=api.settings
+      - ENVIRONMENT=development
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_DB=smarthydro_dev
+      - POSTGRES_USER=smarthydro_dev_user
+      - POSTGRES_PASSWORD=dev_password_123
+      - LOCAL_DB_HOST=postgres
+      - LOCAL_DB_NAME=smarthydro_dev
+      - LOCAL_DB_USER=smarthydro_dev_user
+      - LOCAL_DB_PASSWORD=dev_password_123
+    depends_on:
+      - redis
+      - postgres
+      - django-app
+    restart: unless-stopped
+
+
+  # ========================================
+  # MQTT BROKER - DESARROLLO
+  # ========================================
+  mqtt_broker:
+    image: core_api_sh-mqtt_broker:latest  # Usando imagen ya construida
+    container_name: mqtt_broker_dev
+    ports:
+      - "1883:1883"   # MQTT
+      - "8883:8883"   # MQTT SSL
+      - "8081:8080"   # WebSocket
+    volumes:
+      - mqtt_data:/mosquitto/data
+      - mqtt_logs:/mosquitto/log
+      - ./conf/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./conf/acl:/mosquitto/config/acl:ro
+    environment:
+      - MQTT_BROKER_USERNAME=smarthydro
+      - MQTT_BROKER_PASSWORD=dev_mqtt_password
+    restart: unless-stopped
+
+  # ========================================
+  # REDIS - DESARROLLO
+  # ========================================
+  redis:
+    image: redis:7-alpine
+    container_name: redis_dev
+    ports:
+      - "6379:6379"  # Exponer Redis para desarrollo
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+      - redis_logs:/var/log/redis
+    restart: unless-stopped
+
+  # ========================================
+  # POSTGRESQL - DESARROLLO
+  # ========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_dev
+    ports:
+      - "5432:5432"  # Exponer PostgreSQL para desarrollo
+    environment:
+      POSTGRES_DB: smarthydro_dev
+      POSTGRES_USER: smarthydro_dev_user
+      POSTGRES_PASSWORD: dev_password_123
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db-secure.sql:/docker-entrypoint-initdb.d/init-db-secure.sql:ro
+      - postgres_logs:/var/log/postgresql
+    restart: unless-stopped
+
+  # ========================================
+  # GRAFANA - DESARROLLO
+  # ========================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana_dev
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+
+
+  # ========================================
+  # NODE EXPORTER - Métricas del Sistema
+  # ========================================
+  node_exporter:
+    image: prom/node-exporter:latest
+    container_name: node_exporter_dev
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    restart: unless-stopped
+
+  # ========================================
+  # FLOWER - CELERY MONITORING (Modo básico)
+  # ========================================
+  flower:
+    image: mher/flower:latest
+    container_name: flower_dev
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - FLOWER_BASIC_AUTH=user:password
+      - FLOWER_PERSISTENT=True
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # ========================================
+  # PROMETHEUS - DESARROLLO
+  # ========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus_dev
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  mqtt_data:
+  grafana_data:
+  prometheus_data:
+  static_volume:
+  media_volume:
+  django_logs:
+  celery_logs:
+  nginx_logs:
+  mqtt_logs:
+  redis_logs:
+  postgres_logs:
+
+networks:
+  default:
+    driver: bridge
