@@ -1,0 +1,36 @@
+# ACL (Access Control List) para Mosquitto
+# Control de acceso por usuario y topic
+
+# Admin user - acceso completo
+user admin
+topic readwrite #
+
+# SmartHydro application - acceso a topics específicos
+user smarthydro
+topic readwrite smarthydro/#
+topic readwrite novus/#
+topic readwrite ttn/#
+topic readwrite twin/#
+topic readwrite custom/#
+
+# Proveedores externos - acceso limitado
+user novus_provider
+topic readwrite novus/#
+topic read novus/commands/+
+
+user ttn_provider
+topic readwrite ttn/#
+topic read ttn/commands/+
+
+user twin_provider
+topic readwrite twin/#
+topic read twin/commands/+
+
+# Dispositivos IoT - solo publish a sus topics
+pattern readwrite %u/#
+pattern readwrite %u/+/telemetry
+pattern readwrite %u/+/status
+pattern readwrite %u/+/commands/response
+
+# Denegar acceso por defecto
+topic deny readwrite #

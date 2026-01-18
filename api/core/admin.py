@@ -19,6 +19,7 @@ from import_export.admin import ExportActionMixin, ImportExportModelAdmin
 from api.core.models import (
     CatchmentPoint,
     Client,
+    CoreVariable,
     DgaDataConfigCatchment,
     FileCatchment,
     NotificationsCatchment,
@@ -27,10 +28,12 @@ from api.core.models import (
     ProjectCatchments,
     RegisterPersons,
     ResponseNotificationsCatchment,
+    SchemeVariable,
     TelemetryRecord,
+    TelemetryScheme,
     TypeFileCatchment,
     User,
-    Variable,
+    VirtualVariable,
 )
 
 # ========================================
@@ -116,17 +119,84 @@ class AdminIndicatorsMixin:
 class VariableInline(admin.TabularInline):
     """Inline para ver y editar variables dinámicas de un punto"""
 
-    model = Variable
+    model = CoreVariable
     extra = 1
     fields = (
         "name",
         "internal_code",
+        "type_variable",
         "unit",
         "provider_key",
         "scale_factor",
         "offset",
         "is_active",
     )
+
+
+class SchemeVariableInline(admin.TabularInline):
+    """Variables dentro de un esquema"""
+
+    model = SchemeVariable
+    extra = 1
+    fields = (
+        "name",
+        "internal_code",
+        "type_variable",
+        "unit",
+        "provider_key",
+        "scale_factor",
+        "offset",
+        "is_active",
+    )
+
+
+class VirtualVariableInline(admin.TabularInline):
+    """Variables virtuales dentro de un esquema"""
+
+    model = VirtualVariable
+    extra = 1
+    fields = ("name", "internal_code", "unit", "operation", "sources", "is_active")
+
+
+@admin.register(TelemetryScheme)
+class TelemetrySchemeAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin):
+    """
+    Administración de Esquemas de Telemetría.
+    Permite definir plantillas reutilizables para múltiples puntos.
+    """
+
+    list_display = ("id", "name", "description", "get_points_count")
+    search_fields = ("name", "description")
+    inlines = [SchemeVariableInline, VirtualVariableInline]
+
+    def get_points_count(self, obj):
+        count = obj.catchment_points.count()
+        return mark_safe(f"<strong>{count}</strong> puntos")
+
+    get_points_count.short_description = "Puntos Vinculados"
+
+
+@admin.register(CoreVariable)
+class VariableAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin):
+    """
+    Gestión independiente de variables de telemetría.
+    Permite configurar cómo se extraen y escalan los datos de cada sensor.
+    """
+
+    list_display = (
+        "id",
+        "name",
+        "point",
+        "internal_code",
+        "unit",
+        "provider_key",
+        "is_active",
+    )
+    list_filter = ("is_active", "unit", "point__project__name")
+    search_fields = ("name", "internal_code", "point__title", "provider_key")
+    autocomplete_fields = ["point"]
+    list_per_page = ADMIN_LIST_PER_PAGE
+    ordering = ("point", "name")
 
 
 class ProfileDataConfigInline(admin.StackedInline):
@@ -603,8 +673,14 @@ class CatchmentPointAdmin(
         (
             "Información Básica",
             {
-                "fields": ("title", "project", "owner_user", "frecuency"),
-                "description": "Datos principales del punto: nombre, proyecto asociado, propietario y frecuencia de lectura.",
+                "fields": (
+                    "title",
+                    "project",
+                    "owner_user",
+                    "frecuency",
+                    "processing_scheme",
+                ),
+                "description": "Datos principales del punto: nombre, proyecto asociado, propietario y esquema de procesamiento.",
             },
         ),
         ("Ubicación", {"fields": ("lat", "lon"), "classes": ("collapse",)}),
@@ -1710,11 +1786,37 @@ class TelemetryRecordAdmin(admin.ModelAdmin):
     Almacena los datos en formato JSON permitiendo cualquier número de variables.
     """
 
-    list_display = ("point", "timestamp", "get_data_summary")
-    list_filter = ("point", "timestamp")
+    list_display = (
+        "point",
+        "timestamp",
+        "get_flow",
+        "get_total",
+        "send_dga",
+        "is_error",
+        "n_voucher",
+    )
+    list_filter = (
+        "send_dga",
+        "is_error",
+        "is_partial",
+        "point__project",
+        "point",
+        "timestamp",
+    )
     date_hierarchy = "timestamp"
-    search_fields = ("point__title",)
+    search_fields = ("point__title", "n_voucher")
     list_per_page = ADMIN_LIST_PER_PAGE
+    readonly_fields = ("data", "metadata", "timestamp", "point")
+
+    def get_flow(self, obj):
+        return obj.data.get("flow", "-")
+
+    get_flow.short_description = "Caudal (L/s)"
+
+    def get_total(self, obj):
+        return obj.data.get("total", "-")
+
+    get_total.short_description = "Total (m³)"
 
     def get_data_summary(self, obj):
         return ", ".join([f"{k}: {v}" for k, v in obj.data.items()])

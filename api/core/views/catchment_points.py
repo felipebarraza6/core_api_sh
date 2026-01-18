@@ -4,6 +4,7 @@ from django_filters import rest_framework as filters
 from rest_framework import mixins, viewsets
 from rest_framework.permissions import IsAuthenticated
 
+from api.core.models import CoreVariable
 from api.core.models.catchment_points import (
     CatchmentPoint,
     Client,
@@ -17,7 +18,6 @@ from api.core.models.catchment_points import (
     ResponseNotificationsCatchment,
     TypeFileCatchment,
 )
-from api.core.models import Variable
 from api.core.serializers import (
     CatchmentPointIkoluSerializer,
     CatchmentPointSerializer,
@@ -262,7 +262,7 @@ class DgaDataConfigCatchmentViewSet(
     lookup_field = "id"
 
 
-class VariableViewSet(
+class CoreVariableViewSet(
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
@@ -272,9 +272,10 @@ class VariableViewSet(
 ):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
-    queryset = Variable.objects.all()
+    queryset = CoreVariable.objects.all()
     serializer_class = VariableSerializer
     lookup_field = "id"
+    filterset_fields = ["point", "internal_code", "is_active", "is_virtual"]
 
 
 class RegisterPersonsViewSet(

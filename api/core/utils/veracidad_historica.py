@@ -13,7 +13,7 @@ from api.core.models import (
     CatchmentPoint,
     DgaDataConfigCatchment,
     ProfileDataConfigCatchment,
-    Variable
+    CoreVariable
 )
 from api.telemetry.validators.telemetry_validator import calculate_probable_flow_by_velocity
 
@@ -40,7 +40,7 @@ def calculate_historical_veracidad(
         if not profile or not profile.is_telemetry:
             continue
         
-        variables = Variable.objects.filter(point=point, is_active=True)
+        variables = CoreVariable.objects.filter(point=point, is_active=True)
         variable_codes = list(variables.values_list('internal_code', flat=True))
         has_caudal = any(c in variable_codes for c in ["flow", "caudal"])
         

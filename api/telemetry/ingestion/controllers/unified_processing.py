@@ -9,29 +9,39 @@ usen exactamente la misma lógica robusta.
 IMPORTANTE: Todos los cronjobs deben importar y usar estas funciones.
 """
 
+import logging
 import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 import pytz
 
-from api.core.models import TelemetryRecord, Variable
+from api.core.models import CoreVariable, TelemetryRecord
 
 # ✅ Configuración horaria
 chile_tz = pytz.timezone("America/Santiago")
 
 # ✅ Logging estructurado
-import logging
 telemetry_logger = logging.getLogger(__name__)
 
 
 def save_telemetry_data(
-    point_id: int, created_register: Dict[str, Any]
+    point_id: int,
+    created_register: Dict[str, Any],
+    processed_variables: Optional[list] = None,
 ) -> TelemetryRecord:
     """
-    Guarda los datos de telemetría exclusivamente en el esquema V3 Dinámico.
+    Guarda los datos de telemetría exclusivamente en el esquema dinámico.
 
-    MEJORAS V3.1:
+    Args:
+        point_id: ID del punto de captación
+        created_register: Diccionario con todos los valores procesados
+        processed_variables: Lista de variables procesadas (del serializer).
+            Si se proporciona, se usa para mapear datos en lugar de consultar
+            solo CoreVariables. Esto permite guardar variables del esquema.
+
+    MEJORAS:
+    - Soporta variables heredadas del esquema (SchemeVariable)
     - Agrega device_id al metadata para trazabilidad de hardware
     - Agrega variable_details para debugging
     - Incluye timestamp de procesamiento
@@ -45,16 +55,39 @@ def save_telemetry_data(
             except ValueError:
                 dt_medition = datetime.now()
 
-        # 2. Mapear datos al JSON de V3
+        # 2. Mapear datos al JSON
         v3_data = {}
-        active_vars = Variable.objects.filter(point_id=point_id, is_active=True)
 
-        for var in active_vars:
-            val = created_register.get(var.internal_code) or created_register.get(
-                var.provider_key
-            )
-            if val is not None:
-                v3_data[var.internal_code] = val
+        # Si tenemos las variables procesadas (incluye esquema + punto), usarlas
+        if processed_variables:
+            for var in processed_variables:
+                internal_code = var.get("internal_code")
+                provider_key = var.get("str_variable") or var.get("provider_key")
+                val = created_register.get(internal_code) or created_register.get(
+                    provider_key
+                )
+                if val is not None and internal_code:
+                    v3_data[internal_code] = val
+        else:
+            # Fallback: solo CoreVariables del punto (comportamiento legacy)
+            active_vars = CoreVariable.objects.filter(point_id=point_id, is_active=True)
+            for var in active_vars:
+                val = created_register.get(var.internal_code) or created_register.get(
+                    var.provider_key
+                )
+                if val is not None:
+                    v3_data[var.internal_code] = val
+
+        # Siempre incluir campos calculados por el sistema si existen
+        system_calculated_fields = [
+            "total_diff",
+            "total_today_diff",
+            "days_not_conection",
+            "water_table",
+        ]
+        for field in system_calculated_fields:
+            if field in created_register and field not in v3_data:
+                v3_data[field] = created_register[field]
 
         # Fallback a campos estándar si no hay variables configuradas
         if not v3_data:
@@ -62,16 +95,13 @@ def save_telemetry_data(
                 "flow",
                 "nivel",
                 "total",
-                "total_diff",
-                "total_today_diff",
                 "pulses",
-                "water_table",
             ]
             for field in standard_fields:
                 if field in created_register:
                     v3_data[field] = created_register[field]
 
-        # 3. Construir metadata extendido (V3.1)
+        # 3. Construir metadata extendido
         metadata = {
             "last_logger_timestamp": created_register.get("date_time_last_logger"),
             "days_not_connection": created_register.get("days_not_conection", 0),
@@ -90,7 +120,7 @@ def save_telemetry_data(
         if frequency:
             metadata["frequency_minutes"] = frequency
 
-        # 4. Crear el registro V3
+        # 4. Crear el registro
         v3_record = TelemetryRecord.objects.create(
             point_id=point_id,
             timestamp=dt_medition,
@@ -102,13 +132,14 @@ def save_telemetry_data(
         )
 
         telemetry_logger.info(
-            f"Punto {point_id} - Datos guardados en V3.1 (ID: {v3_record.id}, device: {device_id or 'N/A'})"
+            f"Punto {point_id} - Datos guardados en sistema dinámico "
+            f"(ID: {v3_record.id}, device: {device_id or 'N/A'})"
         )
         return v3_record
 
     except Exception as e:
         telemetry_logger.error(
-            f"Error crítico guardando telemetría V3 para punto {point_id}: {e}",
+            f"Error crítico guardando telemetría para punto {point_id}: {e}",
             exc_info=True,
         )
         return None
@@ -373,24 +404,25 @@ def process_nivel_variable(
         else:
             nivel_value = 0
 
-    # Caso especial para punto 149
-    if point_catchment["id"] == 149:
-        created_register["nivel"] = nivel_mt(
-            float(nivel_value) - 17.0,
-            variable.get("calculate_nivel"),
-            point_catchment["id"],
-            point_catchment["profile_data_config"].get("d3", 0),
-        )
-    else:
-        created_register["nivel"] = nivel_mt(
-            nivel_value,
-            variable.get("calculate_nivel"),
-            point_catchment["id"],
-            point_catchment["profile_data_config"].get("d3", 0),
-        )
+    # Aplicar offset si existe (reemplaza lógica hardcodeada antigua)
+    offset = variable.get("offset", 0.0)
+    if offset:
+        nivel_value = float(nivel_value) + float(offset)
+
+    # Priorizar d3 de la variable, fallback al perfil global
+    config = variable.get("configuration", {})
+    d3 = config.get("d3")
+    if d3 is None:
+        d3 = point_catchment["profile_data_config"].get("d3", 0)
+
+    created_register["nivel"] = nivel_mt(
+        nivel_value,
+        variable.get("calculate_nivel"),
+        point_catchment["id"],
+        d3,
+    )
 
     # Validar d3 antes de calcular nivel freático
-    d3 = point_catchment["profile_data_config"].get("d3", 0)
     if not d3 or float(d3 if d3 else 0) <= 0:
         telemetry_logger.warning(
             f"Error: d3 no válido para punto {point_catchment['id']}"
@@ -493,6 +525,27 @@ def process_variable_safely(
         Tuple con (date_time_last_logger_total, created_register actualizado)
     """
     type_variable = variable.get("type_variable")
+    min_val = variable.get("min_value")
+    max_val = variable.get("max_value")
+
+    # Validar valor mínimo y máximo
+    if data and data.get("value") is not None:
+        try:
+            current_val = float(data["value"])
+            if min_val is not None and current_val < float(min_val):
+                telemetry_logger.warning(
+                    f"Punto {point_catchment['id']} - "
+                    f"Valor {current_val} < min {min_val}. Ignorando."
+                )
+                return date_time_last_logger_total, created_register
+            if max_val is not None and current_val > float(max_val):
+                telemetry_logger.warning(
+                    f"Punto {point_catchment['id']} - "
+                    f"Valor {current_val} > max {max_val}. Ignorando."
+                )
+                return date_time_last_logger_total, created_register
+        except (ValueError, TypeError):
+            pass
 
     try:
         if type_variable == "TOTALIZADO":

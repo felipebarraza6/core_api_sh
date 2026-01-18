@@ -47,7 +47,7 @@ router.register(r'profile_data_config_catchment', views_catchment.ProfileDataCon
                 basename='profile_data_config_catchment')
 router.register(r'dga_data_config_catchment',
                 views_catchment.DgaDataConfigCatchmentViewSet, basename='dga_data_config_catchment')
-router.register(r'variable', views_catchment.VariableViewSet,
+router.register(r'variable', views_catchment.CoreVariableViewSet,
                 basename='variable')
 router.register(r'register_persons',
                 views_catchment.RegisterPersonsViewSet, basename='register_persons')

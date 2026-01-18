@@ -7,7 +7,7 @@ from django.db import transaction
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 
-from api.core.models import CatchmentPoint, TelemetryRecord, Variable
+from api.core.models import CatchmentPoint, TelemetryRecord, CoreVariable
 
 
 def get_pulses_factor_for_point(point_id: int) -> int:
@@ -16,8 +16,8 @@ def get_pulses_factor_for_point(point_id: int) -> int:
     Fallback to 1000 if not found or invalid.
     """
     try:
-        # En V3 usamos Variable
-        var = Variable.objects.filter(
+        # En V3 usamos CoreVariable
+        var = CoreVariable.objects.filter(
             point_id=point_id, internal_code="total"
         ).first()
         if not var or not var.scale_factor or var.scale_factor <= 0:

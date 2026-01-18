@@ -1,0 +1,191 @@
+# Reglas de Alertas para SmartHydro
+
+groups:
+  # ============================================
+  # ALERTAS DE TELEMETRÍA
+  # ============================================
+  - name: telemetry_alerts
+    interval: 1m
+    rules:
+      # Punto sin datos por más de 2 horas
+      - alert: PointOffline
+        expr: smarthydro_telemetry_last_data_seconds_ago > 7200
+        for: 5m
+        labels:
+          severity: warning
+          category: telemetry
+        annotations:
+          summary: "Punto {{ $labels.point_name }} (ID: {{ $labels.point_id }}) sin datos"
+          description: "El punto {{ $labels.point_name }} no ha enviado datos en {{ $value | humanizeDuration }}."
+
+      # Punto sin datos por más de 24 horas
+      - alert: PointCriticalOffline
+        expr: smarthydro_telemetry_last_data_seconds_ago > 86400
+        for: 10m
+        labels:
+          severity: critical
+          category: telemetry
+        annotations:
+          summary: "Punto {{ $labels.point_name }} CRÍTICO sin datos"
+          description: "El punto {{ $labels.point_name }} no ha enviado datos en más de 24 horas."
+
+      # Errores de ingestión en aumento
+      - alert: HighIngestionErrorRate
+        expr: rate(smarthydro_telemetry_ingestion_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          category: telemetry
+        annotations:
+          summary: "Alta tasa de errores en ingestión para punto {{ $labels.point_name }}"
+          description: "Punto {{ $labels.point_name }} tiene {{ $value }} errores/segundo."
+
+      # Caudal fuera de rango (mayor a 1000 L/s es anormal)
+      - alert: AbnormalFlowRate
+        expr: smarthydro_telemetry_flow_liters_per_second > 1000
+        for: 5m
+        labels:
+          severity: warning
+          category: telemetry
+        annotations:
+          summary: "Caudal anormal en {{ $labels.point_name }}"
+          description: "Caudal de {{ $value }} L/s detectado en {{ $labels.point_name }}."
+
+      # Consumo diario muy alto (mayor a 50000 m³)
+      - alert: HighDailyConsumption
+        expr: smarthydro_telemetry_daily_consumption_cubic_meters > 50000
+        for: 10m
+        labels:
+          severity: info
+          category: telemetry
+        annotations:
+          summary: "Consumo diario alto en {{ $labels.point_name }}"
+          description: "Consumo de {{ $value }} m³ en {{ $labels.point_name }} hoy."
+
+  # ============================================
+  # ALERTAS DGA
+  # ============================================
+  - name: dga_alerts
+    interval: 5m
+    rules:
+      # Registros pendientes acumulándose
+      - alert: DGAPendingRecordsHigh
+        expr: smarthydro_dga_pending_records > 1000
+        for: 30m
+        labels:
+          severity: warning
+          category: dga
+        annotations:
+          summary: "{{ $value }} registros DGA pendientes para {{ $labels.point_name }}"
+          description: "Punto {{ $labels.point_name }} tiene {{ $value }} registros sin enviar a DGA."
+
+      # Registros pendientes muy alto
+      - alert: DGAPendingRecordsCritical
+        expr: smarthydro_dga_pending_records > 5000
+        for: 1h
+        labels:
+          severity: critical
+          category: dga
+        annotations:
+          summary: "CRÍTICO: {{ $value }} registros DGA pendientes"
+          description: "Punto {{ $labels.point_name }} acumula {{ $value }} registros sin enviar."
+
+      # Errores de transmisión DGA
+      - alert: DGATransmissionErrors
+        expr: rate(smarthydro_dga_transmission_errors_total[10m]) > 0.05
+        for: 15m
+        labels:
+          severity: warning
+          category: dga
+        annotations:
+          summary: "Errores en transmisión DGA para punto {{ $labels.point_id }}"
+          description: "Tasa de error: {{ $value }} errores/segundo."
+
+  # ============================================
+  # ALERTAS DE SISTEMA
+  # ============================================
+  - name: system_alerts
+    interval: 1m
+    rules:
+      # Puntos activos hoy muy bajo
+      - alert: LowActivePoints
+        expr: smarthydro_points_with_data_today < 5
+        for: 1h
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "Solo {{ $value }} puntos activos hoy"
+          description: "Número de puntos con datos hoy: {{ $value }}. Revisar conectividad."
+
+      # Múltiples puntos offline
+      - alert: MultiplePointsOffline
+        expr: count(smarthydro_points_offline > 0) > 10
+        for: 30m
+        labels:
+          severity: critical
+          category: system
+        annotations:
+          summary: "{{ $value }} puntos offline"
+          description: "Hay {{ $value }} puntos sin datos en las últimas 2 horas."
+
+      # Alertas activas en múltiples puntos
+      - alert: MultipleActiveAlerts
+        expr: sum(smarthydro_active_alerts) > 20
+        for: 15m
+        labels:
+          severity: info
+          category: system
+        annotations:
+          summary: "{{ $value }} alertas activas en el sistema"
+          description: "Total de alertas activas: {{ $value }}."
+
+  # ============================================
+  # ALERTAS DE INFRAESTRUCTURA
+  # ============================================
+  - name: infrastructure_alerts
+    interval: 1m
+    rules:
+      # CPU alta
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "CPU alta en {{ $labels.instance }}"
+          description: "Uso de CPU: {{ $value }}%"
+
+      # Memoria alta
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "Memoria alta en {{ $labels.instance }}"
+          description: "Uso de memoria: {{ $value }}%"
+
+      # Disco alto
+      - alert: HighDiskUsage
+        expr: (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "Disco alto en {{ $labels.instance }}"
+          description: "Uso de disco: {{ $value }}%"
+
+      # Django down
+      - alert: DjangoDown
+        expr: up{job="smarthydro_django"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "SmartHydro Django API está caído"
+          description: "El servicio Django no responde."

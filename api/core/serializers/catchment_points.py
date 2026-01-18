@@ -1,13 +1,13 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-import pytz
-from django.db.models import Case, IntegerField, Prefetch, Sum, When
+from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
 
 from api.core.models import (
     CatchmentPoint,
     Client,
+    CoreVariable,
     DgaDataConfigCatchment,
     FileCatchment,
     NotificationsCatchment,
@@ -18,14 +18,10 @@ from api.core.models import (
     ResponseNotificationsCatchment,
     TelemetryRecord,
     TypeFileCatchment,
-    Variable,
 )
 
 from .interaction_detail import (
     TelemetryRecordSerializer as InteractionDetailModelSerializer,
-)
-from .interaction_detail import (
-    TelemetryRecordSerializer as InteractionDetailModelSerializerNoProcessing,
 )
 
 
@@ -114,7 +110,7 @@ class DgaCronSerializer(serializers.ModelSerializer):
 
 class VariableCronSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Variable
+        model = CoreVariable
         fields = (
             "id",
             "name",
@@ -122,6 +118,13 @@ class VariableCronSerializer(serializers.ModelSerializer):
             "unit",
             "scale_factor",
             "offset",
+            "operation",
+            "formula",
+            "sources",
+            "priority",
+            "is_virtual",
+            "min_value",
+            "max_value",
             "is_active",
         )
 
@@ -146,32 +149,112 @@ class CatchmentPointSerializerDetailCron(serializers.ModelSerializer):
         if not profile:
             return {}
 
-        # Mapeo simplificado para compatibilidad con scripts de ingesta legacy
-        variables = Variable.objects.filter(point=obj, is_active=True)
-        return {
-            "token_service": profile.token_service or "",  # V3.1: Token real del proveedor
+        # Serializar el perfil básico (incluyendo extra_config)
+        profile_data = ProfileDataConfigCatchmentSerializer(profile).data
+
+        # 1. Variables directas del punto
+        point_variables = CoreVariable.objects.filter(point=obj, is_active=True)
+
+        # 2. Variables heredadas del esquema (si existe)
+        scheme_variables = []
+        virtual_variables = []
+        scheme_name = "Dynamic Scheme"
+
+        if obj.processing_scheme:
+            scheme_name = obj.processing_scheme.name
+            scheme_variables = obj.processing_scheme.variables.filter(is_active=True)
+            virtual_variables = obj.processing_scheme.virtual_variables.filter(
+                is_active=True
+            )
+
+        # Combinar variables (las del punto tienen prioridad sobre las del esquema
+        # si coinciden en internal_code)
+        all_vars_dict = {}
+
+        # Primero cargar las del esquema
+        for v in scheme_variables:
+            all_vars_dict[v.internal_code] = {
+                "id": f"scheme_{v.id}",
+                "str_variable": v.provider_key or v.internal_code,
+                "type_variable": v.type_variable,
+                "internal_code": v.internal_code,
+                "service": "UNIFIED",
+                "scale_factor": v.scale_factor,
+                "offset": v.offset,
+                "operation": v.operation,
+                "formula": v.formula,
+                "sources": v.sources,
+                "priority": v.priority,
+                "is_virtual": v.is_virtual,
+                "min_value": v.min_value,
+                "max_value": v.max_value,
+                "configuration": v.configuration,
+            }
+
+        # Luego cargar/sobreescribir con las del punto
+        for v in point_variables:
+            all_vars_dict[v.internal_code] = {
+                "id": v.id,
+                "str_variable": v.provider_key or v.internal_code,
+                "type_variable": v.type_variable,
+                "internal_code": v.internal_code,
+                "service": "UNIFIED",
+                "scale_factor": v.scale_factor,
+                "offset": v.offset,
+                "operation": v.operation,
+                "formula": v.formula,
+                "sources": v.sources,
+                "priority": v.priority,
+                "is_virtual": v.is_virtual,
+                "min_value": v.min_value,
+                "max_value": v.max_value,
+                "configuration": v.configuration,
+            }
+
+        # Construir lista final de variables procesables
+        processed_variables = []
+        for v_code, v_data in all_vars_dict.items():
+            # Inyectar parámetros legacy esperados por unified_processing.py
+            v_data["pulses_factor"] = v_data.get("configuration", {}).get(
+                "pulses_factor", (v_data["scale_factor"] * 1000)
+            )
+            v_data["calculate_nivel"] = v_data.get("configuration", {}).get(
+                "calculate_nivel", True
+            )
+            v_data["convert_to_lt"] = v_data.get("configuration", {}).get(
+                "convert_to_lt", True
+            )
+            processed_variables.append(v_data)
+
+        # Retornar estructura completa, incluyendo extra_config del perfil
+        result = {
+            "token_service": profile.token_service or "",
             "d3": float(profile.d3),
             "scheme": {
-                "name": "V3 Dynamic Scheme",
-                "variables": [
-                    {
-                        "id": v.id,
-                        "str_variable": v.provider_key or v.internal_code,
-                        "type_variable": self._map_internal_to_legacy_type(
-                            v.internal_code
-                        ),
-                        "internal_code": v.internal_code,
-                        "service": "V3",
-                        "pulses_factor": (
-                            v.scale_factor * 1000
-                            if v.internal_code == "total"
-                            else 1000
-                        ),
-                    }
-                    for v in variables
-                ],
+                "name": scheme_name,
+                "variables": processed_variables,
+                "virtual_variables": sorted(
+                    [
+                        {
+                            "name": vv.name,
+                            "internal_code": vv.internal_code,
+                            "operation": vv.operation,
+                            "sources": vv.sources,
+                            "formula": vv.formula,
+                            "priority": vv.priority,
+                        }
+                        for vv in virtual_variables
+                    ],
+                    key=lambda x: x["priority"],
+                ),
             },
         }
+
+        # Inyectar campos del perfil incluyendo extra_config
+        if profile_data:
+            result.update(profile_data)
+
+        return result
 
     def _map_internal_to_legacy_type(self, code):
         mapping = {
@@ -196,7 +279,7 @@ class ProfileIkoluCatchmentRetrieveSerializer(serializers.ModelSerializer):
 
 class VariableConfigSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Variable
+        model = CoreVariable
         fields = (
             "id",
             "name",
@@ -204,6 +287,13 @@ class VariableConfigSerializer(serializers.ModelSerializer):
             "unit",
             "scale_factor",
             "offset",
+            "operation",
+            "formula",
+            "sources",
+            "priority",
+            "is_virtual",
+            "min_value",
+            "max_value",
             "is_active",
         )
 
@@ -218,7 +308,9 @@ class DataConfigUserSerializer(serializers.ModelSerializer):
     def get_variables(self, obj):
         if not obj or not obj.point_catchment:
             return []
-        variables = Variable.objects.filter(point=obj.point_catchment, is_active=True)
+        variables = CoreVariable.objects.filter(
+            point=obj.point_catchment, is_active=True
+        )
         return VariableConfigSerializer(variables, many=True).data
 
     class Meta:
@@ -234,6 +326,7 @@ class DataConfigUserSerializer(serializers.ModelSerializer):
             "date_start_telemetry",
             "date_delivery_act",
             "is_telemetry",
+            "extra_config",
             "variables",
         )
 
@@ -257,12 +350,14 @@ class InteractionDetailModuleSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         data = instance.data
-        representation["flow"] = data.get("flow", data.get("caudal", 0))
-        representation["total"] = data.get("total", 0)
-        representation["total_diff"] = data.get("total_diff", 0)
-        representation["total_today_diff"] = data.get("total_today_diff", 0)
-        representation["nivel"] = data.get("nivel", 0)
-        representation["water_table"] = data.get("water_table", 0)
+        if isinstance(data, dict):
+            for key, value in data.items():
+                representation[key] = value
+
+        # Compatibilidad legacy
+        if "flow" not in representation and "caudal" in representation:
+            representation["flow"] = representation["caudal"]
+
         representation["date_time_last_logger"] = instance.metadata.get(
             "last_logger_timestamp"
         )
@@ -339,17 +434,34 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
             return []
         data = []
         for r in records:
+            # Timestamp local
+            dt_local = timezone.localtime(r.timestamp)
+
             item = {
-                "date_time_medition": timezone.localtime(r.timestamp).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                ),
-                "flow": r.data.get("flow", r.data.get("caudal", 0)),
-                "total": r.data.get("total", 0),
-                "total_diff": r.data.get("total_diff", 0),
-                "nivel": r.data.get("nivel", 0),
+                "date_time_medition": dt_local.strftime("%Y-%m-%d %H:%M:%S"),
                 "send_dga": r.send_dga,
                 "n_voucher": r.n_voucher or "-",
             }
+
+            # Inyectar todos los datos dinámicos del JSONField
+            if isinstance(r.data, dict):
+                for key, val in r.data.items():
+                    item[key] = val
+
+            # Compatibilidad legacy (asegurar que 'flow' exista si hay 'caudal')
+            if "flow" not in item and "caudal" in item:
+                item["flow"] = item["caudal"]
+            elif "flow" not in item:
+                item["flow"] = 0
+
+            # Asegurar que otros campos básicos existan para evitar errores en frontend
+            if "total" not in item:
+                item["total"] = 0
+            if "nivel" not in item:
+                item["nivel"] = 0
+            if "total_diff" not in item:
+                item["total_diff"] = 0
+
             data.append(item)
         return data
 

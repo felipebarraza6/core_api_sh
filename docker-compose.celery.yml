@@ -1,0 +1,133 @@
+version: "3.8"
+
+services:
+  # ========================================
+  # CELERY WORKERS - Task Processing
+  # ========================================
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: celery_worker
+    command: celery -A api worker --loglevel=info --concurrency=4
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    environment:
+      - DJANGO_SETTINGS_MODULE=api.settings
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_DB=smarthydro_prod
+      - POSTGRES_USER=smarthydro_user
+      - POSTGRES_PASSWORD=${LOCAL_DB_PASSWORD}
+      - LOCAL_DB_HOST=postgres
+      - LOCAL_DB_NAME=smarthydro_prod
+      - LOCAL_DB_USER=smarthydro_user
+      - LOCAL_DB_PASSWORD=${LOCAL_DB_PASSWORD}
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "celery", "-A", "api", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========================================
+  # CELERY BEAT - Task Scheduler
+  # ========================================
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: celery_beat
+    command: celery -A api beat --loglevel=info --scheduler=django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=api.settings
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # ========================================
+  # FLOWER - Celery Monitoring UI
+  # ========================================
+  flower:
+    image: mher/flower:latest
+    container_name: celery_flower
+    command: ["celery", "flower", "--broker=redis://redis:6379/0", "--port=5555"]
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========================================
+  # REDIS - Message Broker & Cache
+  # ========================================
+  redis:
+    image: redis:7-alpine
+    container_name: redis_celery
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========================================
+  # POSTGRESQL - Database
+  # ========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_celery
+    environment:
+      POSTGRES_DB: smarthydro_prod
+      POSTGRES_USER: smarthydro_user
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db-secure.sql:/docker-entrypoint-initdb.d/init-db-secure.sql:ro
+      - postgres_logs:/var/lib/postgresql/data/log
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smarthydro_user -d smarthydro_prod"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_volume:
+  media_volume:
+  postgres_logs:
+
+networks:
+  backend:
+    driver: bridge

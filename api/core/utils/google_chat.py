@@ -6,11 +6,9 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Webhook para alertas de conexión/desconexión
-WEBHOOK_URL = "https://chat.googleapis.com/v1/spaces/AAQAm9y1FaI/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=IMIDu11REWEYRywIk-zC_QFo5tPi04IqvY1ToNuk9Vo"
-
-# Webhook para reportes DGA (cumplimiento)
-WEBHOOK_DGA_URL = "https://chat.googleapis.com/v1/spaces/AAQAuNyVmJc/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vGilyWJuJR8AKXYSobhQYLYNalVAqtUwyiEpm6iLGhU"
+# Webhooks configurados desde settings
+WEBHOOK_URL = getattr(settings, "GOOGLE_CHAT_WEBHOOK_URL", "https://chat.googleapis.com/v1/spaces/AAQAm9y1FaI/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=IMIDu11REWEYRywIk-zC_QFo5tPi04IqvY1ToNuk9Vo")
+WEBHOOK_DGA_URL = getattr(settings, "GOOGLE_CHAT_WEBHOOK_DGA_URL", "https://chat.googleapis.com/v1/spaces/AAQAuNyVmJc/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vGilyWJuJR8AKXYSobhQYLYNalVAqtUwyiEpm6iLGhU")
 
 def send_google_chat_message(text, webhook_url=None):
     """Envía un mensaje simple a Google Chat."""

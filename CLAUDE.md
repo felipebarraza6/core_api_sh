@@ -17,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Data Integrations**: DGA (Chilean water authority) and SMA (water quality service) with voucher tracking
 - **Reporting**: PDF and Excel generation with complex filtering and calculations
 - **Admin Dashboard**: Django admin with Jazzmin UI and custom telemetry monitoring views
+- **Monitoring System**: Prometheus + Grafana for real-time metrics, alerts, and dashboards
 
 ## Development Commands
 
@@ -118,6 +119,59 @@ docker-compose -f docker-compose.production.secure.yml up -d
 - `docker-compose up -d --force-recreate` - recrea TODOS los contenedores
 - `docker-compose down --volumes` - BORRA TODOS LOS DATOS
 - Rebuild de `postgres` sin backup previo
+
+### Monitoring System (Prometheus + Grafana)
+
+```bash
+# ========================================
+# INICIO RÁPIDO
+# ========================================
+./start_monitoring.sh
+
+# El script automáticamente:
+# - Crea la red Docker si no existe
+# - Conecta Django a la red de monitoreo
+# - Levanta Prometheus, Grafana, Alertmanager, Node Exporter
+# - Verifica que el endpoint /metrics/ funcione
+
+# ========================================
+# ACCESO A DASHBOARDS
+# ========================================
+# Grafana: http://localhost:3000
+#   Usuario: admin
+#   Password: smarthydro2026
+#
+# Prometheus: http://localhost:9090
+# Alertmanager: http://localhost:9093
+
+# ========================================
+# COMANDOS ÚTILES
+# ========================================
+# Ver estado de servicios
+docker-compose -f docker-compose.monitoring.yml ps
+
+# Ver logs
+docker logs -f smarthydro_prometheus
+docker logs -f smarthydro_grafana
+
+# Detener monitoreo
+docker-compose -f docker-compose.monitoring.yml down
+
+# Documentación completa
+cat monitoring/README.md
+```
+
+**Dashboards Incluidos:**
+- **Telemetría General**: Caudal, totales, consumo diario por punto
+- **Monitoreo DGA**: Registros pendientes, transmisiones, errores
+- **Infraestructura**: CPU, memoria, disco, red, I/O
+
+**Alertas Configuradas:**
+- Puntos offline (>2h, >24h)
+- Errores de ingestión
+- Registros DGA acumulados
+- Alta carga del sistema
+- Django caído
 
 ### Management Commands
 
@@ -306,8 +360,8 @@ Use unified_processing.py controller which orchestrates:
 
 ### Report Generation
 
-- **PDF Reports**: `api/core/reports/pdf_generator.py` with ReportLab
-- **Excel Reports**: `api/core/reports/excel_generator.py` with openpyxl
+- **PDF Reports**: `api/reports/pdf_generator.py` with ReportLab
+- **Excel Reports**: `api/reports/excel_generator.py` with openpyxl
 - Filters applied in serializers before export
 
 ## Common Tasks

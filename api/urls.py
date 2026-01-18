@@ -16,6 +16,7 @@ from api.core.admin_views import (
     telemetry_monitoring_view,
     telemetry_point_records_api,
 )
+from api.core.views.metrics_view import prometheus_metrics
 
 # Configuración del Admin Site con logo SmartHydro
 admin.site.site_header = "SmartHydro - Control de Telemetría"
@@ -53,6 +54,8 @@ urlpatterns = [
     ),
     # Chatbot Integration
     path("api/chat-bot/", include("api.chatbot.urls")),
+    # Prometheus Metrics
+    path("metrics/", prometheus_metrics, name="prometheus-metrics"),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 if exports:

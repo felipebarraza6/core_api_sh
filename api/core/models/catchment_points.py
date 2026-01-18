@@ -93,6 +93,16 @@ class CatchmentPoint(ModelApi):
         default="60",
     )
 
+    processing_scheme = models.ForeignKey(
+        "core.TelemetryScheme",
+        related_name="catchment_points",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="Esquema de Telemetría",
+        help_text="Esquema reutilizable de procesamiento para este punto.",
+    )
+
     class Meta:
         """Meta data catchment points"""
 
@@ -402,13 +412,26 @@ class ProfileDataConfigCatchment(ModelApi):
         help_text="Valor acumulado automáticamente cuando el sensor se reinicia (glitch/reset)."
     )
 
-    # Telemetry Provider Token (V3.1 Unified System)
+    # Telemetry Provider Token (Unified Dynamic System)
     token_service = models.CharField(
         max_length=500,
         blank=True,
         null=True,
         verbose_name="Token del Proveedor de Telemetría",
-        help_text="Token para TData, TheThings, Tago, etc. según el proveedor configurado"
+        help_text=(
+            "Token para TData, TheThings, Tago, etc. "
+            "según el proveedor configurado"
+        ),
+    )
+
+    extra_config = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Configuración Dinámica",
+        help_text=(
+            "Variables dinámicas. Soporta formato simple {'k': 1.5} "
+            "o extendido {'k': {'value': 1.5, 'unit': 'm', 'prefix': 'H='}}."
+        ),
     )
 
     class Meta:

@@ -199,6 +199,9 @@ WSGI_APPLICATION = "api.wsgi.application"
 # IMPORTANTE: En producción, Django SIEMPRE usa la base LOCAL del VPS
 # El cluster solo se usa para sincronización y respaldo automático
 
+# Detección de entorno Docker para configuración dinámica
+IS_DOCKER = os.path.exists("/.dockerenv")
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql_psycopg2",
@@ -209,7 +212,9 @@ DATABASES = {
         "PASSWORD": os.environ.get(
             "LOCAL_DB_PASSWORD", os.environ.get("POSTGRES_PASSWORD")
         ),
-        "HOST": os.environ.get("LOCAL_DB_HOST", "postgres_db_secure"),
+        "HOST": os.environ.get(
+            "LOCAL_DB_HOST", "postgres_db_secure" if IS_DOCKER else "localhost"
+        ),
         "PORT": os.environ.get("LOCAL_DB_PORT", "5432"),
         "OPTIONS": {
             "connect_timeout": 10,
@@ -393,6 +398,7 @@ JAZZMIN_SETTINGS = {
         "core.TelemetryRecord",  # Registros de telemetría
         "core.CatchmentPoint",  # Puntos de captación
         # INGESTA DE DATOS (Prioridad 2 - Entrada de datos)
+        "core.TelemetryScheme",  # ✅ Esquemas de Telemetría (NUEVO)
         "core.Variable",  # Variables capturadas
         # PROCESAMIENTO (Prioridad 3 - Transformación de datos)
         "core.ProfileDataConfigCatchment",  # Configuración de procesamiento
@@ -442,6 +448,7 @@ JAZZMIN_SETTINGS = {
         "core.ProjectCatchments": "fas fa-project-diagram",  # Proyectos
         "core.Client": "fas fa-building",  # Clientes
         # Ingesta
+        "core.TelemetryScheme": "fas fa-layer-group",  # ✅ Esquemas
         "core.Variable": "fas fa-signal",  # Variables capturadas
         # Procesamiento
         "core.ProfileDataConfigCatchment": "fas fa-cogs",  # Config procesamiento
@@ -573,8 +580,8 @@ CELERY_TIMEZONE = TIME_ZONE
 # Celery Beat settings (replaces traditional cronjobs)
 from celery.schedules import crontab
 
-# Force PersistentScheduler instead of DatabaseScheduler
-CELERY_BEAT_SCHEDULER = 'celery.beat:PersistentScheduler'
+# Use DatabaseScheduler to manage tasks from Django Admin
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 CELERY_BEAT_SCHEDULE = {
     # Telemetry collection - replaces cronjobs/telemetry/

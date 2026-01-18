@@ -1,0 +1,126 @@
+# Configuración de Alertmanager para SmartHydro
+
+global:
+  resolve_timeout: 5m
+  # SMTP Configuration (ajustar según tu servidor de correo)
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'notify@smarthydro.app'
+  smtp_auth_username: 'notify@smarthydro.app'
+  smtp_auth_password: 'YOUR_EMAIL_PASSWORD'
+  smtp_require_tls: true
+
+# Templates de notificaciones
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Rutas de notificación
+route:
+  # Configuración por defecto
+  receiver: 'default-receiver'
+  group_by: ['alertname', 'category', 'point_id']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  # Rutas específicas por categoría
+  routes:
+    # Alertas críticas - notificar inmediatamente
+    - match:
+        severity: critical
+      receiver: 'critical-receiver'
+      group_wait: 10s
+      repeat_interval: 1h
+
+    # Alertas de telemetría
+    - match:
+        category: telemetry
+      receiver: 'telemetry-receiver'
+      group_wait: 1m
+      repeat_interval: 6h
+
+    # Alertas DGA
+    - match:
+        category: dga
+      receiver: 'dga-receiver'
+      group_wait: 5m
+      repeat_interval: 12h
+
+    # Alertas de infraestructura
+    - match:
+        category: infrastructure
+      receiver: 'infrastructure-receiver'
+      repeat_interval: 2h
+
+# Configuración de receptores
+receivers:
+  # Receptor por defecto
+  - name: 'default-receiver'
+    email_configs:
+      - to: 'admin@smarthydro.app'
+        headers:
+          Subject: '[SmartHydro] {{ .GroupLabels.alertname }}'
+        html: |
+          <h2>Alerta SmartHydro</h2>
+          <p><strong>Alerta:</strong> {{ .GroupLabels.alertname }}</p>
+          <p><strong>Severidad:</strong> {{ .CommonLabels.severity }}</p>
+          <p><strong>Categoría:</strong> {{ .CommonLabels.category }}</p>
+          <hr>
+          {{ range .Alerts }}
+          <p><strong>{{ .Labels.point_name }}</strong> (ID: {{ .Labels.point_id }})</p>
+          <p>{{ .Annotations.description }}</p>
+          <p><em>Desde: {{ .StartsAt }}</em></p>
+          {{ end }}
+
+  # Alertas críticas
+  - name: 'critical-receiver'
+    email_configs:
+      - to: 'admin@smarthydro.app,ops@smarthydro.app'
+        send_resolved: true
+        headers:
+          Subject: '🚨 [CRÍTICO] {{ .GroupLabels.alertname }}'
+    # Opcional: Slack webhook
+    # slack_configs:
+    #   - api_url: 'YOUR_SLACK_WEBHOOK'
+    #     channel: '#smarthydro-alerts'
+    #     title: '🚨 Alerta Crítica SmartHydro'
+    #     text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}'
+
+  # Alertas de telemetría
+  - name: 'telemetry-receiver'
+    email_configs:
+      - to: 'telemetry@smarthydro.app'
+        send_resolved: true
+        headers:
+          Subject: '[Telemetría] {{ .GroupLabels.alertname }}'
+
+  # Alertas DGA
+  - name: 'dga-receiver'
+    email_configs:
+      - to: 'dga@smarthydro.app'
+        send_resolved: true
+        headers:
+          Subject: '[DGA] {{ .GroupLabels.alertname }}'
+
+  # Alertas de infraestructura
+  - name: 'infrastructure-receiver'
+    email_configs:
+      - to: 'ops@smarthydro.app'
+        send_resolved: true
+        headers:
+          Subject: '[Infra] {{ .GroupLabels.alertname }}'
+
+# Inhibición de alertas (evitar duplicados)
+inhibit_rules:
+  # Si hay alerta crítica, suprimir warnings del mismo punto
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['point_id']
+
+  # Si punto está offline crítico, suprimir alerta de offline normal
+  - source_match:
+      alertname: 'PointCriticalOffline'
+    target_match:
+      alertname: 'PointOffline'
+    equal: ['point_id']

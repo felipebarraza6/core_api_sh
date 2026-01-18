@@ -11,8 +11,8 @@ import os
 bind = "0.0.0.0:8000"
 
 # Workers auto-detectados: (2 * CPU_COUNT) + 1
-# Esto permite manejar requests concurrentes eficientemente
-workers = 5  # Optimizado para gthread (5 workers * 4 threads = 20 concurrente)
+# Optimizado para mejor rendimiento en telemetría de alto volumen
+workers = (multiprocessing.cpu_count() * 2) + 1  # Dinámico basado en CPU
 
 # Threads por worker (opcional, para I/O bound operations)
 threads = 4  # Habilitar Multi-threading para mejor I/O handling
@@ -20,8 +20,8 @@ threads = 4  # Habilitar Multi-threading para mejor I/O handling
 # Worker class: sync (default) o gevent/eventlet para async
 worker_class = "gthread"  # Cambiar sync por gthread
 
-# Timeout para requests largos (dashboard, reportes grandes)
-timeout = 120
+# Timeout optimizado para telemetría (no tan largo para evitar bloqueos)
+timeout = 30  # Reducido para mejor responsiveness
 
 # Keepalive: tiempo que el worker mantiene conexiones abiertas
 keepalive = 5
@@ -29,6 +29,13 @@ keepalive = 5
 # Preload app: carga la aplicación antes de forking workers
 # Reduce uso de memoria y mejora startup time
 preload_app = True
+
+# Max requests per worker before restart (previene memory leaks)
+max_requests = 1000
+max_requests_jitter = 50
+
+# Worker connections para mejor manejo de concurrent requests
+worker_connections = 1000
 
 # Logging
 accesslog = "-"  # stdout

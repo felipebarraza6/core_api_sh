@@ -1,0 +1,35 @@
+# Configuración básica de Prometheus para SmartHydro
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+rule_files:
+  # - "alert_rules.yml"
+
+scrape_configs:
+  # Node Exporter - métricas del sistema host
+  - job_name: 'smarthydro_node'
+    static_configs:
+      - targets: ['node_exporter:9100']
+    scrape_interval: 15s
+
+  # Django API - Métricas de la aplicación
+  - job_name: 'smarthydro_django'
+    static_configs:
+      - targets: ['django-app:8000']
+    scrape_interval: 15s
+    metrics_path: '/metrics/'
+
+  # Flower (Celery monitoring) - cuando esté disponible
+  - job_name: 'smarthydro_flower'
+    static_configs:
+      - targets: ['flower:5555']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

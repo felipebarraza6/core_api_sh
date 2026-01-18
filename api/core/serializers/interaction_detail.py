@@ -4,7 +4,7 @@ from api.core.models import TelemetryRecord
 
 
 class TelemetryRecordSerializer(serializers.ModelSerializer):
-    """Serializer para registros de telemetría V3."""
+    """Serializer para registros de telemetría."""
 
     class Meta:
         model = TelemetryRecord
@@ -15,13 +15,13 @@ class TelemetryRecordSerializer(serializers.ModelSerializer):
 
         # Mapear campos dinámicos a la raíz para compatibilidad con frontend
         data = instance.data
-        representation["flow"] = data.get("flow", data.get("caudal", 0))
-        representation["total"] = data.get("total", 0)
-        representation["total_diff"] = data.get("total_diff", 0)
-        representation["total_today_diff"] = data.get("total_today_diff", 0)
-        representation["nivel"] = data.get("nivel", 0)
-        representation["water_table"] = data.get("water_table", 0)
-        representation["pulses"] = data.get("pulses", 0)
+        if isinstance(data, dict):
+            for key, value in data.items():
+                representation[key] = value
+
+        # Asegurar compatibilidad con nombres legacy si no existen
+        if "flow" not in representation and "caudal" in representation:
+            representation["flow"] = representation["caudal"]
 
         # Mapear timestamps
         representation["date_time_medition"] = instance.timestamp

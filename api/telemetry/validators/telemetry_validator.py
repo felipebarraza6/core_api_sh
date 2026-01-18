@@ -13,7 +13,7 @@ from django.db.models import Max, Min, Avg, Count, Q
 import pytz
 from django.utils import timezone as django_timezone
 
-from api.core.models import TelemetryRecord, CatchmentPoint, ProfileDataConfigCatchment, Variable
+from api.core.models import TelemetryRecord, CatchmentPoint, ProfileDataConfigCatchment, CoreVariable
 from api.telemetry.ingestion.controllers.flow import average_flow
 
 logger = logging.getLogger(__name__)
@@ -110,7 +110,7 @@ def analyze_data_coherence(point_catchment_id: int, days_back: int = 30) -> Dict
     except CatchmentPoint.DoesNotExist:
         return {"error": "Punto no encontrado"}
     
-    variables = list(Variable.objects.filter(point=point, is_active=True))
+    variables = list(CoreVariable.objects.filter(point=point, is_active=True))
     
     has_totalizado = any(v.internal_code == "total" for v in variables)
     has_caudal = any(v.internal_code in ["flow", "caudal"] for v in variables)

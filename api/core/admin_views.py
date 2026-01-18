@@ -20,13 +20,13 @@ from django.utils import timezone
 from api.core.models import (
     CatchmentPoint,
     Client,
+    CoreVariable,
     DgaDataConfigCatchment,
     NotificationsCatchment,
     ProfileDataConfigCatchment,
     ProjectCatchments,
     TelemetryRecord,
     User,
-    Variable,
 )
 from api.telemetry.validators.telemetry_validator import (
     calculate_max_flow_by_diameter,
@@ -394,7 +394,7 @@ def admin_dashboard_view(request):
                 continue
 
             # Obtener variables para verificar si tiene CAUDAL o CAUDAL_PROMEDIO activo
-            variables = Variable.objects.filter(point=point, is_active=True)
+            variables = CoreVariable.objects.filter(point=point, is_active=True)
             variable_types = sorted(
                 {v.internal_code for v in variables if v.internal_code}
             )
@@ -709,7 +709,7 @@ def admin_dashboard_view(request):
             caudal_probable_calc = None
 
             # Obtener variables para calcular flow dinámicamente si corresponde
-            variables = Variable.objects.filter(point=point, is_active=True)
+            variables = CoreVariable.objects.filter(point=point, is_active=True)
             variable_types = sorted(
                 {v.internal_code for v in variables if v.internal_code}
             )
@@ -750,7 +750,7 @@ def admin_dashboard_view(request):
                         )
                         caudal_excedido = flow_value_safe_error - caudal_probable_calc
                         # Obtener variables para este punto
-                        variables_error = Variable.objects.filter(
+                        variables_error = CoreVariable.objects.filter(
                             point=point, is_active=True
                         )
                         variable_types_error = sorted(
@@ -856,7 +856,7 @@ def admin_dashboard_view(request):
                             registro_errores += 1
                             error_tipo = "Nivel Imposible"
                             # Obtener variables para este punto
-                            variables_error = Variable.objects.filter(
+                            variables_error = CoreVariable.objects.filter(
                                 point=point, is_active=True
                             )
                             variable_types_error = sorted(
@@ -1118,7 +1118,7 @@ def admin_dashboard_view(request):
                 .prefetch_related(
                     Prefetch(
                         "point__variables",
-                        queryset=Variable.objects.only(
+                        queryset=CoreVariable.objects.only(
                             "id",
                             "point_id",
                             "name",
@@ -1224,7 +1224,9 @@ def admin_dashboard_view(request):
             ):
                 variables = point._prefetched_objects_cache["variables"]
             else:
-                variables = list(Variable.objects.filter(point=point, is_active=True))
+                variables = list(
+                    CoreVariable.objects.filter(point=point, is_active=True)
+                )
 
             variable_types = sorted(
                 {
@@ -1884,7 +1886,7 @@ def telemetry_monitoring_view(request):
             "data_config_profiles",
             Prefetch(
                 "variables",
-                queryset=Variable.objects.only(
+                queryset=CoreVariable.objects.only(
                     "id",
                     "point_id",
                     "name",
@@ -1929,7 +1931,7 @@ def telemetry_monitoring_view(request):
         ):
             variables = point._prefetched_objects_cache["variables"]
         else:
-            variables = list(Variable.objects.filter(point=point, is_active=True))
+            variables = list(CoreVariable.objects.filter(point=point, is_active=True))
 
         variable_types = sorted(
             {v.internal_code for v in variables if getattr(v, "internal_code", None)}
@@ -2132,7 +2134,7 @@ def telemetry_monitoring_api(request):
             "data_config_profiles",
             Prefetch(
                 "variables",
-                queryset=Variable.objects.only(
+                queryset=CoreVariable.objects.only(
                     "id",
                     "point_id",
                     "name",
@@ -2171,7 +2173,7 @@ def telemetry_monitoring_api(request):
         ):
             variables = point._prefetched_objects_cache["variables"]
         else:
-            variables = list(Variable.objects.filter(point=point, is_active=True))
+            variables = list(CoreVariable.objects.filter(point=point, is_active=True))
 
         variable_types = sorted(
             {v.internal_code for v in variables if getattr(v, "internal_code", None)}
@@ -2301,7 +2303,7 @@ def telemetry_point_records_api(request, point_id):
         has_d6 = True
 
     # Obtener variables configuradas
-    variables = Variable.objects.filter(point=point, is_active=True)
+    variables = CoreVariable.objects.filter(point=point, is_active=True)
     has_caudal_promedio = variables.filter(
         internal_code__in=["caudal_promedio", "flow_avg", "avg_flow"]
     ).exists()

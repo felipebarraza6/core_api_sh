@@ -2,9 +2,10 @@
 
 import logging
 
+from django.db import transaction
 from django.utils import timezone
 
-from api.core.models import NotificationsCatchment, TelemetryRecord, Variable
+from api.core.models import NotificationsCatchment, TelemetryRecord
 
 logger = logging.getLogger(__name__)
 
@@ -136,27 +137,30 @@ def total_m3(
                     # Calcular corrección
                     amount_to_add = (last_pulses * float(pulses_factor)) / 1000.0
 
-                    # ACTUALIZACIÓN AUTOMÁTICA DE ADICIÓN EN PERFIL
-                    if profile:
-                        profile.addition = offset + int(amount_to_add)
-                        profile.save()
-                        offset = profile.addition  # Actualizar offset local
-                    else:
-                        logger.error(
-                            f"Cannot update addition: ProfileDataConfigCatchment not found for point {point_catchment['id']}"
-                        )
+                    # TRANSACCIÓN ATÓMICA: Actualizar perfil Y crear notificación juntos
+                    # Esto evita inconsistencias si una operación falla
+                    with transaction.atomic():
+                        # ACTUALIZACIÓN AUTOMÁTICA DE ADICIÓN EN PERFIL
+                        if profile:
+                            profile.addition = offset + int(amount_to_add)
+                            profile.save(update_fields=["addition", "modified"])
+                            offset = profile.addition  # Actualizar offset local
+                        else:
+                            logger.error(
+                                f"Cannot update addition: ProfileDataConfigCatchment not found for point {point_catchment['id']}"
+                            )
 
-                    # Crear Notificación
-                    NotificationsCatchment.objects.create(
-                        point_catchment_id=point_catchment["id"],
-                        title="Reinicio de Contador Detectado",
-                        message=f"Se detectó un reinicio en el contador totalizador. Valor anterior: {int(last_pulses)}, Valor actual: {int(current_pulses)}. El sistema ha ajustado la contabilidad automáticamente.",
-                        type_variable="TOTALIZADO",
-                        type_notification="WARNING",  # Advertencia
-                        value=int(current_pulses),
-                        is_active=True,
-                        start_date=timezone.now().date(),
-                    )
+                        # Crear Notificación
+                        NotificationsCatchment.objects.create(
+                            point_catchment_id=point_catchment["id"],
+                            title="Reinicio de Contador Detectado",
+                            message=f"Se detectó un reinicio en el contador totalizador. Valor anterior: {int(last_pulses)}, Valor actual: {int(current_pulses)}. El sistema ha ajustado la contabilidad automáticamente.",
+                            type_variable="TOTALIZADO",
+                            type_notification="WARNING",
+                            value=int(current_pulses),
+                            is_active=True,
+                            start_date=timezone.now().date(),
+                        )
 
             except Exception as e:
                 logger.error(f"Error en lógica de reset: {e}")

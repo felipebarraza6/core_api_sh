@@ -1,0 +1,19 @@
+# Dockerfile para MQTT Broker (Eclipse Mosquitto)
+FROM eclipse-mosquitto:2.0
+
+# Copiar configuración de Mosquitto
+COPY conf/mosquitto.conf /mosquitto/config/mosquitto.conf
+
+# Crear directorios necesarios
+RUN mkdir -p /mosquitto/data /mosquitto/log && \
+    chown -R mosquitto:mosquitto /mosquitto
+
+# Cambiar a usuario mosquitto
+USER mosquitto
+
+# Health check para MQTT
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD mosquitto_sub -t "health" -C 1 -h localhost -p 1883 || exit 1
+
+# Comando por defecto
+CMD ["/usr/sbin/mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]

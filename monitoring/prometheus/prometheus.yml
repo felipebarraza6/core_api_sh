@@ -1,0 +1,68 @@
+# Configuración de Prometheus para SmartHydro
+
+global:
+  scrape_interval: 15s      # Intervalo de scraping por defecto
+  evaluation_interval: 15s  # Intervalo de evaluación de reglas
+  external_labels:
+    monitor: 'smarthydro-monitor'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Reglas de alertas
+rule_files:
+  - 'alerts.yml'
+
+# Scrape configurations
+scrape_configs:
+  # ============================================
+  # SMARTHYDRO DJANGO APPLICATION
+  # ============================================
+  - job_name: 'smarthydro_django'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['django:8000']
+    metrics_path: '/metrics/'
+    scheme: http
+
+  # ============================================
+  # PROMETHEUS SELF-MONITORING
+  # ============================================
+  - job_name: 'prometheus'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # ============================================
+  # NODE EXPORTER - Sistema Operativo
+  # ============================================
+  - job_name: 'node_exporter'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['node_exporter:9100']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'smarthydro-server'
+
+  # ============================================
+  # ALERTMANAGER MONITORING
+  # ============================================
+  - job_name: 'alertmanager'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['alertmanager:9093']
+
+  # ============================================
+  # POSTGRES EXPORTER (opcional)
+  # ============================================
+  # - job_name: 'postgres'
+  #   scrape_interval: 30s
+  #   static_configs:
+  #     - targets: ['postgres_exporter:9187']

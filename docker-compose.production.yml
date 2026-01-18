@@ -1,0 +1,276 @@
+version: "3.8"
+
+services:
+  # ========================================
+  # NGINX PROXY - FRONTEND SEGURO CON SSL
+  # ========================================
+  nginx_proxy:
+    image: nginx:alpine
+    container_name: nginx_proxy_prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./conf/nginx.production.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/ssl/certs:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - django_app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========================================
+  # DJANGO APPLICATION - API PRINCIPAL
+  # ========================================
+  django_app:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    container_name: smarthydro_django_prod
+    networks:
+      - internal
+      - monitoring
+    aliases:
+      - django-app
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    environment:
+      - DJANGO_SETTINGS_MODULE=api.settings
+      - ENVIRONMENT=production
+      - SECRET_KEY=${DJANGO_SECRET_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - LOCAL_DB_HOST=postgres
+      - LOCAL_DB_NAME=${POSTGRES_DB}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - MQTT_BROKER_HOST=${MQTT_BROKER_HOST}
+      - MQTT_BROKER_USERNAME=${MQTT_BROKER_USERNAME}
+      - MQTT_BROKER_PASSWORD=${MQTT_BROKER_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========================================
+  # CELERY WORKERS - PROCESAMIENTO DISTRIBUIDO
+  # ========================================
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    command: celery -A api worker --loglevel=info --concurrency=8 --pool=prefork
+    volumes:
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=api.settings
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - LOCAL_DB_HOST=postgres
+    depends_on:
+      - redis
+      - postgres
+      - django_app
+    restart: unless-stopped
+    deploy:
+      replicas: 2  # Múltiples workers para alta disponibilidad
+
+  # ========================================
+  # CELERY BEAT - SCHEDULER DE TAREAS
+  # ========================================
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    container_name: celery_beat_prod
+    command: celery -A api beat --loglevel=info --scheduler=django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=api.settings
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - LOCAL_DB_HOST=postgres
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+
+  # ========================================
+  # FLOWER - MONITOREO CELERY
+  # ========================================
+  flower:
+    image: mher/flower:latest
+    container_name: flower_prod
+    command: ["celery", "flower", "--broker=redis://redis:6379/0", "--port=5555", "--basic_auth=user:password"]
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - internal
+    # No expose port - solo accesible internamente o via nginx
+
+  # ========================================
+  # MQTT BROKER INTEGRADO
+  # ========================================
+  mqtt_broker:
+    build:
+      context: .
+      dockerfile: Dockerfile.mqtt
+    container_name: mqtt_broker_prod
+    ports:
+      - "1883:1883"   # MQTT
+      - "8883:8883"   # MQTT SSL
+      - "8080:8080"   # WebSocket (opcional)
+    volumes:
+      - mqtt_data:/mosquitto/data
+      - mqtt_logs:/mosquitto/log
+      - ./conf/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    environment:
+      - MQTT_BROKER_USERNAME=${MQTT_BROKER_USERNAME}
+      - MQTT_BROKER_PASSWORD=${MQTT_BROKER_PASSWORD}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "health", "-C", "1", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========================================
+  # REDIS - CACHE Y MESSAGE BROKER
+  # ========================================
+  redis:
+    image: redis:7-alpine
+    container_name: redis_prod
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+      - redis_logs:/var/log/redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - internal
+
+  # ========================================
+  # POSTGRESQL - BASE DE DATOS PRINCIPAL
+  # ========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db-secure.sql:/docker-entrypoint-initdb.d/init-db-secure.sql:ro
+      - postgres_logs:/var/log/postgresql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: >
+      postgres -c shared_buffers=2GB
+                -c effective_cache_size=4GB
+                -c work_mem=32MB
+                -c maintenance_work_mem=256MB
+                -c checkpoint_completion_target=0.9
+                -c wal_buffers=16MB
+                -c default_statistics_target=100
+                -c random_page_cost=1.1
+                -c effective_io_concurrency=200
+                -c max_connections=200
+    networks:
+      - internal
+
+  # ========================================
+  # MONITORING - GRAFANA + PROMETHEUS (OPCIONAL)
+  # ========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus_prod
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana_prod
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+    networks:
+      - monitoring
+      - internal
+
+volumes:
+  postgres_data:
+  redis_data:
+  mqtt_data:
+  grafana_data:
+  prometheus_data:
+  static_volume:
+  media_volume:
+  django_logs:
+  celery_logs:
+  nginx_logs:
+  mqtt_logs:
+  redis_logs:
+  postgres_logs:
+
+networks:
+  internal:
+    driver: bridge
+    internal: false
+  monitoring:
+    driver: bridge
+    internal: true

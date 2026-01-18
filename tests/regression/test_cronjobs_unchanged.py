@@ -6,7 +6,7 @@ Validan la lógica de procesamiento.
 """
 from django.test import TestCase
 from api.core.models import CatchmentPoint, InteractionDetail, ProfileDataConfigCatchment
-from api.cronjobs.telemetry.controllers.unified_processing import (
+from api.telemetry.ingestion.controllers.unified_processing import (
     process_totalizado_variable,
     process_nivel_variable,
     process_caudal_variable,

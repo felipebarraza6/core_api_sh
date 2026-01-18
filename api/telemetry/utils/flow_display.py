@@ -1,12 +1,12 @@
 import logging
 from datetime import datetime
-
-from api.core.models import DgaDataConfigCatchment, Variable
-from api.telemetry.ingestion.controllers.flow import average_flow
-
 from functools import lru_cache
 
+from api.core.models import CoreVariable, DgaDataConfigCatchment
+from api.telemetry.ingestion.controllers.flow import average_flow
+
 logger = logging.getLogger(__name__)
+
 
 @lru_cache(maxsize=128)
 def _get_cached_point_config(cp_id):
@@ -14,18 +14,16 @@ def _get_cached_point_config(cp_id):
     Caché a nivel de proceso para configuraciones estáticas del punto.
     Esto acelera drásticamente el Admin y Serializers.
     """
-    has_avg_flow = Variable.objects.filter(
+    has_avg_flow = CoreVariable.objects.filter(
         point_id=cp_id,
         internal_code__in=["caudal_promedio", "flow_avg", "avg_flow"],
         is_active=True,
     ).exists()
-    
+
     dga_config = DgaDataConfigCatchment.objects.filter(point_catchment_id=cp_id).first()
-    
-    return {
-        "has_avg_flow": has_avg_flow,
-        "dga_config": dga_config
-    }
+
+    return {"has_avg_flow": has_avg_flow, "dga_config": dga_config}
+
 
 def get_interaction_flow_display_data(instance, cached_config=None):
     """
@@ -68,7 +66,11 @@ def get_interaction_flow_display_data(instance, cached_config=None):
                 )
 
                 avg_flow = calculate_daily_average_flow(instance, dga_config)
-                return {"value": avg_flow, "type": "MEDIO_DIARIO", "is_calculated": True}
+                return {
+                    "value": avg_flow,
+                    "type": "MEDIO_DIARIO",
+                    "is_calculated": True,
+                }
             except Exception:
                 pass
 

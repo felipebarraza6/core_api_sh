@@ -41,8 +41,11 @@ from .management_super import (
     SystemMetrics,
 )
 from .telemetry import (
-    Variable,
     TelemetryRecord,
+    TelemetryScheme,
+    SchemeVariable,
+    CoreVariable,
+    VirtualVariable,
 )
 from .users import User
 from .utils import ModelApi

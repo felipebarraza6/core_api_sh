@@ -439,9 +439,9 @@ class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
         ) or self.request.query_params.get("catchment_point")
         if point_id:
             try:
-                from api.core.models import Variable
+                from api.core.models import CoreVariable
 
-                variables = Variable.objects.filter(
+                variables = CoreVariable.objects.filter(
                     point_id=point_id, is_active=True
                 ).values_list("internal_code", flat=True)
                 variables_set = set(variables)
