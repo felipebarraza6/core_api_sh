@@ -11,7 +11,7 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
-from api.core.models import (
+from api.telemetry.models import (
     NotificationsCatchment, TelemetryRecord,
     CatchmentPoint
 )
@@ -155,7 +155,7 @@ def create_alert_notification(alert, telemetry_data):
     Create response notification
     """
     try:
-        from api.core.models import ResponseNotificationsCatchment
+        from api.telemetry.models import ResponseNotificationsCatchment
         message = format_alert_message(alert, telemetry_data)
         ResponseNotificationsCatchment.objects.create(
             notification=alert,

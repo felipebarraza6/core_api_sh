@@ -2,7 +2,8 @@ import logging
 from datetime import datetime
 from functools import lru_cache
 
-from api.core.models import CoreVariable, DgaDataConfigCatchment
+from api.telemetry.models.telemetry import CoreVariable
+from api.telemetry.models.catchment_points import DgaDataConfigCatchment
 from api.telemetry.ingestion.controllers.flow import average_flow
 
 logger = logging.getLogger(__name__)

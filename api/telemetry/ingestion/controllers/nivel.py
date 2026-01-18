@@ -1,6 +1,6 @@
 """Procesamiento de niveles"""
 
-from api.core.models import TelemetryRecord
+from api.telemetry.models import TelemetryRecord
 
 
 def nivel_mt(value, base, point_catchment_id=None, position=None):

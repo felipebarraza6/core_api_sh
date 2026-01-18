@@ -120,7 +120,9 @@ services:
   # MQTT BROKER - DESARROLLO
   # ========================================
   mqtt_broker:
-    image: core_api_sh-mqtt_broker:latest  # Usando imagen ya construida
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mqtt
     container_name: mqtt_broker_dev
     ports:
       - "1883:1883"   # MQTT

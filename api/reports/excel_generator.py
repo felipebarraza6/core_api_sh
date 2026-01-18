@@ -15,7 +15,7 @@ from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 from django.db.models import Min, Max, Avg, Count, Sum
 
-from api.core.models import CatchmentPoint, TelemetryRecord, CoreVariable
+from api.telemetry.models import CatchmentPoint, TelemetryRecord, CoreVariable
 from api.telemetry.validators.telemetry_validator import analyze_data_coherence
 from api.telemetry.ingestion.controllers.flow import average_flow
 

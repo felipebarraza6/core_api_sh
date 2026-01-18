@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional
 
 import pytz
 
-from api.core.models import CoreVariable, TelemetryRecord
+from api.telemetry.models import CoreVariable, TelemetryRecord
 
 # ✅ Configuración horaria
 chile_tz = pytz.timezone("America/Santiago")
@@ -201,7 +201,7 @@ def log_variable_processing(
 
         # ✅ ALERTA A GOOGLE CHAT
         try:
-            from api.core.models import CatchmentPoint
+            from api.telemetry.models import CatchmentPoint
             from api.core.utils.google_chat import check_and_notify_error
 
             # Necesitamos obtener info del punto para el mensaje
@@ -244,8 +244,7 @@ def validate_frequency(point_catchment: Dict[str, Any], current_time: datetime) 
         True si debe procesar, False si no
     """
     try:
-        from api.core.models import DgaDataConfigCatchment
-
+                from api.telemetry.models import DgaDataConfigCatchment
         get = DgaDataConfigCatchment.objects.get(
             point_catchment__id=point_catchment["id"]
         )
@@ -662,8 +661,7 @@ def determine_dga_send(point_catchment: Dict[str, Any], chile_tz: Any) -> bool:
     Returns:
         True si debe enviar, False si no
     """
-    from api.core.models import DgaDataConfigCatchment
-
+            from api.telemetry.models import DgaDataConfigCatchment
     try:
         get = DgaDataConfigCatchment.objects.get(
             point_catchment__id=point_catchment["id"]

@@ -17,17 +17,19 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 
-from api.core.models import (
+from api.telemetry.models.catchment_points import (
     CatchmentPoint,
     Client,
-    CoreVariable,
     DgaDataConfigCatchment,
     NotificationsCatchment,
     ProfileDataConfigCatchment,
     ProjectCatchments,
-    TelemetryRecord,
-    User,
 )
+from api.telemetry.models.telemetry import (
+    CoreVariable,
+    TelemetryRecord,
+)
+from api.core.models import User
 from api.telemetry.validators.telemetry_validator import (
     calculate_max_flow_by_diameter,
     calculate_probable_flow_by_velocity,

@@ -11,7 +11,7 @@ from typing import Optional
 import pytz
 
 from django.db.models import Avg, Q
-from api.core.models import TelemetryRecord, DgaDataConfigCatchment
+from api.telemetry.models import TelemetryRecord, DgaDataConfigCatchment
 from api.telemetry.ingestion.controllers.flow import average_flow
 
 

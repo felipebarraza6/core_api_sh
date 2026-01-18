@@ -9,7 +9,7 @@ from openpyxl import Workbook
 from openpyxl.chart import LineChart, Reference
 from openpyxl.utils import get_column_letter
 from typing import List
-from api.core.models import TelemetryRecord
+from api.telemetry.models import TelemetryRecord
 
 
 def create_flow_chart(worksheet, month_name: str, flow_col: int, 

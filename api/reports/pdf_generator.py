@@ -285,7 +285,7 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
     elements.append(Spacer(1, 0.2*inch))
     
     # Analizar cada punto
-    from api.core.models import CatchmentPoint
+    from api.telemetry.models import CatchmentPoint
     
     for point_data in points:
         if isinstance(point_data, int):
@@ -556,7 +556,7 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
             elements.append(Paragraph(f"<b>Punto de Captación:</b> {analisis['point_name']}", styles['Normal']))
             
             # Tabla completa con todos los registros del día (ayer para tener todas las mediciones)
-            from api.core.models import TelemetryRecord
+            from api.telemetry.models import TelemetryRecord
             import pytz
             from datetime import timedelta
             chile_tz = pytz.timezone("America/Santiago")
@@ -724,7 +724,7 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
         elements.append(Spacer(1, 0.15*inch))
         
         # Obtener registros del período para los gráficos
-        from api.core.models import TelemetryRecord, CoreVariable
+        from api.telemetry.models import TelemetryRecord, CoreVariable
         from datetime import timedelta
         import pytz
         
@@ -1207,7 +1207,7 @@ def generate_telemetry_analysis_pdf(points: List, project_name: Optional[str] = 
         
         # Últimos 5 registros enviados a DGA del último mes completo del período
         try:
-            from api.core.models import TelemetryRecord
+            from api.telemetry.models import TelemetryRecord
             from datetime import timedelta
             import calendar
             import pytz

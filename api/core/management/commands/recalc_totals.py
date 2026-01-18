@@ -7,7 +7,7 @@ from django.db import transaction
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 
-from api.core.models import CatchmentPoint, TelemetryRecord, CoreVariable
+from api.telemetry.models import CatchmentPoint, TelemetryRecord, CoreVariable
 
 
 def get_pulses_factor_for_point(point_id: int) -> int:

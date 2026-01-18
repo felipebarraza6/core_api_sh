@@ -12,7 +12,7 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
-from api.core.models import DgaDataConfigCatchment, TelemetryRecord
+from api.telemetry.models import DgaDataConfigCatchment, TelemetryRecord
 from api.telemetry.services.telemetry_service import TelemetryService
 
 logger = logging.getLogger(__name__)
@@ -304,7 +304,7 @@ def generate_compliance_alert(point, dga_config):
     """
     Generate alert for DGA compliance issues
     """
-    from api.core.models import NotificationsCatchment, ResponseNotificationsCatchment
+    from api.telemetry.models import NotificationsCatchment, ResponseNotificationsCatchment
 
     try:
         alert = NotificationsCatchment.objects.create(

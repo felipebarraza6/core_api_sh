@@ -1,5 +1,5 @@
 from datetime import datetime
-from api.core.models import TelemetryRecord
+from api.telemetry.models import TelemetryRecord
 import pytz
 import logging
 

@@ -11,7 +11,7 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
-from api.core.models import CatchmentPoint, TelemetryRecord
+from api.telemetry.models import CatchmentPoint, TelemetryRecord
 from api.core.serializers import (
     InteractionDetailModelSerializer,
     InteractionDetailModelSerializerNoProcessing,
@@ -439,7 +439,7 @@ class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
         ) or self.request.query_params.get("catchment_point")
         if point_id:
             try:
-                from api.core.models import CoreVariable
+                from api.telemetry.models.telemetry import CoreVariable
 
                 variables = CoreVariable.objects.filter(
                     point_id=point_id, is_active=True

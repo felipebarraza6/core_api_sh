@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from api.core.models import CatchmentPoint, TelemetryRecord, CoreVariable
+from api.telemetry.models import CatchmentPoint, TelemetryRecord, CoreVariable
 from django.shortcuts import get_object_or_404
 
 class PointTelemetryDynamicView(APIView):

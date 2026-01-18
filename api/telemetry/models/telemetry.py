@@ -1,8 +1,8 @@
 from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 
-from .catchment_points import CatchmentPoint
-from .utils import ModelApi
+from api.telemetry.models.catchment_points import CatchmentPoint
+from api.core.models.utils import ModelApi
 
 
 class TelemetryScheme(ModelApi):

@@ -12,7 +12,7 @@ Funciones especializadas para escribir diferentes tipos de datos:
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
 from typing import List, Dict, Optional
-from api.core.models import CatchmentPoint, TelemetryRecord
+from api.telemetry.models import CatchmentPoint, TelemetryRecord
 from .excel_utils import (
     HEADER_FILL, HEADER_FONT, BORDER, 
     write_section_title, write_key_value_pair, 
@@ -43,7 +43,7 @@ def write_pozo_info(worksheet, profile, point, row: int) -> int:
     row = create_header_row(worksheet, pozo_headers, row)
     
     # Obtener tipo de caudal
-    from api.core.models import CoreVariable
+    from api.telemetry.models.telemetry import CoreVariable
     variables = CoreVariable.objects.filter(point=point, is_active=True)
     has_caudal_promedio = variables.filter(
         internal_code__in=["caudal_promedio", "flow_avg", "avg_flow"]

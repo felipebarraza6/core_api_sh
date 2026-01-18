@@ -37,7 +37,7 @@ def check_and_notify_reconnection(point_id, new_days_not_conection, point_name="
         return
 
     try:
-        from api.core.models import TelemetryRecord
+        from api.telemetry.models import TelemetryRecord
         from django_redis import get_redis_connection
         from datetime import datetime
         

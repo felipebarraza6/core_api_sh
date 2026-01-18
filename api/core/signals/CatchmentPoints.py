@@ -1,6 +1,6 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from api.core.models.catchment_points import (
+from api.telemetry.models.catchment_points import (
     CatchmentPoint,
     ProfileIkoluCatchment,
     ProfileDataConfigCatchment,

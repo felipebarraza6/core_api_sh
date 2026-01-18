@@ -19,7 +19,7 @@ from celery import group, shared_task
 from django.db import transaction
 
 from api.core.cache.telemetry_cache import TelemetryCache
-from api.core.models import CatchmentPoint, TelemetryRecord
+from api.telemetry.models import CatchmentPoint, TelemetryRecord
 from api.telemetry.ingestion.controllers.unified_processing import (
     determine_dga_send,
     process_variable_safely,

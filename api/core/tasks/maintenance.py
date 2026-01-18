@@ -12,7 +12,7 @@ from django.core.management import call_command
 from django.utils import timezone
 from datetime import timedelta
 
-from api.core.models import TelemetryRecord, NotificationsCatchment
+from api.telemetry.models import TelemetryRecord, NotificationsCatchment
 from api.core.cache.telemetry_cache import TelemetryCache
 
 logger = logging.getLogger(__name__)

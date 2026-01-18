@@ -4,7 +4,7 @@ Expone métricas de telemetría, DGA, SMA y sistema
 """
 from prometheus_client import Counter, Gauge, Histogram, Info
 from django.db.models import Count, Max, Min, Avg
-from api.core.models import (
+from api.telemetry.models import (
     CatchmentPoint,
     TelemetryRecord,
     NotificationsCatchment,
@@ -244,7 +244,7 @@ def update_telemetry_metrics():
 
 def update_dga_metrics():
     """Actualiza métricas de DGA"""
-    from api.core.models import DgaDataConfigCatchment
+    from api.telemetry.models import DgaDataConfigCatchment
 
     # Registros pendientes de envío
     pending_records = TelemetryRecord.objects.filter(

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from api.core.models import TelemetryRecord
+from api.telemetry.models import TelemetryRecord
 
 
 class TelemetryRecordSerializer(serializers.ModelSerializer):

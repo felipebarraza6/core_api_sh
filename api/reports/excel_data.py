@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 from django.db.models import Min, Max, Avg, Count, Sum, Q
 import pytz
 
-from api.core.models import CatchmentPoint, TelemetryRecord, CoreVariable
+from api.telemetry.models import CatchmentPoint, TelemetryRecord, CoreVariable
 from api.telemetry.ingestion.controllers.flow import average_flow
 
 logger = logging.getLogger(__name__)

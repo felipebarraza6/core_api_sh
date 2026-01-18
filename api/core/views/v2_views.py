@@ -15,11 +15,8 @@ import json
 from api.telemetry.services.telemetry_service import TelemetryService
 from ..services.stats_service import StatsService
 from ..services.action_service import ActionService
-from ..models import (
-    CatchmentPoint, Client, TelemetryRecord
-)
-from ..models.management_super import (
-    SystemConfiguration, AlertRule, IoTDevice
+from api.telemetry.models import (
+    CatchmentPoint, Client, TelemetryRecord, SystemConfiguration, AlertRule, IoTDevice
 )
 
 

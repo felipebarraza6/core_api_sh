@@ -12,8 +12,7 @@ from django.core.cache import cache
 from django.db.models import Avg, Count, Max, Min, Q, Sum
 from django.utils import timezone
 
-from ..models import TelemetryRecord
-from ..models.management_super import IoTDevice, MQTTConnection
+from api.telemetry.models import TelemetryRecord, IoTDevice, MQTTConnection
 
 
 class StatsService:

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, date
 import time
 import os
 
-from api.core.models import TelemetryRecord, CatchmentPoint
+from api.telemetry.models import TelemetryRecord, CatchmentPoint
 from api.telemetry.services.telemetry_service import TelemetryService
 
 logger = logging.getLogger(__name__)

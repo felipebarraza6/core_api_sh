@@ -1,8 +1,8 @@
 import pytz
 from django.db.models import Q
 
-from api.core.models import TelemetryRecord
-from api.core.models.catchment_points import CatchmentPoint
+from api.telemetry.models.telemetry import TelemetryRecord
+from api.telemetry.models.catchment_points import CatchmentPoint
 
 chile_tz = pytz.timezone("America/Santiago")
 
@@ -14,7 +14,7 @@ def search_points(query, context_client=None):
     """
     from django.db.models import Q
 
-    from api.core.models import CatchmentPoint, Client
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client
 
     clean_query = query.replace("puntos de ", "").replace("pozos de ", "").strip()
 
@@ -116,7 +116,7 @@ def search_points(query, context_client=None):
 
 def get_client_summary(client_name, project_name=None):
     """Obtiene un resumen de puntos para un cliente, opcionalmente filtrado por proyecto."""
-    from api.core.models import CatchmentPoint, Client, ProjectCatchments
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client, ProjectCatchments
 
     clients = Client.objects.filter(name__icontains=client_name)
     if not clients.exists():
@@ -167,7 +167,7 @@ def get_client_summary(client_name, project_name=None):
 
 def get_project_measurements(client_name, project_name):
     """Obtiene mediciones de todos los puntos de un proyecto específico."""
-    from api.core.models import CatchmentPoint, Client, ProjectCatchments
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client, ProjectCatchments
 
     clients = Client.objects.filter(name__icontains=client_name)
     if not clients.exists():
@@ -272,7 +272,7 @@ def get_point_latest_data(point_id):
         # Determinar qué variables envía el punto (V3 uses CoreVariable)
         variables_enviadas = []
         try:
-            from api.core.models import CoreVariable
+            from api.telemetry.models.telemetry import CoreVariable
 
             vars_v3 = CoreVariable.objects.filter(point=point, is_active=True)
             for v in vars_v3:
@@ -343,7 +343,7 @@ def get_point_latest_data(point_id):
 
 def get_client_measurements(client_name):
     """Obtiene la última medición de TODOS los puntos de un cliente."""
-    from api.core.models import CatchmentPoint, Client
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client
 
     clients = Client.objects.filter(name__icontains=client_name)
     if not clients.exists():
@@ -432,7 +432,7 @@ def get_point_status_summary():
     """Obtiene un resumen del estado general de todos los puntos."""
     from django.db.models import Count
 
-    from api.core.models import CatchmentPoint
+    from api.telemetry.models.catchment_points import CatchmentPoint
 
     def safe_float(val):
         if val is None:
@@ -478,7 +478,7 @@ def get_dga_compliance(client_name):
     """Obtiene el cumplimiento DGA de un cliente: códigos, vouchers y errores."""
     from datetime import datetime, timedelta
 
-    from api.core.models import CatchmentPoint, Client, DgaDataConfigCatchment
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client, DgaDataConfigCatchment
 
     clients = Client.objects.filter(name__icontains=client_name)
     if not clients.exists():
@@ -653,12 +653,12 @@ def get_dga_compliance(client_name):
 
 def get_point_config(point_name, context_client=None):
     """Obtiene la configuración completa de un punto."""
-    from api.core.models import (
+    from api.telemetry.models.catchment_points import (
         CatchmentPoint,
-        CoreVariable,
         DgaDataConfigCatchment,
         ProfileDataConfigCatchment,
     )
+    from api.core.models import CoreVariable
 
     # Usar search_points para desambiguar con contexto
     found_points = search_points(point_name, context_client)
@@ -736,7 +736,7 @@ def get_point_config(point_name, context_client=None):
 
 def get_client_alerts(client_name):
     """Obtiene las alertas activas de un cliente."""
-    from api.core.models import CatchmentPoint, Client
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client
 
     clients = Client.objects.filter(name__icontains=client_name)
     if not clients.exists():
@@ -801,7 +801,7 @@ def get_point_history(point_name, days=7, context_client=None):
 
     import pytz
 
-    from api.core.models import CatchmentPoint
+    from api.telemetry.models.catchment_points import CatchmentPoint
 
     found_points = search_points(point_name, context_client)
 
@@ -858,7 +858,7 @@ def get_client_errors(client_name, days=7):
     """Obtiene los errores recientes de un cliente."""
     from datetime import datetime, timedelta
 
-    from api.core.models import CatchmentPoint, Client
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client
 
     clients = Client.objects.filter(name__icontains=client_name)
     if not clients.exists():
@@ -892,7 +892,7 @@ def get_global_status():
     import pytz
     from django.db.models import Count, Q
 
-    from api.core.models import CatchmentPoint, Client, NotificationsCatchment
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client, NotificationsCatchment
 
     chile_tz = pytz.timezone("America/Santiago")
 
@@ -1020,7 +1020,7 @@ def get_recent_notifications(limit=10):
     """Obtiene y agrupa las últimas notificaciones importantes generadas por el sistema."""
     from collections import Counter
 
-    from api.core.models import NotificationsCatchment
+    from api.telemetry.models.catchment_points import NotificationsCatchment
 
     notifs = (
         NotificationsCatchment.objects.filter(is_active=True)
@@ -1079,7 +1079,7 @@ def get_recent_notifications(limit=10):
 
 def compare_points(point1_query, point2_query, context_client=None):
     """Compara dos puntos de captación en sus últimas mediciones."""
-    from api.core.models import CatchmentPoint
+    from api.telemetry.models.catchment_points import CatchmentPoint
 
     p1_results = search_points(point1_query, context_client)
     p2_results = search_points(point2_query, context_client)
@@ -1172,7 +1172,7 @@ def get_client_stats(client_query, days=7):
 
     from django.db.models import Avg, Max, Sum
 
-    from api.core.models import CatchmentPoint, Client
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client
 
     clients = Client.objects.filter(name__icontains=client_query)
     if not clients.exists():
@@ -1216,7 +1216,7 @@ def get_client_ranking(client_query, metric="CONSUME", days=1):
 
     from django.db.models import Max, Sum
 
-    from api.core.models import CatchmentPoint, Client
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client
 
     clients = Client.objects.filter(name__icontains=client_query)
     if not clients.exists():
@@ -1259,7 +1259,7 @@ def get_stuck_points(client_query):
     """Detecta puntos que no han tenido variación en su totalizado en las últimas 24h."""
     from datetime import datetime, timedelta
 
-    from api.core.models import CatchmentPoint, Client
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client
 
     clients = Client.objects.filter(name__icontains=client_query)
     if not clients.exists():

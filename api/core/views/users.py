@@ -21,7 +21,8 @@ from rest_framework.permissions import (
 from api.core.permissions import IsAccountOwner
 
 # Models
-from api.core.models import User, ProfileIkoluCatchment
+from api.core.models import User
+from api.telemetry.models.catchment_points import ProfileIkoluCatchment
 
 # Serializers
 from api.core.serializers.users import UserProfile, UserLoginSerializer, UserModelSerializer, UserSignUpSerializer, CatchmentPointSerializerDetailCron

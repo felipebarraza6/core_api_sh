@@ -13,15 +13,15 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters import rest_framework as filters
 
-from api.core.models import (
+from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    TelemetryRecord,
     NotificationsCatchment,
     ProfileDataConfigCatchment,
     DgaDataConfigCatchment,
     Client,
     ProjectCatchments,
 )
+from api.telemetry.models.telemetry import TelemetryRecord
 from api.core.serializers.catchment_points import CatchmentPointSerializer
 
 

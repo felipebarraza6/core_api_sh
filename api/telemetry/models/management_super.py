@@ -10,9 +10,9 @@ from django.db import models
 from django.db.models import JSONField
 from django.utils import timezone
 
-from .catchment_points import CatchmentPoint, Client
-from .users import User
-from .utils import ModelApi
+from api.telemetry.models.catchment_points import CatchmentPoint, Client
+from api.core.models.users import User
+from api.core.models.utils import ModelApi
 
 
 class SystemConfiguration(ModelApi):

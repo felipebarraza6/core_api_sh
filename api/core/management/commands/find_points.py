@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from api.core.models import CatchmentPoint
+from api.telemetry.models.catchment_points import CatchmentPoint
 
 class Command(BaseCommand):
     help = "Busca puntos de captación por título (case-insensitive) y muestra id y título."

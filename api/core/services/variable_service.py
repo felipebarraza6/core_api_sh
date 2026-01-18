@@ -1,7 +1,8 @@
 import logging
 from typing import List, Optional
 
-from api.core.models import CatchmentPoint, CoreVariable
+from api.telemetry.models.catchment_points import CatchmentPoint
+from api.telemetry.models.telemetry import CoreVariable
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
-from api.core.models import NotificationsCatchment, TelemetryRecord
+from api.telemetry.models import NotificationsCatchment, TelemetryRecord
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ def total_m3(
         current_raw_m3 = (current_pulses * float(pulses_factor)) / 1000.0
 
         # -- NUEVA LÓGICA: Usar ProfileDataConfigCatchment para el offset/addition --
-        from api.core.models import ProfileDataConfigCatchment
+        from api.telemetry.models import ProfileDataConfigCatchment
 
         profile = ProfileDataConfigCatchment.objects.filter(
             point_catchment_id=point_catchment["id"]

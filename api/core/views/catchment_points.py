@@ -4,8 +4,8 @@ from django_filters import rest_framework as filters
 from rest_framework import mixins, viewsets
 from rest_framework.permissions import IsAuthenticated
 
-from api.core.models import CoreVariable
-from api.core.models.catchment_points import (
+from api.telemetry.models.telemetry import CoreVariable
+from api.telemetry.models.catchment_points import (
     CatchmentPoint,
     Client,
     DgaDataConfigCatchment,

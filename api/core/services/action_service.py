@@ -9,7 +9,7 @@ from django.contrib.auth.models import User
 from typing import Dict, List, Optional, Any
 import json
 
-from ..models.management_super import SystemConfiguration
+from api.telemetry.models.management_super import SystemConfiguration
 
 
 class ActionService:

@@ -2,8 +2,8 @@
 
 from django.db import models
 
-from .users import User
-from .utils import ModelApi
+from api.core.models.users import User
+from api.core.models.utils import ModelApi
 
 
 class Client(ModelApi):

@@ -4,10 +4,9 @@ from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
 
-from api.core.models import (
+from api.telemetry.models.catchment_points import (
     CatchmentPoint,
     Client,
-    CoreVariable,
     DgaDataConfigCatchment,
     FileCatchment,
     NotificationsCatchment,
@@ -16,8 +15,11 @@ from api.core.models import (
     ProjectCatchments,
     RegisterPersons,
     ResponseNotificationsCatchment,
-    TelemetryRecord,
     TypeFileCatchment,
+)
+from api.telemetry.models.telemetry import (
+    CoreVariable,
+    TelemetryRecord,
 )
 
 from .interaction_detail import (

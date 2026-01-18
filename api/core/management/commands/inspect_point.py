@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from api.core.models import TelemetryRecord
+from api.telemetry.models import TelemetryRecord
 
 class Command(BaseCommand):
     help = "Muestra los ultimos N registros de un punto, ordenados por timestamp desc."

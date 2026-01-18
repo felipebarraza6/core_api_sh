@@ -10,10 +10,10 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
-from .catchment_points import CatchmentPoint
-from .management_super import IoTDevice
-from .users import User
-from .utils import ModelApi
+from api.telemetry.models.catchment_points import CatchmentPoint
+from api.telemetry.models.management_super import IoTDevice
+from api.core.models.users import User
+from api.core.models.utils import ModelApi
 
 logger = logging.getLogger(__name__)
 

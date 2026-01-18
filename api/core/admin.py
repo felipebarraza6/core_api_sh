@@ -16,10 +16,9 @@ from django.utils import timezone
 from django.utils.safestring import mark_safe
 from import_export.admin import ExportActionMixin, ImportExportModelAdmin
 
-from api.core.models import (
+from api.telemetry.models.catchment_points import (
     CatchmentPoint,
     Client,
-    CoreVariable,
     DgaDataConfigCatchment,
     FileCatchment,
     NotificationsCatchment,
@@ -28,13 +27,16 @@ from api.core.models import (
     ProjectCatchments,
     RegisterPersons,
     ResponseNotificationsCatchment,
+    TypeFileCatchment,
+)
+from api.telemetry.models.telemetry import (
+    CoreVariable,
     SchemeVariable,
     TelemetryRecord,
     TelemetryScheme,
-    TypeFileCatchment,
-    User,
     VirtualVariable,
 )
+from api.core.models import User
 
 # ========================================
 # CONFIGURACIÓN GLOBAL DE ADMIN Y MENÚ
@@ -1303,7 +1305,7 @@ def generar_analisis_telemetria_proyecto_pdf(modeladmin, request, queryset):
 
     from django.http import HttpResponse
 
-    from api.core.models import CatchmentPoint
+    from api.telemetry.models.catchment_points import CatchmentPoint
     from api.core.reports.pdf_generator import generate_telemetry_analysis_pdf
 
     if not queryset.exists():
@@ -1385,7 +1387,7 @@ def generar_excel_por_proyecto(modeladmin, request, queryset):
 
     try:
         # Obtener todos los puntos de los proyectos seleccionados
-        from api.core.models import CatchmentPoint
+        from api.telemetry.models.catchment_points import CatchmentPoint
 
         all_points = CatchmentPoint.objects.filter(project__in=queryset)
 
@@ -1721,7 +1723,7 @@ def generar_excel_ultimo_mes_proyecto(modeladmin, request, queryset):
     """
     from django.http import HttpResponse
 
-    from api.core.models import CatchmentPoint
+    from api.telemetry.models.catchment_points import CatchmentPoint
     from api.core.reports.excel_generator import generate_excel_last_month_by_points
 
     if not queryset.exists():

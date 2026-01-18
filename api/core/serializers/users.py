@@ -7,7 +7,9 @@ from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import Prefetch
 from .catchment_points import CatchmentPointSerializerDetailCron, CatchmentPointIkoluSerializer
-from api.core.models import User, RegisterPersons, CatchmentPoint, FileCatchment, NotificationsCatchment, TelemetryRecord
+from api.core.models import User
+from api.telemetry.models.catchment_points import RegisterPersons, FileCatchment, NotificationsCatchment
+from api.telemetry.models import CatchmentPoint, TelemetryRecord
 from datetime import datetime, timedelta
 import pytz
 

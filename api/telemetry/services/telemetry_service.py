@@ -12,7 +12,7 @@ from django.db.models import Avg, Count, Max, Min, Prefetch, Q, Sum
 from django.utils import timezone
 
 from api.core.cache.telemetry_cache import TelemetryCache
-from api.core.models import (
+from api.telemetry.models import (
     CatchmentPoint,
     DgaDataConfigCatchment,
     NotificationsCatchment,

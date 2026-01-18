@@ -13,7 +13,7 @@ from typing import Optional, Tuple
 from celery import shared_task
 from django.utils import timezone
 
-from api.core.models import DgaDataConfigCatchment, TelemetryRecord
+from api.telemetry.models import DgaDataConfigCatchment, TelemetryRecord
 
 logger = logging.getLogger(__name__)
 

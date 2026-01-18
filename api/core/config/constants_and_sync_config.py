@@ -4,7 +4,7 @@ Integración automática con proveedores y gestión histórica
 """
 
 from django.conf import settings
-from api.core.models import SystemConfiguration
+from api.telemetry.models.management_super import SystemConfiguration
 
 # Configuración de constantes por defecto para diferentes proveedores
 DEFAULT_CONSTANTS_CONFIG = {

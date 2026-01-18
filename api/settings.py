@@ -66,6 +66,7 @@ LOCAL_APPS = [
     "api.chatbot.apps.ChatbotConfig",
     "api.reports.apps.ReportsConfig",
     "api.telemetry.apps.TelemetryConfig",
+    "api.support.apps.SupportConfig",
     "django_celery_beat",
     "import_export",
 ]
