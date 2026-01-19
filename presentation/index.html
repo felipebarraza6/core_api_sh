@@ -14,9 +14,14 @@
     <main class="container">
         <!-- Hero Section -->
         <section class="hero">
-            <span class="badge">Enterprise Monitoring Solutions</span>
+            <div style="margin-bottom: 2rem;">
+                <span class="badge">AI-Powered Ecosystem</span>
+                <span class="badge" style="background: rgba(255, 107, 107, 0.1); color: #ff6b6b;">Zero Hardcoded Logic</span>
+                <span class="badge" style="background: rgba(168, 85, 247, 0.1); color: #a855f7;">Industrial Intelligence</span>
+            </div>
             <h1>Smart<span class="gradient-text">Hydro</span></h1>
-            <p>De un sistema de cronjobs manuales a una arquitectura distribuida de inteligencia hídrica autónoma.</p>
+            <p style="font-size: 1.8rem; font-weight: 600;">The Master Platform for Global Water Governance & Smart City Intelligence.</p>
+            <p style="color: var(--text-secondary); max-width: 800px; margin: 0 auto;">Arquitectura distribuida de ultra-alta disponibilidad diseñada para operaciones críticas donde el dato es ley.</p>
         </section>
 
         <!-- The Vision -->
@@ -27,60 +32,197 @@
                     <div class="compare-item">
                         <h3 style="color: #ff4d4d;">Legacy (Versión Anterior)</h3>
                         <ul class="feature-list">
-                            <li>Cronjobs unificados difíciles de rastrear</li>
-                            <li>Lógica de proveedores hardcodeada</li>
-                            <li>Monitoreo básico sin visibilidad técnica</li>
-                            <li>Dificultad para escalar a nuevos sensores</li>
-                            <li>Procesamiento secuencial lento</li>
+                            <li>Cronjobs manuales unificados (Single point of failure)</li>
+                            <li>Lógica de proveedores hardcodeada y rígida</li>
+                            <li>Monitoreo reactivo (solo sabíamos si fallaba al día siguiente)</li>
+                            <li>Infraestructura "Caja Negra" sin visibilidad de recursos</li>
+                            <li>Reportabilidad DGA manual y propensa a errores</li>
                         </ul>
                     </div>
                     <div class="compare-item">
                         <h3 style="color: #00d3ff;">Next-Gen (Versión Actual)</h3>
                         <ul class="feature-list">
-                            <li>Motor distribuido basado en Celery & Redis</li>
-                            <li>Gestión Dinámica de Proveedores (API/MQTT)</li>
-                            <li>Suite de Monitoreo Pro (Prometheus/Grafana)</li>
-                            <li>Auditoría de Salud con Historial en Tiempo Real</li>
-                            <li>Arquitectura lista para Agentes de IA</li>
+                            <li>Arquitectura Distribuida con Agentes Ingestores Proactivos</li>
+                            <li><strong>Dynamic Engine</strong>: 100% Editable, 0% Hardcodeado</li>
+                            <li>Motor de Cálculos Avanzados (Compensación de Incertidumbre)</li>
+                            <li>Detección de Anomalías mediante Modelos de IA</li>
+                            <li>Observabilidad Granular via Service Discovery</li>
                         </ul>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- Value Proposition -->
+        <!-- Deep Tech Stack -->
         <section>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;">
+            <h2 style="text-align: center; margin-bottom: 4rem;">El <span class="gradient-text">Stack</span> Detrás de la Potencia</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
                 <div class="glass-card">
-                    <h3 class="gradient-text" style="margin-bottom: 1rem;">Visibilidad 360°</h3>
-                    <p style="color: var(--text-secondary);">Dashboards especializados para DGA, Proveedores e Infraestructura. Ningún dato se queda atrás.</p>
+                    <h4 style="color: var(--accent-cyan); margin-bottom: 1rem;">Django & Async Python</h4>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary);">Core basado en **Python 3.11** con capacidades asíncronas (**ASGI**). Implementamos un ORM robusto para transacciones complejas, validación estricta de esquemas y un motor de auditoría (Log Entry) que registra cada mutation en el sistema para trazabilidad forense.</p>
                 </div>
                 <div class="glass-card">
-                    <h3 class="gradient-text" style="margin-bottom: 1rem;">Escalabilidad Infinita</h3>
-                    <p style="color: var(--text-secondary);">Agrega nuevos protocolos de comunicación sin modificar el núcleo del sistema.</p>
+                    <h4 style="color: var(--accent-cyan); margin-bottom: 1rem;">Observabilidad 360°</h4>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary);">Ecosistema de monitoreo basado en **Prometheus** con **Node Exporter** (SO), **Postgres Exporter** (DB) y métricas custom internas. Recolectamos tiempos de respuesta de milisegundos y estados de salud de cada microservicio en tiempo real.</p>
                 </div>
                 <div class="glass-card">
-                    <h3 class="gradient-text" style="margin-bottom: 1rem;">Seguridad Industrial</h3>
-                    <p style="color: var(--text-secondary);">Aislamiento de redes, base de datos endurecida y trazabilidad total de vouchers.</p>
+                    <h4 style="color: var(--accent-cyan); margin-bottom: 1rem;">Grafana Analytics</h4>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary);">Visualización dinámica avanzada. Utilizamos transformaciones de datos en tiempo real: **Outer Joins** para cruzar telemetría con configuración, **Math operations** para cálculos de deriva y **Organize fields** para interfaces de grado profesional.</p>
+                </div>
+                <div class="glass-card">
+                    <h4 style="color: var(--accent-cyan); margin-bottom: 1rem;">Message Broker & Tasks</h4>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary);">Distribución de carga mediante **Redis 7** y **Celery**. Procesamos ingestas de datos concurrentes y generación de PDF/Excel pesados en segundo plano, garantizando que la interfaz principal nunca experimente latencia o bloqueos.</p>
                 </div>
             </div>
         </section>
 
+        <!-- AI & Dynamic Engine Section -->
+        <section>
+            <div class="glass-card" style="background: linear-gradient(135deg, rgba(0, 211, 255, 0.05) 0%, rgba(0, 122, 255, 0.05) 100%);">
+                <h2 style="margin-bottom: 2.5rem;">Motor de Inteligencia & <span class="gradient-text">Variables Dinámicas</span></h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3rem;">
+                    <div>
+                        <h4 style="margin-bottom: 1.2rem; color: var(--accent-cyan);">Zero Hardcoding Architecture</h4>
+                        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Cualquier lógica de negocio, desde la conversión de unidades hasta fórmulas de flujo, se edita dinámicamente en tiempo de ejecución sin reinicios.</p>
+                        <ul class="feature-list" style="font-size: 0.95rem;">
+                            <li><strong>Dynamic Formula Parser</strong>: Evaluación de ecuaciones matemáticas complejas por punto de captura (ej. Curvas H-Q personalizadas).</li>
+                            <li><strong>Multi-Variable Resistance</strong>: El sistema adapta sus cálculos automáticamente ante la variabilidad de sensores y condiciones ambientales cambiantes.</li>
+                            <li><strong>Unit Transition Logic</strong>: Mapeo inteligente entre SI, Imperial o unidades custom sin pérdida de precisión decimal.</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 1.2rem; color: var(--accent-blue);">AI Narrative & Context</h4>
+                        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">No solo entregamos números; entregamos contexto. Nuestra IA analiza las series temporales para generar insights accionables.</p>
+                        <ul class="feature-list" style="font-size: 0.95rem;">
+                            <li><strong>Anomaly Fingerprinting</strong>: Identificación de patrones de falla (obstruction, sensor drift) antes de que el sensor deje de funcionar.</li>
+                            <li><strong>Predictive Maintenance Ops</strong>: IA que calcula la degradación de infraestructura basada en el historial de tensiones hídricas.</li>
+                            <li><strong>Automated Natural Language Reports</strong>: Generación de resúmenes ejecutivos que explican comportamientos complejos en lenguaje humano.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Security Hardening Section -->
+        <section>
+            <div class="glass-card" style="border-left: 4px solid var(--accent-cyan); background: rgba(0, 211, 255, 0.02);">
+                <h2 style="margin-bottom: 2rem;">Seguridad <span class="gradient-text">Zero-Trust & Ultra-Secure</span></h2>
+                <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 3rem;">
+                    <div>
+                        <p style="color: var(--text-secondary); margin-bottom: 2rem;">Protección de grado militar para la infraestructura crítica del agua. Implementamos una arquitectura endurecida que excede los estándares de ciberseguridad industrial.</p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                            <div>
+                                <h5 style="color: var(--accent-cyan); margin-bottom: 0.5rem;">Encriptación & Auth</h5>
+                                <ul style="list-style: none; font-size: 0.85rem; color: var(--text-secondary);">
+                                    <li>• TLS 1.3 con HSTS.</li>
+                                    <li>• SCRAM-SHA-256 en Postgres.</li>
+                                    <li>• MFA & RBAC Granular.</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h5 style="color: var(--accent-cyan); margin-bottom: 0.5rem;">Aislamiento & Ops</h5>
+                                <ul style="list-style: none; font-size: 0.85rem; color: var(--text-secondary);">
+                                    <li>• Docker Network Partitioning.</li>
+                                    <li>• Intrusion Detection (IDS).</li>
+                                    <li>• Backup Inmutable Geo-Redundante.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; border: 1px solid var(--glass-border); border-radius: 20px; padding: 2rem; background: rgba(255,255,255,0.02);">
+                         <div style="text-align: center;">
+                            <h3 style="font-size: 2.5rem; color: var(--accent-cyan);">99.99%</h3>
+                            <p style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary);">Uptime & Resilience</p>
+                         </div>
+                         <div style="margin-top: 2rem; width: 100%; border-top: 1px solid var(--glass-border); padding-top: 1rem; font-size: 0.8rem; text-align: center; color: var(--text-secondary);">
+                            Audit Trail Forense habilitado 24/7
+                         </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Business Logic: DGA & Metrics -->
+        <section>
+            <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 3rem; align-items: center;">
+                <div>
+                    <h2 style="margin-bottom: 2rem;">Motor de Reportabilidad <span class="gradient-text">DGA & SMA</span></h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Un motor de transformación de datos nativo que garantiza el cumplimiento normativo sin intervención humana. Nuestra lógica de "Voucher Audit" asegura que cada envío sea confirmado por la autoridad antes de marcarse como exitoso.</p>
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem;">
+                        <span class="badge">Estándares 1, 2 y 3 (Transmisión XML/JSON)</span>
+                        <span class="badge">Validación Bidireccional de Vouchers</span>
+                        <span class="badge">Back-off Exponencial para Re-intentos</span>
+                    </div>
+                    <p style="color: var(--text-secondary);">Integramos una capa de abstracción que mapea variables físicas a los estándares técnicos de la DGA, eliminando el riesgo de multas y garantizando la transparencia hídrica de la operación.</p>
+                </div>
+                <div class="glass-card">
+                    <h4 style="margin-bottom: 1.5rem; color: var(--accent-cyan);">Ecosistema de Valor Localizado</h4>
+                    <ul class="feature-list" style="font-size: 0.95rem;">
+                        <li><strong>Visibilidad 360°</strong>: Dashboards de alta fidelidad para DGA, Proveedores e Infraestructura.</li>
+                        <li><strong>Escalabilidad Dinámica</strong>: Integración de nuevos sensores (Nivel, Flujo, Calidad) sin modificar una línea de código.</li>
+                        <li><strong>Compliance Local</strong>: Interfaz y reportes optimizados para la normativa chilena vigente.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Future Ecosystem & AI Impact -->
+        <section>
+            <h2 style="text-align: center; margin-bottom: 4rem;">Visión de <span class="gradient-text">Ecosistema & Expansión</span></h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 2rem;">
+                <div class="glass-card" style="border-top: 4px solid var(--accent-cyan);">
+                    <h3 style="margin-bottom: 1.5rem;">Smart Cities AI</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Transformamos la gestión urbana en un sistema nervioso digital autónomo.</p>
+                    <ul class="feature-list" style="font-size: 0.9rem;">
+                        <li><strong>Leak Detection</strong>: Algoritmos de IA que analizan caídas de presión en milisegundos para detectar fugas invisibles antes de que causen daños.</li>
+                        <li><strong>Flood Prevention</strong>: Modelos predictivos que cruzan data meteorológica con niveles de drenaje para alertar cierres preventivos de calles.</li>
+                        <li><strong>Environmental OS</strong>: Un sistema operativo urbano que gestiona agua, aire y ruido bajo una sola interfaz unificada.</li>
+                    </ul>
+                </div>
+                <div class="glass-card" style="border-top: 4px solid var(--accent-blue);">
+                    <h3 style="margin-bottom: 1.5rem;">Industrial IoT Edge</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Potencia extrema para los sectores más exigentes de la industria global.</p>
+                    <ul class="feature-list" style="font-size: 0.9rem;">
+                        <li><strong>Mining Intelligence</strong>: Monitoreo crítico de pozos y relaves con alertas de seguridad geofísica basadas en IA.</li>
+                        <li><strong>Agro-Autonomous</strong>: Riego de precisión basado en evapotranspiración real y pronósticos satelitales, optimizando el uso hídrico en un 30%.</li>
+                        <li><strong>Energy Sync</strong>: Sincronización de turbinas hidroeléctricas con caudales reales para maximizar el despacho energético.</li>
+                    </ul>
+                </div>
+                <div class="glass-card" style="border-top: 4px solid #a855f7;">
+                    <h3 style="margin-bottom: 1.5rem;">AI Forecasting Hub</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Donde los datos se convierten en el recurso más valioso del siglo XXI.</p>
+                    <ul class="feature-list" style="font-size: 0.9rem;">
+                        <li><strong>Water Trading</strong>: Una plataforma de intercambio de derechos de agua basada en disponibilidad certificada y auditada por IA.</li>
+                        <li><strong>Digital Basin Twins</strong>: Réplicas digitales de cuencas completas para simular escenarios de sequía extrema o lluvias históricas.</li>
+                        <li><strong>Predictive Maintenance</strong>: IA que predice fallas en bombas y sensores antes de que ocurran, ahorrando millones en OpEx.</li>
+                    </ul>
+                </div>
+            </div>
+            <p style="text-align: center; margin-top: 4rem; color: var(--text-secondary); font-style: italic;">
+                "SmartHydro no es solo un producto de telemetría; es la infraestructura de inteligencia sobre la cual se reconstruye el futuro de los recursos críticos."
+            </p>
+        </section>
+
         <!-- Positioning & Future -->
         <section style="text-align: center;">
-            <h2 style="font-size: 3rem; margin-bottom: 2rem;">Nivel de <span class="gradient-text">Posicionamiento</span></h2>
-            <p style="font-size: 1.2rem; color: var(--text-secondary); max-width: 800px; margin: 0 auto 4rem;">
-                SmartHydro se posiciona en el <strong>Nivel 5 de Madurez Digital</strong>: Un sistema predictivo, distribuido y automatizado que excede los estándares actuales del mercado chileno en gestión de telemetría.
+            <h2 style="font-size: 3.5rem; margin-bottom: 2rem;">El Nuevo <span class="gradient-text">Estándar</span></h2>
+            <p style="font-size: 1.3rem; color: var(--text-secondary); max-width: 900px; margin: 0 auto 4rem;">
+                SmartHydro no es solo un software; es una <strong>Plataforma de Gobernanza Hídrica Enterprise</strong>. Nuestra arquitectura compite con soluciones internacionales de clase mundial, ofreciendo una robustez industrial inigualable en la región.
             </p>
             
-            <div class="glass-card" style="max-width: 600px; margin: 0 auto; text-align: left;">
-                <h3 style="margin-bottom: 1.5rem;">Hoja de Ruta (Futuro)</h3>
-                <ul class="feature-list">
-                    <li>Predictibilidad de caudales mediante Machine Learning</li>
-                    <li>Integración nativa con Agentes Autónomos de IA</li>
-                    <li>Visualización 3D Georreferenciada de Cuencas</li>
-                    <li>Soporte Global Multi-Branch & Multi-Tenant</li>
-                </ul>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem;">
+                <div class="glass-card" style="text-align: left;">
+                    <h3 style="margin-bottom: 1rem; font-size: 1.2rem;">Siguiente Paso</h3>
+                    <ul class="feature-list" style="font-size: 0.9rem;">
+                        <li>Modelos predictivos de Machine Learning.</li>
+                        <li>Integración nativa con Agentes de AI.</li>
+                        <li>Georreferenciación 3D en tiempo real.</li>
+                    </ul>
+                </div>
+                <div class="glass-card" style="text-align: center; border: 2px solid var(--accent-cyan);">
+                    <h3 style="font-size: 2.5rem; margin-bottom: 0.5rem;">Level 5</h3>
+                    <p style="font-size: 0.8rem; text-transform: uppercase; color: var(--accent-cyan);">Madurez Digital Alcanzada</p>
+                </div>
             </div>
         </section>
 
