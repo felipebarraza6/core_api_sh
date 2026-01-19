@@ -193,12 +193,11 @@ class CoreVariable(ModelApi):
     )
     unit = models.CharField(max_length=50, verbose_name="Unidad", blank=True, null=True)
 
-    # Reusing choices for consistency
+    # Variable key/identifier as used by the external provider
     type_variable = models.CharField(
-        max_length=50,
-        choices=SchemeVariable.VARIABLE_TYPES,
-        default="GENERIC",
-        verbose_name="Tipo de Procesamiento",
+        max_length=100,
+        verbose_name="Clave/ID de Variable",
+        help_text="Identificador de la variable en el proveedor externo (ej: '5000', 'descarga', 'pc')"
     )
 
     # Configuration for ingestion

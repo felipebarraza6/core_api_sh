@@ -18,6 +18,7 @@ class Client(ModelApi):
     class Meta:
         """Meta data client"""
 
+        db_table = "core_client"
         verbose_name = "Cliente"
         verbose_name_plural = "Clientes"
 
@@ -39,6 +40,7 @@ class ProjectCatchments(ModelApi):
     class Meta:
         """Meta data project catchments"""
 
+        db_table = "core_projectcatchments"
         verbose_name = "Proyecto"
         verbose_name_plural = "Proyectos"
 
@@ -94,7 +96,7 @@ class CatchmentPoint(ModelApi):
     )
 
     processing_scheme = models.ForeignKey(
-        "core.TelemetryScheme",
+        "telemetry.TelemetryScheme",
         related_name="catchment_points",
         on_delete=models.SET_NULL,
         blank=True,
@@ -106,6 +108,7 @@ class CatchmentPoint(ModelApi):
     class Meta:
         """Meta data catchment points"""
 
+        db_table = "core_catchmentpoint"
         verbose_name = "Punto de captacion"
         verbose_name_plural = "Puntos de captacion"
 
@@ -205,6 +208,7 @@ class ProfileIkoluCatchment(ModelApi):
     class Meta:
         """Meta data profile ikolu"""
 
+        db_table = "core_profileikolucatchment"
         verbose_name = "Perfil Ikolu"
         verbose_name_plural = "Perfiles Ikolu"
 
@@ -279,6 +283,7 @@ class NotificationsCatchment(ModelApi):
     class Meta:
         """Meta data notifications"""
 
+        db_table = "core_notificationscatchment"
         verbose_name = "Notificación"
         verbose_name_plural = "Notificaciones"
 
@@ -303,6 +308,7 @@ class ResponseNotificationsCatchment(ModelApi):
     class Meta:
         """Meta data response notifications"""
 
+        db_table = "core_responsenotificationscatchment"
         verbose_name = "Respuesta de notificación"
         verbose_name_plural = "Respuestas de notificaciones"
 
@@ -319,6 +325,7 @@ class TypeFileCatchment(ModelApi):
     class Meta:
         """Meta data type file"""
 
+        db_table = "core_typefilecatchment"
         verbose_name = "Tipo de archivo"
         verbose_name_plural = "Tipos de archivos"
 
@@ -351,6 +358,7 @@ class FileCatchment(ModelApi):
     class Meta:
         """Meta data file"""
 
+        db_table = "core_filecatchment"
         verbose_name = "Archivo"
         verbose_name_plural = "Archivos"
 
@@ -437,6 +445,7 @@ class ProfileDataConfigCatchment(ModelApi):
     class Meta:
         """Meta data profile data config"""
 
+        db_table = "core_profiledataconfigcatchment"
         verbose_name = "Configuracion de datos"
         verbose_name_plural = "Configuracion de datos"
 
@@ -525,6 +534,7 @@ class DgaDataConfigCatchment(ModelApi):
     class Meta:
         """Meta data profile data config"""
 
+        db_table = "core_dgadataconfigcatchment"
         verbose_name = "Configuracion de datos DGA"
         verbose_name_plural = "Configuraciones de datos DGA"
 
@@ -558,6 +568,7 @@ class RegisterPersons(ModelApi):
     class Meta:
         """Meta data register persons"""
 
+        db_table = "core_registerpersons"
         verbose_name = "Persona registrada"
         verbose_name_plural = "Personas registradas"
 

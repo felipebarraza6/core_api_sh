@@ -54,6 +54,8 @@ urlpatterns = [
     ),
     # Chatbot Integration
     path("api/chat-bot/", include("api.chatbot.urls")),
+    # Providers - Sistema dinámico de proveedores de telemetría
+    path("api/providers/", include(("api.telemetry.providers.urls", "providers"), namespace="providers")),
     # Prometheus Metrics
     path("metrics/", prometheus_metrics, name="prometheus-metrics"),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

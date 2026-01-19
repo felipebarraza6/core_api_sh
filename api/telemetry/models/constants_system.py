@@ -288,7 +288,7 @@ class DataCorrectionLog(ModelApi):
 
     # Registro original
     original_record = models.ForeignKey(
-        "core.DataPoint",
+        "telemetry.DataPoint",
         on_delete=models.CASCADE,
         related_name="corrections",
         help_text="Registro original que fue corregido",

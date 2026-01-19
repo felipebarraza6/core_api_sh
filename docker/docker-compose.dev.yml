@@ -10,10 +10,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"  # Puerto adicional para desarrollo
+      - "8080:8080" # Puerto adicional para desarrollo
     volumes:
-      - ./conf/nginx.production.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/ssl/certs:ro
+      - ../conf/nginx.production.conf:/etc/nginx/nginx.conf:ro
+      - ../ssl:/etc/ssl/certs:ro
       - nginx_logs:/var/log/nginx
     depends_on:
       - django-app
@@ -24,11 +24,11 @@ services:
   # ========================================
   django-app:
     build:
-      context: .
-      dockerfile: Dockerfile.production
+      context: ..
+      dockerfile: docker/Dockerfile.production
     container_name: smarthydro_django_dev
     volumes:
-      - .:/app
+      - ..:/app
       - static_volume:/app/staticfiles
       - media_volume:/app/media
       - django_logs:/app/logs
@@ -64,12 +64,12 @@ services:
   # ========================================
   celery_beat:
     build:
-      context: .
-      dockerfile: Dockerfile.production
+      context: ..
+      dockerfile: docker/Dockerfile.production
     container_name: celery_beat_dev
-    command: celery -A api beat --loglevel=info --scheduler=celery.beat:PersistentScheduler
+    command: celery -A api beat --loglevel=info --scheduler=django_celery_beat.schedulers:DatabaseScheduler
     volumes:
-      - .:/app
+      - ..:/app
     environment:
       - DJANGO_SETTINGS_MODULE=api.settings
       - ENVIRONMENT=development
@@ -91,12 +91,14 @@ services:
   # ========================================
   celery_worker:
     build:
-      context: .
-      dockerfile: Dockerfile.production
+      context: ..
+      dockerfile: docker/Dockerfile.production
     container_name: celery_worker_dev
-    command: celery -A api worker --loglevel=info --concurrency=2 --pool=prefork -Q telemetry,dga,alerts,reports,celery
+    command: celery -A api worker --loglevel=info --concurrency=4 --pool=threads -Q telemetry,dga,alerts,reports,celery
+    ports:
+      - "9200:9200"
     volumes:
-      - .:/app
+      - ..:/app
       - celery_logs:/app/logs
     environment:
       - DJANGO_SETTINGS_MODULE=api.settings
@@ -115,24 +117,23 @@ services:
       - django-app
     restart: unless-stopped
 
-
   # ========================================
   # MQTT BROKER - DESARROLLO
   # ========================================
   mqtt_broker:
     build:
-      context: .
+      context: ..
       dockerfile: docker/Dockerfile.mqtt
     container_name: mqtt_broker_dev
     ports:
-      - "1883:1883"   # MQTT
-      - "8883:8883"   # MQTT SSL
-      - "8081:8080"   # WebSocket
+      - "1883:1883" # MQTT
+      - "8883:8883" # MQTT SSL
+      - "8081:8080" # WebSocket
     volumes:
       - mqtt_data:/mosquitto/data
       - mqtt_logs:/mosquitto/log
-      - ./conf/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./conf/acl:/mosquitto/config/acl:ro
+      - ../conf/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ../conf/acl:/mosquitto/config/acl:ro
     environment:
       - MQTT_BROKER_USERNAME=smarthydro
       - MQTT_BROKER_PASSWORD=dev_mqtt_password
@@ -145,7 +146,7 @@ services:
     image: redis:7-alpine
     container_name: redis_dev
     ports:
-      - "6379:6379"  # Exponer Redis para desarrollo
+      - "6379:6379" # Exponer Redis para desarrollo
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
@@ -159,7 +160,7 @@ services:
     image: postgres:15-alpine
     container_name: postgres_dev
     ports:
-      - "5432:5432"  # Exponer PostgreSQL para desarrollo
+      - "5432:5432" # Exponer PostgreSQL para desarrollo
     environment:
       POSTGRES_DB: smarthydro_dev
       POSTGRES_USER: smarthydro_dev_user
@@ -167,7 +168,7 @@ services:
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db-secure.sql:/docker-entrypoint-initdb.d/init-db-secure.sql:ro
+      - ../init-db-secure.sql:/docker-entrypoint-initdb.d/init-db-secure.sql:ro
       - postgres_logs:/var/log/postgresql
     restart: unless-stopped
 
@@ -184,10 +185,9 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     restart: unless-stopped
-
 
   # ========================================
   # NODE EXPORTER - Métricas del Sistema
@@ -233,7 +233,8 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -258,6 +259,7 @@ volumes:
   mqtt_logs:
   redis_logs:
   postgres_logs:
+
 
 networks:
   default:

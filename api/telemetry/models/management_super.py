@@ -345,6 +345,7 @@ class IoTDevice(ModelApi):
     notes = models.TextField(blank=True, help_text="Notas adicionales del dispositivo")
 
     class Meta:
+        db_table = 'core_iotdevice'
         verbose_name = "Dispositivo IoT"
         verbose_name_plural = "Dispositivos IoT"
         indexes = [
@@ -789,7 +790,7 @@ class AlertRule(ModelApi):
     )
 
     target_project = models.ForeignKey(
-        "core.ProjectCatchments",
+        "telemetry.ProjectCatchments",
         on_delete=models.CASCADE,
         null=True,
         blank=True,

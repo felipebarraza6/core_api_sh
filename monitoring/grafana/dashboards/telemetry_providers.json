@@ -1,0 +1,408 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": "-- Grafana --",
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "gnetId": null,
+    "graphTooltip": 0,
+    "id": null,
+    "links": [],
+    "panels": [
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": null
+                            },
+                            {
+                                "color": "green",
+                                "value": 1
+                            }
+                        ]
+                    },
+                    "unit": "percentunit"
+                }
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 8,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "mean"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "targets": [
+                {
+                    "expr": "sum(smarthydro_provider_healthy{protocol!=\"\"}) / count(smarthydro_provider_healthy{protocol!=\"\"})",
+                    "refId": "A"
+                }
+            ],
+            "title": "Disponibilidad General",
+            "type": "stat"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "displayMode": "auto"
+                    },
+                    "mappings": []
+                }
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 16,
+                "x": 8,
+                "y": 0
+            },
+            "id": 6,
+            "options": {
+                "footer": {
+                    "show": false
+                },
+                "showHeader": true
+            },
+            "targets": [
+                {
+                    "expr": "smarthydro_provider_info",
+                    "format": "table",
+                    "instant": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Listado de Configuración de Proveedores",
+            "transformations": [
+                {
+                    "id": "organize",
+                    "options": {
+                        "excludeByName": {
+                            "__name__": true,
+                            "instance": true,
+                            "job": true,
+                            "Time": true,
+                            "Value": true,
+                            "provider_id": true
+                        },
+                        "renameByName": {
+                            "provider_name": "Nombre Proveedor",
+                            "protocol": "Protocolo",
+                            "base_url": "Endpoint / Base URL",
+                            "auth_method": "Autenticación"
+                        }
+                    }
+                }
+            ],
+            "type": "table"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "displayMode": "auto"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 3600
+                            },
+                            {
+                                "color": "red",
+                                "value": 7200
+                            }
+                        ]
+                    },
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 24,
+                "x": 0,
+                "y": 4
+            },
+            "id": 2,
+            "options": {
+                "footer": {
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "Segundos sin Éxito"
+                    }
+                ]
+            },
+            "targets": [
+                {
+                    "expr": "smarthydro_provider_last_success_seconds_ago{protocol!=\"\"}",
+                    "format": "table",
+                    "instant": true,
+                    "refId": "A"
+                },
+                {
+                    "expr": "smarthydro_provider_consecutive_errors{protocol!=\"\"}",
+                    "format": "table",
+                    "instant": true,
+                    "refId": "B"
+                }
+            ],
+            "title": "Auditoría de Comunicaciones en Tiempo Real",
+            "transformations": [
+                {
+                    "id": "seriesToColumns",
+                    "options": {
+                        "byField": "point_id"
+                    }
+                },
+                {
+                    "id": "organize",
+                    "options": {
+                        "excludeByName": {
+                            "__name__ #A": true,
+                            "instance #A": true,
+                            "job #A": true,
+                            "Time #A": true,
+                            "__name__ #B": true,
+                            "instance #B": true,
+                            "job #B": true,
+                            "Time #B": true,
+                            "point_id": true,
+                            "point_name #B": true,
+                            "provider #B": true,
+                            "project #B": true,
+                            "client #B": true,
+                            "protocol #B": true,
+                            "__name__": true,
+                            "instance": true,
+                            "job": true,
+                            "Time": true,
+                            "point_name": true,
+                            "provider": true,
+                            "project": true,
+                            "client": true,
+                            "protocol": true
+                        },
+                        "renameByName": {
+                            "Value #A": "Segundos sin Éxito",
+                            "Value #B": "Errores Consec.",
+                            "point_name #A": "Punto de Captación",
+                            "provider #A": "Proveedor",
+                            "project #A": "Proyecto",
+                            "client #A": "Cliente",
+                            "protocol #A": "Protocolo"
+                        }
+                    }
+                }
+            ],
+            "type": "table"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "mappings": [
+                        {
+                            "options": {
+                                "0": {
+                                    "color": "red",
+                                    "index": 0,
+                                    "text": "Error"
+                                },
+                                "1": {
+                                    "color": "green",
+                                    "index": 1,
+                                    "text": "OK"
+                                }
+                            },
+                            "type": "value"
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 14
+            },
+            "id": 7,
+            "options": {
+                "rowHeight": 0.9,
+                "showValue": "always",
+                "tooltip": {
+                    "mode": "single"
+                }
+            },
+            "targets": [
+                {
+                    "expr": "smarthydro_provider_healthy{protocol!=\"\"}",
+                    "legendFormat": "{{point_name}} ({{provider}}) - {{protocol}}",
+                    "refId": "A"
+                }
+            ],
+            "title": "Línea de Tiempo: Estabilidad de Conexión",
+            "type": "state-timeline"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisLabel": "Peticiones/s",
+                        "fillOpacity": 10,
+                        "lineWidth": 2
+                    },
+                    "unit": "reqps"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 22
+            },
+            "id": 3,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom"
+                },
+                "tooltip": {
+                    "mode": "multi"
+                }
+            },
+            "targets": [
+                {
+                    "expr": "sum(rate(smarthydro_telemetry_ingestion_total{protocol!=\"\"}[5m])) by (provider)",
+                    "legendFormat": "{{provider}}",
+                    "refId": "A"
+                }
+            ],
+            "title": "Actividad de Ingestión (Frecuencia)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "fixed",
+                        "fixedColor": "red"
+                    },
+                    "custom": {
+                        "axisLabel": "Errores/s",
+                        "fillOpacity": 10,
+                        "lineWidth": 2
+                    },
+                    "unit": "reqps"
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 22
+            },
+            "id": 4,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom"
+                },
+                "tooltip": {
+                    "mode": "multi"
+                }
+            },
+            "targets": [
+                {
+                    "expr": "sum(rate(smarthydro_telemetry_ingestion_errors_total{protocol!=\"\"}[5m])) by (provider)",
+                    "legendFormat": "{{provider}}",
+                    "refId": "A"
+                }
+            ],
+            "title": "Tasa de Fallos Recientes",
+            "type": "timeseries"
+        }
+    ],
+    "refresh": "30s",
+    "schemaVersion": 36,
+    "style": "dark",
+    "tags": [
+        "smarthydro",
+        "telemetry",
+        "providers"
+    ],
+    "templating": {
+        "list": []
+    },
+    "time": {
+        "from": "now-6h",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "",
+    "title": "SmartHydro - Estado de Proveedores",
+    "uid": "telemetry-providers",
+    "version": 8
+}

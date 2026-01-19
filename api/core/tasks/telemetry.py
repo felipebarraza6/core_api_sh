@@ -16,20 +16,17 @@ from datetime import datetime
 
 import pytz
 from celery import group, shared_task
-from django.db import transaction
 
 from api.core.cache.telemetry_cache import TelemetryCache
-from api.telemetry.models import CatchmentPoint, TelemetryRecord
+from api.telemetry.models import CatchmentPoint
 from api.telemetry.ingestion.controllers.unified_processing import (
     determine_dga_send,
     process_variable_safely,
     save_telemetry_data,
 )
 
-# GETTERS UNIFICADOS - Soportan todos los proveedores
-from api.telemetry.ingestion.getters.tago import get_data_tago
-from api.telemetry.ingestion.getters.tdata import get_data_tdata
-from api.telemetry.ingestion.getters.thingsio import get_data_thethings
+# SISTEMA DINÁMICO DE PROVEEDORES
+from api.telemetry.providers.manager import get_data_with_provider
 
 logger = logging.getLogger(__name__)
 
@@ -153,9 +150,14 @@ def process_single_point_unified(point_id, frequency_minutes):
 
     La diferencia entre proveedores está en el campo "service" de cada variable.
     La diferencia entre frecuencias está en el filtro, NO en el código.
+    
+    Ahora también soporta el sistema dinámico de proveedores via CatchmentPointProvider.
     """
     try:
         from api.core.serializers import CatchmentPointSerializerDetailCron
+        from api.telemetry.providers.models import CatchmentPointProvider
+        from api.telemetry.providers.manager import get_provider_manager
+        from api.telemetry.models import CoreVariable
 
         point = CatchmentPoint.objects.get(id=point_id)
         serializer = CatchmentPointSerializerDetailCron(point)
@@ -165,11 +167,42 @@ def process_single_point_unified(point_id, frequency_minutes):
         variables = profile_data_config.get("scheme", {}).get("variables", [])
         token = profile_data_config.get("token_service")
 
+        # ===== NUEVA LÓGICA: Fallback a sistema dinámico de proveedores =====
         if not variables or not token:
-            logger.warning(f"⚠️  [POINT {point_id}] Missing variables or token")
-            return False
+            logger.info(f"🔄 [POINT {point_id}] No legacy config, trying dynamic providers...")
+            
+            # Buscar proveedores configurados para este punto
+            provider_configs = CatchmentPointProvider.objects.filter(
+                point_id=point_id, 
+                is_active=True
+            ).select_related('provider')
+            
+            if not provider_configs.exists():
+                logger.warning(f"⚠️  [POINT {point_id}] No dynamic providers configured")
+                return False
+            
+            # Obtener variables del punto
+            point_variables = CoreVariable.objects.filter(
+                point_id=point_id, 
+                is_active=True
+            )
+            
+            if not point_variables.exists():
+                logger.warning(f"⚠️  [POINT {point_id}] No active variables configured")
+                return False
+            
+            # Procesar con sistema dinámico
+            success = process_with_dynamic_providers(
+                point, provider_configs, point_variables, frequency_minutes
+            )
+            
+            if success:
+                TelemetryCache.invalidate_point_cache(point_id)
+                logger.info(f"✅ [POINT {point_id}] Dynamic provider ingestion successful")
+            return success
+        # ===== FIN NUEVA LÓGICA =====
 
-        # Ejecutar ingesta con lógica unificada
+        # Ejecutar ingesta con lógica legacy unificada
         success = ingest_telemetry_data(variables, token, data, frequency_minutes)
 
         if success:
@@ -187,6 +220,92 @@ def process_single_point_unified(point_id, frequency_minutes):
     except Exception as exc:
         logger.error(f"❌ [POINT {point_id}] Processing error: {exc}")
         return False
+
+
+def process_with_dynamic_providers(point, provider_configs, variables, frequency_minutes):
+    """
+    Procesa un punto usando el sistema dinámico de proveedores.
+    
+    Args:
+        point: Instancia de CatchmentPoint
+        provider_configs: QuerySet de CatchmentPointProvider
+        variables: QuerySet de CoreVariable
+        frequency_minutes: Frecuencia de polling
+    
+    Returns:
+        bool: True si se procesaron datos exitosamente
+    """
+    from api.telemetry.providers.manager import get_provider_manager
+    from api.telemetry.ingestion.controllers.unified_processing import save_telemetry_data
+    
+    chile = pytz.timezone("America/Santiago")
+    
+    # Formateo de timestamp según frecuencia
+    if frequency_minutes == "60":
+        timestamp_format = "%Y-%m-%dT%H:00:00"
+    else:
+        timestamp_format = "%Y-%m-%dT%H:%M:00"
+    
+    created_register = {
+        "date_time_medition": datetime.now(chile).strftime(timestamp_format)
+    }
+    
+    has_valid_data = False
+    manager = get_provider_manager()
+    
+    for provider_config in provider_configs:
+        provider = provider_config.provider
+        point_code = provider_config.point_code
+        
+        variable_details = []
+        for variable in variables:
+            try:
+                # Usar el sistema dinámico para obtener datos
+                result = manager.fetch_data(
+                    service=provider.name,
+                    variable=variable.type_variable,
+                    point_id=point.id,
+                    token=point_code  # El point_code actúa como token/device_id
+                )
+                
+                if result and result.get('value') is not None:
+                    value = result['value']
+                    # Guardar bajo ambas claves para compatibilidad total
+                    created_register[variable.type_variable] = value
+                    if variable.internal_code:
+                        created_register[variable.internal_code] = value
+                    
+                    has_valid_data = True
+                    variable_details.append({
+                        'name': variable.name,
+                        'code': variable.internal_code,
+                        'type': variable.type_variable,
+                        'value': value,
+                        'unit': variable.unit,
+                        'provider': provider.name
+                    })
+                    
+                    logger.debug(
+                        f"📡 [POINT {point.id}] {variable.internal_code or variable.type_variable}={value} "
+                        f"via {provider.name}"
+                    )
+                    
+            except Exception as e:
+                logger.error(
+                    f"❌ [POINT {point.id}] Error fetching {variable.type_variable} "
+                    f"from {provider.name}: {e}"
+                )
+        
+        if variable_details:
+            created_register['variable_details'] = variable_details
+            created_register['device_id'] = point_code
+    
+    if has_valid_data:
+        # Guardar registro de telemetría
+        save_telemetry_data(point.id, created_register, list(variables.values()))
+        return True
+    
+    return False
 
 
 def ingest_telemetry_data(variables, token, point_catchment, frequency_minutes):
@@ -398,33 +517,27 @@ def ingest_telemetry_data(variables, token, point_catchment, frequency_minutes):
 
 def get_data_with_retry(service, token, variable, max_retries=3, backoff_factor=2):
     """
-    Retry inteligente con backoff exponencial.
+    Obtiene datos de telemetría usando el sistema dinámico de proveedores.
 
-    Mapea el servicio al getter correcto:
-    - TWIN   → TData API
-    - NETTRA → TheThings API
-    - NOVUS  → Tago API
+    Usa el ProviderManager que:
+    - Intenta primero el sistema dinámico (si hay configuración)
+    - Hace fallback a los getters legacy automáticamente
+    - Maneja retry con backoff exponencial
+
+    Args:
+        service: Nombre del servicio (TWIN, NETTRA, NOVUS)
+        token: Token de autenticación del dispositivo
+        variable: Variable a obtener
+        max_retries: Número máximo de reintentos
+        backoff_factor: Factor de backoff exponencial
+
+    Returns:
+        Dict con {"value": float, "date_time": str} o None si falla
     """
-    # Selección de getter según proveedor
-    getter_map = {
-        "TWIN": get_data_tdata,
-        "NETTRA": get_data_thethings,
-        "NOVUS": get_data_tago,
-    }
-
-    getter_func = getter_map.get(service, get_data_tdata)  # Default: TWIN
-
-    for attempt in range(max_retries):
-        try:
-            data = getter_func(token, variable)
-            if data and data.get("value") is not None:
-                return data
-        except Exception as exc:
-            if attempt == max_retries - 1:
-                logger.error(
-                    f"❌ [RETRY] Failed after {max_retries} attempts for {service}/{variable}: {exc}"
-                )
-                return None
-            time.sleep(backoff_factor**attempt)
-
-    return None
+    return get_data_with_provider(
+        service=service,
+        token=token,
+        variable=variable,
+        max_retries=max_retries,
+        backoff_factor=backoff_factor
+    )

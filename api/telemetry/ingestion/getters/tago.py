@@ -1,10 +1,30 @@
+"""
+Script TAGO - LEGACY GETTER
+
+DEPRECATED: Este módulo será removido en futuras versiones.
+Use api.telemetry.providers.manager.get_data_with_provider() en su lugar.
+
+El sistema dinámico de proveedores (api.telemetry.providers) reemplaza
+estos getters hardcodeados con configuración flexible desde la base de datos.
+"""
 from datetime import datetime
 import time
 import requests
+import warnings
 
 
 def get_data_tago(token_service, str_variable):
-    """Obtener datos de THETHINGS."""
+    """
+    Obtener datos de TAGO (NOVUS).
+
+    DEPRECATED: Use get_data_with_provider() del módulo providers.manager
+    """
+    warnings.warn(
+        "get_data_tago está deprecated. Use get_data_with_provider() "
+        "de api.telemetry.providers.manager",
+        DeprecationWarning,
+        stacklevel=2
+    )
 
     token = token_service  # Reemplazar "YOUR_TOKEN" con el valor real del token
     url = f"https://api.tago.io/data/?variable={str_variable}&query=last_item"

@@ -1,8 +1,17 @@
-"""Script TDATA."""
+"""
+Script TDATA - LEGACY GETTER
+
+DEPRECATED: Este módulo será removido en futuras versiones.
+Use api.telemetry.providers.manager.get_data_with_provider() en su lugar.
+
+El sistema dinámico de proveedores (api.telemetry.providers) reemplaza
+estos getters hardcodeados con configuración flexible desde la base de datos.
+"""
 import json
 import requests
 from datetime import datetime
 import time
+import warnings
 
 
 def get_token():
@@ -22,7 +31,17 @@ def get_token():
 
 
 def get_data_tdata(token_service, str_variable):
-    """Obtener datos de TDATA."""
+    """
+    Obtener datos de TDATA.
+
+    DEPRECATED: Use get_data_with_provider() del módulo providers.manager
+    """
+    warnings.warn(
+        "get_data_tdata está deprecated. Use get_data_with_provider() "
+        "de api.telemetry.providers.manager",
+        DeprecationWarning,
+        stacklevel=2
+    )
     token_auth = get_token()
     if not token_auth:
         print("No se pudo obtener el token de autenticación.")

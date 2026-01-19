@@ -36,6 +36,7 @@ from api.telemetry.models.telemetry import (
     TelemetryScheme,
     VirtualVariable,
 )
+from api.telemetry.providers.models import CatchmentPointProvider
 from api.core.models import User
 
 # ========================================
@@ -189,13 +190,13 @@ class VariableAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin)
         "id",
         "name",
         "point",
+        "type_variable",
         "internal_code",
         "unit",
-        "provider_key",
         "is_active",
     )
     list_filter = ("is_active", "unit", "point__project__name")
-    search_fields = ("name", "internal_code", "point__title", "provider_key")
+    search_fields = ("name", "internal_code", "type_variable", "point__title")
     autocomplete_fields = ["point"]
     list_per_page = ADMIN_LIST_PER_PAGE
     ordering = ("point", "name")
@@ -289,6 +290,16 @@ class ProfileIkoluInline(admin.StackedInline):
             },
         ),
     )
+
+
+class ProviderInline(admin.TabularInline):
+    """Inline para ver/agregar proveedores de telemetría conectados al punto"""
+    model = CatchmentPointProvider
+    extra = 1
+    fields = ('provider', 'point_code', 'is_active', 'config_override')
+    autocomplete_fields = ('provider',)
+    verbose_name = "Proveedor de Telemetría"
+    verbose_name_plural = "Proveedores de Telemetría"
 
 
 # ========================================
@@ -695,6 +706,7 @@ class CatchmentPointAdmin(
         ProfileDataConfigInline,
         DgaDataConfigInline,
         ProfileIkoluInline,
+        ProviderInline,
     ]
 
     # ✅ Autocomplete
@@ -1811,12 +1823,14 @@ class TelemetryRecordAdmin(admin.ModelAdmin):
     readonly_fields = ("data", "metadata", "timestamp", "point")
 
     def get_flow(self, obj):
-        return obj.data.get("flow", "-")
+        # Fallback sequence: caudal -> 5001 -> flow
+        return obj.data.get("caudal", obj.data.get("5001", obj.data.get("flow", "-")))
 
     get_flow.short_description = "Caudal (L/s)"
 
     def get_total(self, obj):
-        return obj.data.get("total", "-")
+        # Fallback sequence: total -> 5000
+        return obj.data.get("total", obj.data.get("5000", "-"))
 
     get_total.short_description = "Total (m³)"
 

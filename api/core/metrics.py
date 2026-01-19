@@ -12,6 +12,9 @@ from api.telemetry.models import (
 )
 from datetime import datetime, timedelta
 from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================
@@ -21,46 +24,46 @@ from django.utils import timezone
 # Contadores de ingestión
 telemetry_ingestion_total = Counter(
     'smarthydro_telemetry_ingestion_total',
-    'Total de registros de telemetría ingestados',
-    ['point_id', 'point_name', 'provider']
+    'Total de registros de telemetría procesados',
+    ['point_id', 'point_name', 'project', 'client', 'frequency', 'provider', 'protocol']
 )
 
 telemetry_ingestion_errors = Counter(
     'smarthydro_telemetry_ingestion_errors_total',
-    'Total de errores en ingestión de telemetría',
-    ['point_id', 'point_name', 'error_type']
+    'Errores en el procesamiento de telemetría',
+    ['point_id', 'point_name', 'project', 'client', 'error_type', 'protocol']
 )
 
 # Gauges para valores actuales
 telemetry_flow_current = Gauge(
     'smarthydro_telemetry_flow_liters_per_second',
     'Caudal actual en L/s',
-    ['point_id', 'point_name', 'project']
+    ['point_id', 'point_name', 'project', 'client', 'frequency']
 )
 
 telemetry_total_current = Gauge(
     'smarthydro_telemetry_total_cubic_meters',
     'Total acumulado en m³',
-    ['point_id', 'point_name', 'project']
+    ['point_id', 'point_name', 'project', 'client', 'frequency']
 )
 
 telemetry_nivel_current = Gauge(
     'smarthydro_telemetry_nivel_meters',
     'Nivel actual en metros',
-    ['point_id', 'point_name', 'project']
+    ['point_id', 'point_name', 'project', 'client', 'frequency']
 )
 
 telemetry_daily_consumption = Gauge(
     'smarthydro_telemetry_daily_consumption_cubic_meters',
     'Consumo diario en m³',
-    ['point_id', 'point_name', 'project']
+    ['point_id', 'point_name', 'project', 'client', 'frequency']
 )
 
 # Tiempo desde última recepción
 telemetry_last_data_seconds = Gauge(
     'smarthydro_telemetry_last_data_seconds_ago',
     'Segundos desde la última recepción de datos',
-    ['point_id', 'point_name']
+    ['point_id', 'point_name', 'project', 'client', 'frequency']
 )
 
 # Histograma de latencia de procesamiento
@@ -111,7 +114,45 @@ sma_transmissions_total = Counter(
 sma_transmission_errors = Counter(
     'smarthydro_sma_transmission_errors_total',
     'Errores en transmisión SMA',
-    ['point_id', 'error_type']
+    ['point_id', 'point_name', 'error_type']
+)
+
+# ============================================
+# MÉTRICAS DE PROVEEDORES (NUEVO)
+# ============================================
+
+provider_healthy = Gauge(
+    'smarthydro_provider_healthy',
+    'Estado de salud del proveedor (1=Healthy, 0=Unhealthy)',
+    ['point_id', 'point_name', 'provider', 'project', 'client', 'protocol']
+)
+
+provider_consecutive_errors = Gauge(
+    'smarthydro_provider_consecutive_errors',
+    'Conteo de errores consecutivos del proveedor',
+    ['point_id', 'point_name', 'provider', 'project', 'client', 'protocol']
+)
+
+provider_last_success_timestamp = Gauge(
+    'smarthydro_provider_last_success_seconds_ago',
+    'Segundos transcurridos desde el último éxito del proveedor',
+    ['point_id', 'point_name', 'provider', 'project', 'client', 'protocol']
+)
+
+smarthydro_provider_info = Gauge(
+    'smarthydro_provider_info',
+    'Información de configuración del proveedor',
+    ['provider_id', 'provider_name', 'protocol', 'base_url', 'auth_method']
+)
+
+# ============================================
+# MÉTRICAS DE INFRAESTRUCTURA (NUEVO)
+# ============================================
+
+database_table_rows = Gauge(
+    'smarthydro_database_table_rows',
+    'Cantidad de registros por tabla en la base de datos',
+    ['table_name']
 )
 
 # ============================================
@@ -127,7 +168,7 @@ alerts_generated_total = Counter(
 active_alerts = Gauge(
     'smarthydro_active_alerts',
     'Alertas activas por punto',
-    ['point_id', 'point_name', 'alert_type']
+    ['point_id', 'point_name', 'project', 'client', 'frequency', 'alert_type']
 )
 
 # ============================================
@@ -148,7 +189,7 @@ points_with_data_today = Gauge(
 points_offline = Gauge(
     'smarthydro_points_offline',
     'Puntos sin datos en las últimas 2 horas',
-    ['point_id', 'point_name']
+    ['point_id', 'point_name', 'project', 'client', 'frequency']
 )
 
 database_records_total = Gauge(
@@ -173,14 +214,14 @@ def update_telemetry_metrics():
     now = timezone.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Obtener puntos activos
-    points = CatchmentPoint.objects.filter(
-        profiledataconfigcatchment__is_telemetry=True
-    ).select_related('project', 'profiledataconfigcatchment')
+    # Obtener TODOS los puntos con relaciones necesarias
+    points = CatchmentPoint.objects.all().select_related('project', 'project__client')
 
     for point in points:
         point_name = point.title
         project_name = point.project.name if point.project else "Sin Proyecto"
+        client_name = point.project.client.name if (point.project and point.project.client) else "Sin Cliente"
+        frequency = dict(CatchmentPoint.FRECUENCY_OPTIONS).get(point.frecuency, "Desconocida")
 
         # Último registro
         latest_record = TelemetryRecord.objects.filter(
@@ -189,57 +230,109 @@ def update_telemetry_metrics():
 
         if latest_record:
             # Valores actuales
-            data = latest_record.data
+            data = latest_record.data or {}
+            
+            common_labels = {
+                'point_id': str(point.id),
+                'point_name': str(point_name),
+                'project': str(project_name),
+                'client': str(client_name),
+                'frequency': str(frequency)
+            }
 
-            if 'flow' in data and data['flow'] is not None:
-                telemetry_flow_current.labels(
-                    point_id=point.id,
-                    point_name=point_name,
-                    project=project_name
-                ).set(float(data['flow']))
-
-            if 'total' in data and data['total'] is not None:
-                telemetry_total_current.labels(
-                    point_id=point.id,
-                    point_name=point_name,
-                    project=project_name
-                ).set(float(data['total']))
-
-            if 'nivel' in data and data['nivel'] not in [None, '', '00.00']:
+            # Caudal
+            caudal = data.get('5001') or data.get('caudal') or data.get('flow')
+            if caudal is not None:
                 try:
-                    telemetry_nivel_current.labels(
-                        point_id=point.id,
-                        point_name=point_name,
-                        project=project_name
-                    ).set(float(data['nivel']))
+                    telemetry_flow_current.labels(**common_labels).set(float(caudal))
                 except (ValueError, TypeError):
                     pass
 
+            # Total
+            total = data.get('5000') or data.get('total') or data.get('acumulado')
+            if total is not None:
+                try:
+                    telemetry_total_current.labels(**common_labels).set(float(total))
+                except (ValueError, TypeError):
+                    pass
+
+            # Nivel
+            nivel = data.get('nivel') or data.get('level')
+            if nivel not in [None, '', '00.00']:
+                try:
+                    telemetry_nivel_current.labels(**common_labels).set(float(nivel))
+                except (ValueError, TypeError):
+                    pass
+
+            # Consumo diario
             if 'total_today_diff' in data and data['total_today_diff'] is not None:
-                telemetry_daily_consumption.labels(
-                    point_id=point.id,
-                    point_name=point_name,
-                    project=project_name
-                ).set(float(data['total_today_diff']))
+                try:
+                    telemetry_daily_consumption.labels(**common_labels).set(float(data['total_today_diff']))
+                except (ValueError, TypeError):
+                    pass
 
             # Tiempo desde última recepción
             seconds_ago = (now - latest_record.timestamp).total_seconds()
-            telemetry_last_data_seconds.labels(
-                point_id=point.id,
-                point_name=point_name
-            ).set(seconds_ago)
+            telemetry_last_data_seconds.labels(**common_labels).set(seconds_ago)
 
             # Marcar como offline si > 2 horas
             if seconds_ago > 7200:
-                points_offline.labels(
-                    point_id=point.id,
-                    point_name=point_name
-                ).set(1)
+                points_offline.labels(**common_labels).set(1)
             else:
-                points_offline.labels(
-                    point_id=point.id,
-                    point_name=point_name
-                ).set(0)
+                points_offline.labels(**common_labels).set(0)
+
+
+def update_provider_metrics():
+    """Actualiza métricas de salud de proveedores"""
+    from api.telemetry.providers.models import CatchmentPointProvider
+    from django.utils import timezone
+
+    configs = CatchmentPointProvider.objects.filter(
+        is_active=True
+    ).select_related('point', 'point__project', 'point__project__client', 'provider')
+
+    now = timezone.now()
+
+    for config in configs:
+        point = config.point
+        project = point.project
+        client = project.client if project else None
+
+        common_labels = {
+            'point_id': str(point.id),
+            'point_name': str(point.title),
+            'provider': str(config.provider.name),
+            'project': str(project.name if project else "Sin Proyecto"),
+            'client': str(client.name if client else "Sin Cliente"),
+            'protocol': str(config.provider.provider_type).upper(),
+        }
+
+        # Estado de salud (1=Healthy, 0=Unhealthy)
+        health = 1 if config.is_healthy else 0
+        provider_healthy.labels(**common_labels).set(health)
+
+        # Errores consecutivos
+        provider_consecutive_errors.labels(**common_labels).set(config.error_count)
+
+        # Tiempo desde último éxito
+        if config.last_success:
+            seconds_ago = (now - config.last_success).total_seconds()
+            provider_last_success_timestamp.labels(**common_labels).set(seconds_ago)
+        else:
+            # Si nunca ha tenido éxito, ponemos un valor muy alto (o -1 para indicar "nunca")
+            provider_last_success_timestamp.labels(**common_labels).set(999999)
+
+    # 2. Información estática de Proveedores
+    from api.telemetry.providers.models import TelemetryProvider
+    providers = TelemetryProvider.objects.filter(is_active=True)
+    for p in providers:
+        smarthydro_provider_info.labels(
+            provider_id=str(p.id),
+            provider_name=str(p.display_name),
+            protocol=str(p.get_provider_type_display()),
+            base_url=str(p.base_url),
+            auth_method=str(p.get_auth_method_display())
+        ).set(1)
 
 
 def update_dga_metrics():
@@ -292,59 +385,103 @@ def update_alerts_metrics():
     ).annotate(count=Count('id'))
 
     for alert in alert_counts:
-        active_alerts.labels(
-            point_id=alert['point_catchment_id'],
-            point_name=alert['point_catchment__title'],
-            alert_type=alert['type_alert']
-        ).set(alert['count'])
+        point_id = alert['point_catchment_id']
+        point = CatchmentPoint.objects.filter(id=point_id).select_related('project', 'project__client').first()
+        
+        if point:
+            project_name = point.project.name if point.project else "Sin Proyecto"
+            client_name = point.project.client.name if (point.project and point.project.client) else "Sin Cliente"
+            frequency = dict(CatchmentPoint.FRECUENCY_OPTIONS).get(point.frecuency, "Desconocida")
+            
+            active_alerts.labels(
+                point_id=str(point_id),
+                point_name=str(point.title),
+                project=str(project_name),
+                client=str(client_name),
+                frequency=str(frequency),
+                alert_type=str(alert['type_alert'])
+            ).set(alert['count'])
 
 
 def update_system_metrics():
-    """Actualiza métricas generales del sistema"""
+    """Actualiza métricas del sistema e infraestructura"""
+    from django.db import connection
+    
+    # Conteo de registros en tablas críticas
+    tables = [
+        ('core_telemetryrecord', 'Telemetría'),
+        ('core_dgahistory', 'Historial DGA'),
+        ('core_notificationhouse', 'Notificaciones'),
+        ('core_catchmentpoint', 'Puntos de Captación'),
+    ]
+    
+    from django.db import transaction
+    
+    # 1. Conteo de registros en tablas críticas (Infraestructura)
+    try:
+        # Usamos un bloque atómico individual para que fallos en SQL crudo 
+        # no invaliden toda la conexión para las siguientes consultas ORM.
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                for table_real_name, table_display_name in tables:
+                    try:
+                        cursor.execute(f"SELECT COUNT(*) FROM {table_real_name}")
+                        count = cursor.fetchone()[0]
+                        database_table_rows.labels(table_name=table_display_name).set(count)
+                    except Exception as e:
+                        logger.warning(f"Error contando filas en {table_real_name}: {e}")
+    except Exception as e:
+        logger.error(f"Error de transacción en métricas de infraestructura: {e}")
+
+    # ... (podemos añadir más métricas de sistema aquí si es necesario)
     now = timezone.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Total de puntos por estado
-    total_points = CatchmentPoint.objects.count()
-    telemetry_points = ProfileDataConfigCatchment.objects.filter(
-        is_telemetry=True
-    ).count()
+    # 2. Métricas de Negocio (Puntos y Telemetría)
+    try:
+        with transaction.atomic():
+            # Total de puntos por estado
+            total_points = CatchmentPoint.objects.count()
+            telemetry_points = ProfileDataConfigCatchment.objects.filter(
+                is_telemetry=True
+            ).count()
 
-    points_total.labels(status='active', provider='all').set(telemetry_points)
-    points_total.labels(status='total', provider='all').set(total_points)
+            points_total.labels(status='active', provider='all').set(telemetry_points)
+            points_total.labels(status='total', provider='all').set(total_points)
 
-    # Puntos con datos hoy
-    points_today = TelemetryRecord.objects.filter(
-        timestamp__gte=today_start
-    ).values('point_id').distinct().count()
+            # Puntos con datos hoy
+            points_today = TelemetryRecord.objects.filter(
+                timestamp__gte=today_start
+            ).values('point_id').distinct().count()
 
-    points_with_data_today.set(points_today)
+            points_with_data_today.set(points_today)
 
-    # Total de registros en base de datos
-    telemetry_count = TelemetryRecord.objects.count()
-    database_records_total.labels(table='telemetry_records').set(telemetry_count)
+            # Total de registros en base de datos
+            telemetry_count = TelemetryRecord.objects.count()
+            database_records_total.labels(table='telemetry_records').set(telemetry_count)
 
-    notification_count = NotificationsCatchment.objects.count()
-    database_records_total.labels(table='notifications').set(notification_count)
+            notification_count = NotificationsCatchment.objects.count()
+            database_records_total.labels(table='notifications').set(notification_count)
+    except Exception as e:
+        logger.error(f"Error actualizando métricas de negocio: {e}")
 
 
 def update_all_metrics():
     """Actualiza todas las métricas (llamar desde endpoint o cronjob)"""
+    # NO usamos atomic global aquí para permitir éxitos parciales
     try:
         update_telemetry_metrics()
+        update_provider_metrics()
         update_dga_metrics()
         update_alerts_metrics()
         update_system_metrics()
-
+        
         # Info de la aplicación
         smarthydro_info.info({
             'version': '3.0.0',
-            'environment': 'production',
-            'database': 'postgresql',
             'last_update': datetime.now().isoformat()
         })
-
         return True
     except Exception as e:
-        print(f"Error updating metrics: {e}")
+        logger.error(f"Error crítico en lazo de métricas: {e}", exc_info=True)
         return False

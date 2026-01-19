@@ -8,8 +8,8 @@ from .models import SupportTicket, TicketComment, TicketSLA
 
 class TicketCommentInline(admin.StackedInline):
     model = TicketComment
-    fields = ['author', 'comment', 'is_internal', 'created_at']
-    readonly_fields = ['created_at']
+    fields = ['author', 'comment', 'is_internal', 'created']
+    readonly_fields = ['created']
     extra = 0
     can_delete = False
 

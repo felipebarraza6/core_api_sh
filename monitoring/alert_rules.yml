@@ -1,0 +1,32 @@
+groups:
+  - name: smarthydro_alerts
+    rules:
+      # Alerta si un servicio crítico está caído
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Servicio {{ $labels.job }} en {{ $labels.instance }} está caído"
+          description: "Prometheus no puede scrapear el servicio {{ $labels.job }}."
+
+      # Alerta si un punto de captura no envía datos por más de 1 hora
+      - alert: PointOffline
+        expr: smarthydro_telemetry_last_data_seconds_ago > 3600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Punto Offline: {{ $labels.point_name }}"
+          description: "El punto {{ $labels.point_name }} (ID: {{ $labels.point_id }}) no ha enviado datos en más de 1 hora."
+
+      # Alerta si hay demasiados errores de ingestión
+      - alert: HighIngestionErrors
+        expr: rate(smarthydro_telemetry_ingestion_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alta tasa de errores de ingestión"
+          description: "Se detectaron errores frecuentes en la ingestión de telemetría para {{ $labels.point_name }}."

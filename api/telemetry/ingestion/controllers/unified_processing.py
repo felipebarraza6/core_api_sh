@@ -244,7 +244,7 @@ def validate_frequency(point_catchment: Dict[str, Any], current_time: datetime) 
         True si debe procesar, False si no
     """
     try:
-                from api.telemetry.models import DgaDataConfigCatchment
+        from api.telemetry.models import DgaDataConfigCatchment
         get = DgaDataConfigCatchment.objects.get(
             point_catchment__id=point_catchment["id"]
         )
@@ -661,8 +661,8 @@ def determine_dga_send(point_catchment: Dict[str, Any], chile_tz: Any) -> bool:
     Returns:
         True si debe enviar, False si no
     """
-            from api.telemetry.models import DgaDataConfigCatchment
     try:
+        from api.telemetry.models import DgaDataConfigCatchment
         get = DgaDataConfigCatchment.objects.get(
             point_catchment__id=point_catchment["id"]
         )
