@@ -7,44 +7,34 @@ from rest_framework.permissions import IsAuthenticated
 from api.telemetry.models.telemetry import CoreVariable
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    Client,
     DgaDataConfigCatchment,
-    FileCatchment,
-    NotificationsCatchment,
     ProfileDataConfigCatchment,
     ProfileIkoluCatchment,
-    ProjectCatchments,
-    RegisterPersons,
-    ResponseNotificationsCatchment,
-    TypeFileCatchment,
 )
-from api.core.serializers import (
+from api.crm.models import Client, Project, Person
+from api.notifications.models import Notification, NotificationResponse
+from api.documents.models import DocumentType, Document
+
+from api.core.serializers.catchment_points import (
     CatchmentPointIkoluSerializer,
     CatchmentPointSerializer,
     CatchmentPointSerializerDetailCron,
     ClientSerializer,
     DgaDataConfigCatchmentSerializer,
-    FileCatchmentSerializer,
-    NotificationsCatchmentSerializer,
+    DocumentSerializer,
+    NotificationSerializer,
     ProfileDataConfigCatchmentSerializer,
     ProfileIkoluCatchmentSerializer,
-    ProjectCatchmentsSerializer,
-    RegisterPersonsSerializer,
-    ResponseDepthNotificationsCatchmentSerializer,
-    ResponseNotificationsCatchmentSerializer,
-    TypeFileCatchmentSerializer,
+    ProjectSerializer,
+    PersonSerializer,
+    NotificationResponseDetailSerializer,
+    NotificationResponseSerializer,
+    DocumentTypeSerializer,
     VariableSerializer,
 )
 
 
-class ClientViewSet(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
+class ClientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
     queryset = Client.objects.all()
@@ -52,32 +42,17 @@ class ClientViewSet(
     lookup_field = "id"
 
 
-class ProjectCatchmentsViewSet(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
+class ProjectViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
-    queryset = ProjectCatchments.objects.all()
-    serializer_class = ProjectCatchmentsSerializer
+    queryset = Project.objects.all()
+    serializer_class = ProjectSerializer
     lookup_field = "id"
 
 
-class CatchmentPointViewSet(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
+class CatchmentPointViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
-    # ✅ MEJORADO: Optimización con select_related y prefetch_related para mejorar rendimiento
     queryset = CatchmentPoint.objects.select_related(
         "project", "owner_user"
     ).prefetch_related(
@@ -91,48 +66,10 @@ class CatchmentPointViewSet(
     def get_serializer_class(self):
         if self.action in ["retrieve"]:
             return CatchmentPointIkoluSerializer
-        elif self.action in ["list"]:
-            return CatchmentPointSerializer
         return CatchmentPointSerializer
 
-    def get_queryset(self):
-        """
-        ✅ MEJORADO: Optimización adicional con prefetch_related para evitar N+1 queries.
-        """
-        queryset = super().get_queryset()
-        # ✅ Optimización: Prefetch más agresivo para mejorar rendimiento con grandes volúmenes
-        from django.db.models import Prefetch
 
-        from api.core.models import ProfileDataConfigCatchment
-
-        queryset = queryset.prefetch_related(
-            Prefetch(
-                "data_config_profiles",
-                queryset=ProfileDataConfigCatchment.objects.only(
-                    "point_catchment_id",
-                    "d1",
-                    "d2",
-                    "d3",
-                    "d4",
-                    "d5",
-                    "d6",
-                    "date_start_telemetry",
-                    "date_delivery_act",
-                    "is_telemetry",
-                ),
-            )
-        )
-        return queryset
-
-
-class ProfileIkoluCatchmentViewSet(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
+class ProfileIkoluCatchmentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
     queryset = ProfileIkoluCatchment.objects.all()
@@ -140,106 +77,61 @@ class ProfileIkoluCatchmentViewSet(
     lookup_field = "id"
 
 
-class NotificationsCatchmentViewSet(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
+class NotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
-    queryset = NotificationsCatchment.objects.all().order_by("-created")
-    serializer_class = NotificationsCatchmentSerializer
+    queryset = Notification.objects.all().order_by("-created")
+    serializer_class = NotificationSerializer
     lookup_field = "id"
 
-    class FilterNotificationsCatchment(filters.FilterSet):
+    class FilterNotification(filters.FilterSet):
         class Meta:
-            model = NotificationsCatchment
+            model = Notification
             fields = {
                 "point_catchment": ["exact"],
                 "type_variable": ["exact"],
                 "type_notification": ["exact"],
                 "type_alert": ["exact"],
-                "is_periodic": ["exact"],
                 "is_active": ["exact"],
                 "is_read": ["exact"],
                 "is_response": ["exact"],
                 "is_finish": ["exact"],
                 "is_wait": ["exact"],
-                "start_date": ["exact"],
-                "end_date": ["exact"],
             }
 
-    filterset_class = FilterNotificationsCatchment
+    filterset_class = FilterNotification
 
 
-class ResponseNotificationsCatchmentViewSet(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
+class NotificationResponseViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
-    queryset = ResponseNotificationsCatchment.objects.all().order_by("-created")
-    serializer_class = ResponseNotificationsCatchmentSerializer
+    queryset = NotificationResponse.objects.all().order_by("-created")
+    serializer_class = NotificationResponseSerializer
     lookup_field = "id"
-
-    class FilterNotificationsCatchment(filters.FilterSet):
-        class Meta:
-            model = ResponseNotificationsCatchment
-            fields = {"notification": ["exact"], "user": ["exact"]}
 
     def get_serializer_class(self):
         if self.action in ["list"]:
-            return ResponseDepthNotificationsCatchmentSerializer
-        return ResponseNotificationsCatchmentSerializer
-
-    filterset_class = FilterNotificationsCatchment
+            return NotificationResponseDetailSerializer
+        return NotificationResponseSerializer
 
 
-class TypeFileCatchmentViewSet(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
+class DocumentTypeViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
-    queryset = TypeFileCatchment.objects.all()
-    serializer_class = TypeFileCatchmentSerializer
+    queryset = DocumentType.objects.all()
+    serializer_class = DocumentTypeSerializer
     lookup_field = "id"
 
 
-class FileCatchmentViewSet(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
+class DocumentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
-    queryset = FileCatchment.objects.all()
-    serializer_class = FileCatchmentSerializer
+    queryset = Document.objects.all()
+    serializer_class = DocumentSerializer
     lookup_field = "id"
 
 
-class ProfileDataConfigCatchmentViewSet(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
+class ProfileDataConfigCatchmentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
     queryset = ProfileDataConfigCatchment.objects.all()
@@ -247,14 +139,7 @@ class ProfileDataConfigCatchmentViewSet(
     lookup_field = "id"
 
 
-class DgaDataConfigCatchmentViewSet(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
+class DgaDataConfigCatchmentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
     queryset = DgaDataConfigCatchment.objects.all()
@@ -262,14 +147,7 @@ class DgaDataConfigCatchmentViewSet(
     lookup_field = "id"
 
 
-class CoreVariableViewSet(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
+class CoreVariableViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
     queryset = CoreVariable.objects.all()
@@ -278,16 +156,9 @@ class CoreVariableViewSet(
     filterset_fields = ["point", "internal_code", "is_active", "is_virtual"]
 
 
-class RegisterPersonsViewSet(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.ListModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
+class PersonViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
-    queryset = RegisterPersons.objects.all()
-    serializer_class = RegisterPersonsSerializer
+    queryset = Person.objects.all()
+    serializer_class = PersonSerializer
     lookup_field = "id"

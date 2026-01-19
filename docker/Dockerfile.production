@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar código de la aplicación
 COPY api/ .
-COPY init-db-secure.sql .
+
 
 # Crear directorios de logs y dar permisos
 RUN chown -R smarthydro:smarthydro /app

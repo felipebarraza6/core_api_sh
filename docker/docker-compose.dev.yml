@@ -12,8 +12,7 @@ services:
       - "443:443"
       - "8080:8080" # Puerto adicional para desarrollo
     volumes:
-      - ../conf/nginx.production.conf:/etc/nginx/nginx.conf:ro
-      - ../ssl:/etc/ssl/certs:ro
+      - ../conf/nginx.dev.conf:/etc/nginx/nginx.conf:ro
       - nginx_logs:/var/log/nginx
     depends_on:
       - django-app
@@ -42,7 +41,8 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=api.settings
       - DEBUG=True
-      - SECRET_KEY=dev-secret-key-for-local-testing-only-123456789012345678901234567890
+      - DJANGO_SECRET_KEY=dev-secret-key-for-local-testing-only-123456789012345678901234567890
+      - DJANGO_DEBUG=True
       - REDIS_URL=redis://redis:6379/0
       - POSTGRES_DB=smarthydro_dev
       - POSTGRES_USER=smarthydro_dev_user
@@ -73,6 +73,8 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=api.settings
       - ENVIRONMENT=development
+      - DJANGO_SECRET_KEY=dev-secret-key-for-local-testing-only-123456789012345678901234567890
+      - DJANGO_DEBUG=True
       - REDIS_URL=redis://redis:6379/0
       - POSTGRES_DB=smarthydro_dev
       - POSTGRES_USER=smarthydro_dev_user
@@ -103,6 +105,8 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=api.settings
       - ENVIRONMENT=development
+      - DJANGO_SECRET_KEY=dev-secret-key-for-local-testing-only-123456789012345678901234567890
+      - DJANGO_DEBUG=True
       - REDIS_URL=redis://redis:6379/0
       - POSTGRES_DB=smarthydro_dev
       - POSTGRES_USER=smarthydro_dev_user

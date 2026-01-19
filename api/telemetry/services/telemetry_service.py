@@ -5,20 +5,21 @@ Centralizes all telemetry-related business logic outside of serializers and view
 
 import logging
 from datetime import timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from django.db import models
 from django.db.models import Avg, Count, Max, Min, Prefetch, Q, Sum
 from django.utils import timezone
 
 from api.core.cache.telemetry_cache import TelemetryCache
-from api.telemetry.models import (
+from api.telemetry.models.catchment_points import (
     CatchmentPoint,
     DgaDataConfigCatchment,
-    NotificationsCatchment,
     ProfileDataConfigCatchment,
-    TelemetryRecord,
 )
+from api.telemetry.models.telemetry import TelemetryRecord
+# Notification model moved to api.notifications
+from api.notifications.models import Notification
 
 logger = logging.getLogger(__name__)
 

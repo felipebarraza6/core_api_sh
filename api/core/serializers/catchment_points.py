@@ -6,17 +6,13 @@ from rest_framework import serializers
 
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    Client,
     DgaDataConfigCatchment,
-    FileCatchment,
-    NotificationsCatchment,
     ProfileDataConfigCatchment,
     ProfileIkoluCatchment,
-    ProjectCatchments,
-    RegisterPersons,
-    ResponseNotificationsCatchment,
-    TypeFileCatchment,
 )
+from api.crm.models import Client, Project, Person
+from api.notifications.models import Notification, NotificationResponse
+from api.documents.models import DocumentType, Document
 from api.telemetry.models.telemetry import (
     CoreVariable,
     TelemetryRecord,
@@ -33,9 +29,9 @@ class ClientSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class ProjectCatchmentsSerializer(serializers.ModelSerializer):
+class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
-        model = ProjectCatchments
+        model = Project
         fields = "__all__"
 
 
@@ -51,34 +47,34 @@ class ProfileIkoluCatchmentSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class NotificationsCatchmentSerializer(serializers.ModelSerializer):
+class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
-        model = NotificationsCatchment
+        model = Notification
         fields = "__all__"
 
 
-class ResponseDepthNotificationsCatchmentSerializer(serializers.ModelSerializer):
+class NotificationResponseDetailSerializer(serializers.ModelSerializer):
     class Meta:
-        model = ResponseNotificationsCatchment
+        model = NotificationResponse
         fields = "__all__"
         depth = 1
 
 
-class ResponseNotificationsCatchmentSerializer(serializers.ModelSerializer):
+class NotificationResponseSerializer(serializers.ModelSerializer):
     class Meta:
-        model = ResponseNotificationsCatchment
+        model = NotificationResponse
         fields = "__all__"
 
 
-class TypeFileCatchmentSerializer(serializers.ModelSerializer):
+class DocumentTypeSerializer(serializers.ModelSerializer):
     class Meta:
-        model = TypeFileCatchment
+        model = DocumentType
         fields = "__all__"
 
 
-class FileCatchmentSerializer(serializers.ModelSerializer):
+class DocumentSerializer(serializers.ModelSerializer):
     class Meta:
-        model = FileCatchment
+        model = Document
         fields = "__all__"
 
 
@@ -393,8 +389,8 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
         last_data_yesterday = yesterday_qs.first()
 
         # Files & Alerts
-        get_files = FileCatchment.objects.filter(point_catchment=obj)
-        get_alerts = NotificationsCatchment.objects.filter(
+        get_files = Document.objects.filter(point_catchment=obj)
+        get_alerts = Notification.objects.filter(
             point_catchment=obj, type_notification="ALERT"
         )
 
@@ -424,8 +420,8 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
             or 0,
             "total_consumed_today": today_qs.aggregate(s=Sum("data__total_diff"))["s"]
             or 0,
-            "files": FileCatchmentDetailSerializer(get_files, many=True).data,
-            "alerts": NotificationsCatchmentDetailSerializer(
+            "files": DocumentDetailSerializer(get_files, many=True).data,
+            "alerts": NotificationDetailSerializer(
                 get_alerts, many=True
             ).data,
         }
@@ -498,28 +494,28 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
         )
 
 
-class TypeFileCatchmentDetailSerializer(serializers.ModelSerializer):
+class DocumentTypeDetailSerializer(serializers.ModelSerializer):
     class Meta:
-        model = TypeFileCatchment
+        model = DocumentType
         fields = ("name",)
 
 
-class FileCatchmentDetailSerializer(serializers.ModelSerializer):
+class DocumentDetailSerializer(serializers.ModelSerializer):
     created = serializers.DateTimeField(format="%Y-%m-%d %H:%M")
-    type_file = TypeFileCatchmentDetailSerializer(read_only=True)
+    document_type = DocumentTypeDetailSerializer(read_only=True)
 
     class Meta:
-        model = FileCatchment
-        fields = ("id", "file", "name", "description", "type_file", "created")
+        model = Document
+        fields = ("id", "file", "name", "description", "document_type", "created")
 
 
-class NotificationsCatchmentDetailSerializer(serializers.ModelSerializer):
+class NotificationDetailSerializer(serializers.ModelSerializer):
     class Meta:
-        model = NotificationsCatchment
+        model = Notification
         fields = ("id", "created", "title", "message", "type_variable", "type_alert")
 
 
-class RegisterPersonsSerializer(serializers.ModelSerializer):
+class PersonSerializer(serializers.ModelSerializer):
     class Meta:
-        model = RegisterPersons
+        model = Person
         fields = "__all__"

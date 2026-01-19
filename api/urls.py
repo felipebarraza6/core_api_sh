@@ -52,6 +52,8 @@ urlpatterns = [
         "api/password_reset/",
         include("django_rest_passwordreset.urls", namespace="password_reset"),
     ),
+    # CRM - Gestión de Clientes, Proyectos y Tareas
+    path("api/crm/", include("api.crm.urls")),
     # Chatbot Integration
     path("api/chat-bot/", include("api.chatbot.urls")),
     # Providers - Sistema dinámico de proveedores de telemetría

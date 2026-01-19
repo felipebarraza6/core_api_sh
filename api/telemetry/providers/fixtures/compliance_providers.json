@@ -1,0 +1,231 @@
+[
+    {
+        "model": "providers.complianceprovider",
+        "pk": 1,
+        "fields": {
+            "created": "2026-01-19T12:00:00Z",
+            "modified": "2026-01-19T12:00:00Z",
+            "name": "dga",
+            "display_name": "DGA - Dirección General de Aguas",
+            "description": "Servicio de envío de datos para cumplimiento regulatorio de derechos de agua según normativa DGA.",
+            "service_type": "water_rights",
+            "base_url": "https://dga.cl/api",
+            "auth_endpoint": "",
+            "data_endpoint_template": "/telemetria",
+            "timeout_seconds": 30,
+            "auth_method": "bearer",
+            "auth_config": {
+                "token_field": "password",
+                "notes": "El token es la contraseña DGA del punto"
+            },
+            "payload_template": {
+                "codigo_obra": "{config.codigo_obra}",
+                "fecha_medicion": "{record.timestamp|format:%Y-%m-%d %H:%M:%S}",
+                "caudal_litro_segundo": "{record.data.flow}",
+                "volumen_total_m3": "{record.data.total}",
+                "nivel_mt": "{record.data.nivel}",
+                "informante_rut": "{config.rut_informante}",
+                "informante_nombre": "{config.nombre_informante}",
+                "sector_hidrologico": "{config.shac}",
+                "region": "{config.region}",
+                "tipo_agua": "{config.tipo_agua}",
+                "caudal_otorgado": "{config.caudal_otorgado}",
+                "volumen_otorgado": "{config.total_otorgado}"
+            },
+            "response_mapping": {
+                "success_field": "status",
+                "success_value": "ok",
+                "voucher_field": "comprobante",
+                "message_field": "mensaje"
+            },
+            "required_fields": [
+                {
+                    "name": "codigo_obra",
+                    "type": "string",
+                    "label": "Código de Obra DGA",
+                    "required": true
+                },
+                {
+                    "name": "rut_informante",
+                    "type": "string",
+                    "label": "RUT Informante",
+                    "required": true
+                },
+                {
+                    "name": "nombre_informante",
+                    "type": "string",
+                    "label": "Nombre Informante",
+                    "required": true
+                },
+                {
+                    "name": "caudal_otorgado",
+                    "type": "decimal",
+                    "label": "Caudal Otorgado (lt/s)",
+                    "required": false
+                },
+                {
+                    "name": "total_otorgado",
+                    "type": "integer",
+                    "label": "Total Otorgado (m³)",
+                    "required": false
+                },
+                {
+                    "name": "shac",
+                    "type": "string",
+                    "label": "Sector Hidrológico (SHAC)",
+                    "required": false
+                },
+                {
+                    "name": "region",
+                    "type": "string",
+                    "label": "Región DGA",
+                    "required": false
+                },
+                {
+                    "name": "tipo_agua",
+                    "type": "choice",
+                    "label": "Tipo de Agua",
+                    "choices": [
+                        "SUBTERRANEO",
+                        "SUPERFICIAL"
+                    ],
+                    "required": false
+                },
+                {
+                    "name": "estandar",
+                    "type": "choice",
+                    "label": "Estándar",
+                    "choices": [
+                        "SIN_ESTANDAR",
+                        "MAYOR",
+                        "MEDIO",
+                        "MENOR",
+                        "CAUDALES_MUY_PEQUENOS"
+                    ],
+                    "required": false
+                }
+            ],
+            "data_variables": [
+                {
+                    "name": "flow",
+                    "type": "decimal",
+                    "label": "Caudal (lt/s)",
+                    "unit": "l/s",
+                    "api_field": "caudal_litro_segundo"
+                },
+                {
+                    "name": "total",
+                    "type": "decimal",
+                    "label": "Totalizado (m³)",
+                    "unit": "m3",
+                    "api_field": "volumen_total_m3"
+                },
+                {
+                    "name": "nivel",
+                    "type": "decimal",
+                    "label": "Nivel (m)",
+                    "unit": "m",
+                    "api_field": "nivel_mt"
+                }
+            ],
+            "validation_rules": {},
+            "submission_frequency": "hourly",
+            "is_active": true,
+            "max_retries": 3,
+            "retry_delay_seconds": 60,
+            "documentation_url": "https://dga.mop.gob.cl/"
+        }
+    },
+    {
+        "model": "providers.complianceprovider",
+        "pk": 2,
+        "fields": {
+            "created": "2026-01-19T12:00:00Z",
+            "modified": "2026-01-19T12:00:00Z",
+            "name": "sma",
+            "display_name": "SMA - Superintendencia del Medio Ambiente",
+            "description": "Servicio de envío de datos para cumplimiento de Resoluciones de Calificación Ambiental (RCA).",
+            "service_type": "environmental",
+            "base_url": "https://conexiones.sma.gob.cl/api/v1",
+            "auth_endpoint": "/auth",
+            "data_endpoint_template": "/ufs/{config.uf_id}/procesos/{config.process_id}/registros",
+            "timeout_seconds": 30,
+            "auth_method": "oauth2",
+            "auth_config": {
+                "username_field": "usuario",
+                "password_field": "password",
+                "token_response_field": "token",
+                "username": "",
+                "password": "",
+                "notes": "Credenciales por defecto. Cada punto puede sobrescribirlas."
+            },
+            "payload_template": [
+                {
+                    "dispositivoId": "{config.dispositivo_id}",
+                    "parametros": [
+                        {
+                            "nombre": "Q",
+                            "valor": "{record.data.flow}",
+                            "unidad": "l/s",
+                            "estampaTiempo": "{record.timestamp|format:%Y-%m-%dT%H:%M:%S}"
+                        },
+                        {
+                            "nombre": "VA",
+                            "valor": "{record.data.total}",
+                            "unidad": "m3",
+                            "estampaTiempo": "{record.timestamp|format:%Y-%m-%dT%H:%M:%S}"
+                        }
+                    ]
+                }
+            ],
+            "response_mapping": {
+                "voucher_field": "IdVerificacion",
+                "message_field": "mensaje"
+            },
+            "required_fields": [
+                {
+                    "name": "dispositivo_id",
+                    "type": "string",
+                    "label": "ID Dispositivo SMA",
+                    "required": true
+                },
+                {
+                    "name": "uf_id",
+                    "type": "string",
+                    "label": "ID Unidad Fiscalizable",
+                    "required": true
+                },
+                {
+                    "name": "process_id",
+                    "type": "string",
+                    "label": "ID Proceso",
+                    "required": true
+                }
+            ],
+            "data_variables": [
+                {
+                    "name": "flow",
+                    "type": "decimal",
+                    "label": "Caudal (lt/s)",
+                    "unit": "l/s",
+                    "api_param": "Q"
+                },
+                {
+                    "name": "total",
+                    "type": "decimal",
+                    "label": "Totalizado (m³)",
+                    "unit": "m3",
+                    "api_param": "VA"
+                }
+            ],
+            "validation_rules": {
+                "flow_interval_minutes": 5
+            },
+            "submission_frequency": "on_record",
+            "is_active": true,
+            "max_retries": 3,
+            "retry_delay_seconds": 300,
+            "documentation_url": "https://conexiones.sma.gob.cl/"
+        }
+    }
+]

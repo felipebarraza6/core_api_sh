@@ -1,58 +1,19 @@
-"""Client Profile."""
+"""Catchment Points and Profiles."""
 
 from django.db import models
 
 from api.core.models.users import User
 from api.core.models.utils import ModelApi
 
-
-class Client(ModelApi):
-    """Client Model for Catchment Points."""
-
-    name = models.CharField(max_length=300, verbose_name="Nombre")
-    rut = models.CharField(max_length=300, verbose_name="Rut")
-    address = models.CharField(max_length=300, verbose_name="Direccion")
-    phone = models.CharField(max_length=300, verbose_name="Telefono")
-    email = models.CharField(max_length=300, verbose_name="Correo")
-
-    class Meta:
-        """Meta data client"""
-
-        db_table = "core_client"
-        verbose_name = "Cliente"
-        verbose_name_plural = "Clientes"
-
-    def __str__(self):
-        return f"{self.name}"
-
-
-class ProjectCatchments(ModelApi):
-    """Project Catchments Model."""
-
-    name = models.CharField(max_length=300, verbose_name="Nombre")
-    client = models.ForeignKey(
-        Client, blank=True, null=True, on_delete=models.CASCADE, verbose_name="Cliente"
-    )
-    code_internal = models.CharField(
-        max_length=300, blank=True, null=True, verbose_name="Codigo interno"
-    )
-
-    class Meta:
-        """Meta data project catchments"""
-
-        db_table = "core_projectcatchments"
-        verbose_name = "Proyecto"
-        verbose_name_plural = "Proyectos"
-
-    def __str__(self):
-        return f"{self.name}"
+# Import moved models
+from api.crm.models import Project
 
 
 class CatchmentPoint(ModelApi):
     """Catchment points model."""
 
     project = models.ForeignKey(
-        ProjectCatchments,
+        Project,
         related_name="catchment_points",
         on_delete=models.CASCADE,
         verbose_name="Proyecto",
@@ -211,156 +172,6 @@ class ProfileIkoluCatchment(ModelApi):
         db_table = "core_profileikolucatchment"
         verbose_name = "Perfil Ikolu"
         verbose_name_plural = "Perfiles Ikolu"
-
-    def __str__(self):
-        return f"{self.point_catchment}"
-
-
-class NotificationsCatchment(ModelApi):
-    """Notifications Model."""
-
-    point_catchment = models.ForeignKey(
-        CatchmentPoint,
-        related_name="notifications",
-        on_delete=models.CASCADE,
-        verbose_name="Punto de captacion",
-    )
-    title = models.CharField(max_length=300, verbose_name="Titulo")
-    message = models.CharField(max_length=1300, verbose_name="Mensaje")
-    VARIABLES_CHOICES = [
-        ("NIVEL", "nivel"),
-        ("CAUDAL", "caudal"),
-        ("CAUDAL PROMEDIO", "caudal_promedio((diff/3600)*1000)"),
-        ("TOTALIZADO", "totalizado"),
-        ("TODOS", "todos"),
-    ]
-    TYPE_NOTIFICATION_CHOICES = [
-        ("INFO", "Informativo"),
-        ("WARNING", "Advertencia"),
-        ("ALERT", "Alerta"),
-        ("CRITICAL", "Crítico"),
-        ("SUPPORT", "Soporte"),
-    ]
-    TYPE_ALERT_CHOICES = [
-        ("MAX", "mas"),
-        ("MIN", "menos"),
-        ("EQUALS", "igual"),
-    ]
-    type_variable = models.CharField(
-        max_length=300,
-        choices=VARIABLES_CHOICES,
-        verbose_name="Tipo variable",
-        blank=True,
-        null=True,
-    )
-
-    value = models.IntegerField(default=0, verbose_name="Valor")
-    type_alert = models.CharField(
-        max_length=300,
-        choices=TYPE_ALERT_CHOICES,
-        verbose_name="Tipo de alerta",
-        blank=True,
-        null=True,
-    )
-
-    type_notification = models.CharField(
-        max_length=50,
-        choices=TYPE_NOTIFICATION_CHOICES,
-        verbose_name="Tipo de notificación",
-    )
-
-    start_date = models.DateField(blank=True, null=True, verbose_name="Fecha inicio")
-    end_date = models.DateField(blank=True, null=True, verbose_name="Fecha fin")
-
-    is_periodic = models.BooleanField(default=False, verbose_name="Cada registro")
-    is_active = models.BooleanField(default=True, verbose_name="Activo")
-
-    is_read = models.BooleanField(default=False, verbose_name="Leido")
-    is_response = models.BooleanField(default=False, verbose_name="Respuesta")
-    is_wait = models.BooleanField(default=False, verbose_name="Espera")
-    is_finish = models.BooleanField(default=False, verbose_name="Finalizado")
-
-    class Meta:
-        """Meta data notifications"""
-
-        db_table = "core_notificationscatchment"
-        verbose_name = "Notificación"
-        verbose_name_plural = "Notificaciones"
-
-    def __str__(self):
-        return f"{self.point_catchment}"
-
-
-class ResponseNotificationsCatchment(ModelApi):
-    """Response Notifications Model."""
-
-    notification = models.ForeignKey(
-        NotificationsCatchment,
-        related_name="responses",
-        on_delete=models.CASCADE,
-        verbose_name="Notificación",
-    )
-    user = models.ForeignKey(
-        User, related_name="responses", on_delete=models.CASCADE, verbose_name="Usuario"
-    )
-    response = models.CharField(max_length=1300, verbose_name="Respuesta")
-
-    class Meta:
-        """Meta data response notifications"""
-
-        db_table = "core_responsenotificationscatchment"
-        verbose_name = "Respuesta de notificación"
-        verbose_name_plural = "Respuestas de notificaciones"
-
-    def __str__(self):
-        return f"{self.notification}"
-
-
-class TypeFileCatchment(ModelApi):
-    """Type File Model."""
-
-    name = models.CharField(max_length=300, verbose_name="Nombre")
-    internal = models.BooleanField(default=False, verbose_name="Interno")
-
-    class Meta:
-        """Meta data type file"""
-
-        db_table = "core_typefilecatchment"
-        verbose_name = "Tipo de archivo"
-        verbose_name_plural = "Tipos de archivos"
-
-    def __str__(self):
-        return f"{self.name}"
-
-
-class FileCatchment(ModelApi):
-    """File Model."""
-
-    point_catchment = models.ForeignKey(
-        CatchmentPoint,
-        related_name="files",
-        on_delete=models.CASCADE,
-        verbose_name="Punto de captacion",
-    )
-    type_file = models.ForeignKey(
-        TypeFileCatchment,
-        related_name="files",
-        on_delete=models.CASCADE,
-        verbose_name="Tipo de archivo",
-    )
-    name = models.CharField(max_length=300, verbose_name="Nombre")
-    file = models.FileField(upload_to="files_catchment", verbose_name="Archivo")
-    description = models.CharField(
-        max_length=300, verbose_name="Descripción", blank=True, null=True
-    )
-    is_active = models.BooleanField(default=True, verbose_name="Activo")
-
-    class Meta:
-        """Meta data file"""
-
-        db_table = "core_filecatchment"
-        verbose_name = "Archivo"
-        verbose_name_plural = "Archivos"
 
     def __str__(self):
         return f"{self.point_catchment}"
@@ -532,7 +343,7 @@ class DgaDataConfigCatchment(ModelApi):
     )
 
     class Meta:
-        """Meta data profile data config"""
+        """Meta data profile dga config"""
 
         db_table = "core_dgadataconfigcatchment"
         verbose_name = "Configuracion de datos DGA"
@@ -541,36 +352,9 @@ class DgaDataConfigCatchment(ModelApi):
     def get_dga_password(self):
         """
         Obtener contraseña DGA.
-
-        Retorna la contraseña personalizada del punto o la contraseña
-        por defecto del sistema configurada en variables de entorno.
-
-        Returns:
-            str: Contraseña DGA a utilizar
         """
         from django.conf import settings
         return self.password_dga_software or settings.DGA_DEFAULT_PASSWORD
 
     def __str__(self):
         return f"{self.point_catchment}"
-
-
-class RegisterPersons(ModelApi):
-    """Register Persons Model."""
-
-    profile = models.ForeignKey(
-        ProfileDataConfigCatchment, blank=True, null=True, on_delete=models.CASCADE
-    )
-    name = models.CharField(max_length=300, blank=True, null=True)
-    email = models.CharField(max_length=300, blank=True, null=True)
-    phone = models.CharField(max_length=300, blank=True, null=True)
-
-    class Meta:
-        """Meta data register persons"""
-
-        db_table = "core_registerpersons"
-        verbose_name = "Persona registrada"
-        verbose_name_plural = "Personas registradas"
-
-    def __str__(self):
-        return str(self.name)

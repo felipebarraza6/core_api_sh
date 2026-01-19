@@ -4,25 +4,22 @@ Proporciona endpoints para administrar y monitorear el servicio V3 dinámico.
 """
 
 from django.db.models import Count, Q, Max, Min, Avg, Sum
-from django.db.models.functions import TruncDate, TruncHour
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django_filters import rest_framework as filters
 
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    NotificationsCatchment,
     ProfileDataConfigCatchment,
     DgaDataConfigCatchment,
-    Client,
-    ProjectCatchments,
 )
+from api.crm.models import Client, Project
+from api.notifications.models import Notification
 from api.telemetry.models.telemetry import TelemetryRecord
-from api.core.serializers.catchment_points import CatchmentPointSerializer
 
 
 class ManagementViewSet(viewsets.ViewSet):
@@ -51,7 +48,7 @@ class ManagementViewSet(viewsets.ViewSet):
                 timestamp__gte=last_24h
             ).count()
             
-            active_notifications = NotificationsCatchment.objects.filter(is_active=True).count()
+            active_notifications = Notification.objects.filter(is_active=True).count()
             dga_queue = TelemetryRecord.objects.filter(send_dga=True).count()
             error_records = TelemetryRecord.objects.filter(is_error=True, timestamp__gte=last_24h).count()
             
@@ -244,7 +241,7 @@ class ManagementViewSet(viewsets.ViewSet):
         try:
             days = int(request.query_params.get('days', 7))
             start_date = timezone.now() - timedelta(days=days)
-            notifications = NotificationsCatchment.objects.filter(created__gte=start_date)
+            notifications = Notification.objects.filter(created__gte=start_date)
             summary = notifications.values('type_notification').annotate(count=Count('id'))
             
             return Response({

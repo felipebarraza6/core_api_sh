@@ -1,21 +1,21 @@
-
 from rest_framework import serializers
 from rest_framework.authtoken.models import Token
 from rest_framework.validators import UniqueValidator
 from django.contrib.auth import password_validation, authenticate
-from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import Prefetch
 from .catchment_points import CatchmentPointSerializerDetailCron, CatchmentPointIkoluSerializer
 from api.core.models import User
-from api.telemetry.models.catchment_points import RegisterPersons, FileCatchment, NotificationsCatchment
+from api.crm.models import Person
+from api.notifications.models import Notification
+from api.documents.models import Document
 from api.telemetry.models import CatchmentPoint, TelemetryRecord
-from datetime import datetime, timedelta
+from datetime import timedelta
 import pytz
 
 class RegisterPersonSerializers(serializers.ModelSerializer):
     class Meta:
-        model = RegisterPersons
+        model = Person
         fields = '__all__'
 
 class UserInfoModelSerializer(serializers.ModelSerializer):
@@ -28,7 +28,8 @@ class UserProfile(serializers.ModelSerializer):
 
     def get_catchment_points(self, obj):
         user = self.context['user'].id
-        from api.core.models import ProfileDataConfigCatchment, ProfileIkoluCatchment, DgaDataConfigCatchment, Variable
+        from api.telemetry.models.catchment_points import ProfileDataConfigCatchment, ProfileIkoluCatchment, DgaDataConfigCatchment
+        from api.telemetry.models.telemetry import CoreVariable as Variable
         
         catchment_points = CatchmentPoint.objects.filter(
             models.Q(owner_user=user) | models.Q(users_viewers=user)
@@ -53,12 +54,6 @@ class UserProfile(serializers.ModelSerializer):
                     'flow_granted_dga', 'total_granted_dga', 'shac', 'date_start_compliance',
                     'date_created_code'
                 )
-            ),
-            Prefetch(
-                'variables_v3',
-                queryset=Variable.objects.filter(is_active=True).only(
-                    'id', 'internal_code', 'name', 'unit', 'point_id'
-                )
             )
         ).distinct().order_by('project','title')
         
@@ -76,13 +71,14 @@ class UserProfile(serializers.ModelSerializer):
             
             latest_map = {rec.point_id: rec for rec in latest_qs}
             batch_data['latest_records'] = latest_map
-
+            today_map = {}
+            yesterday_map = {}
+            # Optimización simple para evitar loops complejos
             today_qs = TelemetryRecord.objects.filter(
                 point__in=cp_ids,
-                timestamp__range=(today, timezone.now())
+                timestamp__gte=today
             ).order_by('timestamp')
             
-            today_map = {}
             for rec in today_qs:
                 if rec.point_id not in today_map:
                     today_map[rec.point_id] = []
@@ -94,41 +90,29 @@ class UserProfile(serializers.ModelSerializer):
                 timestamp__date=yesterday
             ).order_by('timestamp')
             
-            yesterday_map = {}
             for rec in yesterday_qs:
                 if rec.point_id not in yesterday_map:
                     yesterday_map[rec.point_id] = []
                 yesterday_map[rec.point_id].append(rec)
             batch_data['yesterday_records'] = yesterday_map
             
-            files_qs = FileCatchment.objects.filter(point_catchment__in=cp_ids).select_related('point_catchment')
             files_map = {}
-            for f in files_qs:
+            for f in Document.objects.filter(point_catchment__in=cp_ids).select_related('point_catchment'):
                 if f.point_catchment_id not in files_map:
                     files_map[f.point_catchment_id] = []
                 files_map[f.point_catchment_id].append(f)
             batch_data['files'] = files_map
 
-            alerts_qs = NotificationsCatchment.objects.filter(
-                point_catchment__in=cp_ids, 
-                type_notification='ALERT'
-            )
             alerts_map = {}
-            for a in alerts_qs:
+            for a in Notification.objects.filter(point_catchment__in=cp_ids, type_notification='ALERT'):
                 if a.point_catchment_id not in alerts_map:
                     alerts_map[a.point_catchment_id] = []
                 alerts_map[a.point_catchment_id].append(a)
             batch_data['alerts'] = alerts_map
             
             dga_start_date = today - timedelta(days=3)
-            dga_qs = TelemetryRecord.objects.filter(
-                point__in=cp_ids,
-                n_voucher__isnull=False,
-                timestamp__gte=dga_start_date
-            ).order_by('-timestamp')
-            
             dga_map = {}
-            for rec in dga_qs:
+            for rec in TelemetryRecord.objects.filter(point__in=cp_ids, n_voucher__isnull=False, timestamp__gte=dga_start_date).order_by('-timestamp'):
                 if rec.point_id not in dga_map:
                     dga_map[rec.point_id] = []
                 dga_map[rec.point_id].append(rec)

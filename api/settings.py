@@ -36,7 +36,7 @@ ALLOWED_HOSTS = ["*"]
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
 SECURE_BROWSER_XSS_FILTER = True
-X_FRAME_OPTIONS = "DENY"
+X_FRAME_OPTIONS = "SAMEORIGIN"
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_HSTS_SECONDS = 31536000  # 1 año
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
@@ -67,6 +67,10 @@ LOCAL_APPS = [
     "api.reports.apps.ReportsConfig",
     "api.telemetry.apps.TelemetryConfig",
     "api.telemetry.providers.apps.ProvidersConfig",  # Sistema dinámico de proveedores
+    "api.crm.apps.CrmConfig",  # 🆕 Gestión de Clientes y Proyectos
+    "api.notifications.apps.NotificationsConfig",  # 🆕 Sistema de Notificaciones
+    "api.documents.apps.DocumentsConfig",  # 🆕 Gestión Documental
+    "api.infrastructure.apps.InfrastructureConfig",  # 🆕 Infraestructura IoT
     "api.support.apps.SupportConfig",
     "django_celery_beat",
     "import_export",

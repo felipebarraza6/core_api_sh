@@ -1,23 +1,18 @@
-"""
-Servicio MQTT para conexión directa de equipos IoT (V3)
-Permite comunicación bidireccional y guardado en esquema dinámico V3
-"""
+"""Servicio MQTT para conexión directa de equipos IoT (V3)."""
 
 import asyncio
 import json
 import logging
 import ssl
 import paho.mqtt.client as mqtt
-from typing import Dict, List, Optional, Callable, Any
+from typing import Dict, Optional, Callable
 
-from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
 
-from ..models import (
-    EquipmentProvider, IoTDevice, MQTTConnection, MQTTMessageLog,
-    TelemetryRecord, CatchmentPoint
-)
+from api.infrastructure.models import Device, Connection, MessageLog
+from api.telemetry.models.catchment_points import CatchmentPoint
+from api.telemetry.models.telemetry import TelemetryRecord
 from api.telemetry.ingestion.controllers.unified_processing import save_telemetry_data
 
 logger = logging.getLogger(__name__)
@@ -25,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class MQTTService:
     """
-    Servicio MQTT para gestión de conexiones y mensajes con equipos IoT (V3)
+    Servicio MQTT para gestión de conexiones y mensajes con equipos IoT (V3).
     """
 
     def __init__(self):
@@ -34,7 +29,7 @@ class MQTTService:
         self._setup_message_handlers()
 
     def _setup_message_handlers(self):
-        """Configurar handlers para diferentes tipos de mensajes"""
+        """Configurar handlers para diferentes tipos de mensajes."""
         self.message_handlers = {
             'telemetry': self._handle_telemetry_message,
             'status': self._handle_status_message,
@@ -43,16 +38,16 @@ class MQTTService:
         }
 
     async def initialize_connections(self):
-        """Inicializar todas las conexiones MQTT activas"""
-        active_connections = MQTTConnection.objects.filter(is_active=True)
+        """Inicializar todas las conexiones MQTT activas."""
+        active_connections = Connection.objects.filter(is_active=True)
         for connection in active_connections:
             try:
                 await self.start_connection(connection)
             except Exception as exc:
                 logger.error(f"Failed to initialize MQTT connection {connection.connection_name}: {exc}")
 
-    async def start_connection(self, connection: MQTTConnection):
-        """Iniciar una conexión MQTT específica"""
+    async def start_connection(self, connection: Connection):
+        """Iniciar una conexión MQTT específica."""
         client_id = connection.client_id
         client = mqtt.Client(client_id=client_id, clean_session=False)
 
@@ -92,7 +87,7 @@ class MQTTService:
             connection.save()
             raise
 
-    def _on_connect(self, client, connection: MQTTConnection, rc):
+    def _on_connect(self, client, connection: Connection, rc):
         if rc == 0:
             connection.status = 'CONNECTED'
             connection.last_connected = timezone.now()
@@ -102,14 +97,14 @@ class MQTTService:
             connection.connection_errors += 1
         connection.save()
 
-    def _on_disconnect(self, client, connection: MQTTConnection, rc):
+    def _on_disconnect(self, client, connection: Connection, rc):
         connection.status = 'DISCONNECTED'
         connection.last_disconnected = timezone.now()
         if rc != 0:
             connection.status = 'CONNECTING'
         connection.save()
 
-    def _on_message(self, client, connection: MQTTConnection, msg):
+    def _on_message(self, client, connection: Connection, msg):
         try:
             try:
                 payload = json.loads(msg.payload.decode('utf-8'))
@@ -121,12 +116,12 @@ class MQTTService:
         except Exception as exc:
             logger.error(f"Error processing MQTT message: {exc}")
 
-    def _log_mqtt_message(self, connection: MQTTConnection, msg, payload):
+    def _log_mqtt_message(self, connection: Connection, msg, payload):
         try:
             device_id = self._extract_device_id(msg.topic, payload)
-            device = IoTDevice.objects.filter(device_id=device_id).first() if device_id else None
+            device = Device.objects.filter(device_id=device_id).first() if device_id else None
 
-            MQTTMessageLog.objects.create(
+            MessageLog.objects.create(
                 connection=connection,
                 device=device,
                 message_type='PUBLISH',
@@ -148,7 +143,7 @@ class MQTTService:
             return topic_parts[1]
         return payload.get('device_id') or payload.get('id')
 
-    async def _process_message(self, connection: MQTTConnection, topic: str, payload: dict):
+    async def _process_message(self, connection: Connection, topic: str, payload: dict):
         message_type = self._determine_message_type(topic, payload)
         handler = self.message_handlers.get(message_type)
         if handler:
@@ -161,20 +156,20 @@ class MQTTService:
         if 'flow' in payload or 'level' in payload or 'total' in payload: return 'telemetry'
         return 'telemetry'
 
-    async def _handle_telemetry_message(self, connection: MQTTConnection, topic: str, payload: dict):
+    async def _handle_telemetry_message(self, connection: Connection, topic: str, payload: dict):
         try:
             device_id = self._extract_device_id(topic, payload)
             if not device_id: return
 
-            device = IoTDevice.objects.select_related('catchment_point').filter(device_id=device_id).first()
+            device = Device.objects.select_related('catchment_point').filter(device_id=device_id).first()
             if not device: return
 
             await self._process_device_telemetry(device, payload)
         except Exception as exc:
             logger.error(f"Error handling telemetry message: {exc}")
 
-    async def _process_device_telemetry(self, device: IoTDevice, payload: dict):
-        """Procesar telemetría MQTT usando lógica V3 unificada"""
+    async def _process_device_telemetry(self, device: Device, payload: dict):
+        """Procesar telemetría MQTT usando lógica V3 unificada."""
         try:
             with transaction.atomic():
                 device.update_status_from_data(payload)
@@ -197,29 +192,29 @@ class MQTTService:
                     "is_error": payload.get('error', False)
                 }
                 
-                # Usar guardado unificado V3 (maneja cálculos de diff y totales)
+                # Usar guardado unificado V3
                 save_telemetry_data(device.catchment_point.id, created_register)
                 logger.info(f"Telemetry V3 processed for device {device.device_id}")
 
         except Exception as exc:
             logger.error(f"Error processing device telemetry V3: {exc}")
 
-    async def _handle_status_message(self, connection: MQTTConnection, topic: str, payload: dict):
+    async def _handle_status_message(self, connection: Connection, topic: str, payload: dict):
         device_id = self._extract_device_id(topic, payload)
         if device_id:
-            device = IoTDevice.objects.filter(device_id=device_id).first()
+            device = Device.objects.filter(device_id=device_id).first()
             if device:
                 device.update_status_from_data(payload)
 
-    async def _handle_configuration_message(self, connection: MQTTConnection, topic: str, payload: dict):
+    async def _handle_configuration_message(self, connection: Connection, topic: str, payload: dict):
         logger.info(f"Configuration message received: {topic}")
 
-    async def _handle_command_response(self, connection: MQTTConnection, topic: str, payload: dict):
+    async def _handle_command_response(self, connection: Connection, topic: str, payload: dict):
         logger.info(f"Command response received: {topic}")
 
-    async def send_command_to_device(self, device: IoTDevice, command: str, params: dict = None):
+    async def send_command_to_device(self, device: Device, command: str, params: dict = None):
         try:
-            connection = device.equipment_model.provider.mqtt_connections.filter(is_active=True).first()
+            connection = device.device_model.manufacturer.mqtt_connections.filter(is_active=True).first()
             if not connection: raise ValueError("No active connection")
 
             client = self.clients.get(connection.client_id)
@@ -234,7 +229,7 @@ class MQTTService:
             }
 
             client.publish(command_topic, json.dumps(command_payload), qos=1)
-            MQTTMessageLog.objects.create(
+            MessageLog.objects.create(
                 connection=connection, device=device, message_type='PUBLISH',
                 topic=command_topic, payload=command_payload
             )
@@ -246,7 +241,7 @@ class MQTTService:
 
     def get_connection_status(self) -> Dict[str, Dict]:
         status = {}
-        for connection in MQTTConnection.objects.all():
+        for connection in Connection.objects.all():
             client = self.clients.get(connection.client_id)
             status[connection.client_id] = {
                 'name': connection.connection_name,

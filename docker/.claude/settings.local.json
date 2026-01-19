@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker-compose:*)",
+      "Bash(docker logs:*)",
+      "Read(//Users/felipebarraza/projects_p/core_api_sh/conf/**)",
+      "Read(//Users/felipebarraza/projects_p/core_api_sh/**)",
+      "Bash(curl:*)",
+      "Bash(docker exec:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

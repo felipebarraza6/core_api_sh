@@ -18,17 +18,13 @@ from import_export.admin import ExportActionMixin, ImportExportModelAdmin
 
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    Client,
     DgaDataConfigCatchment,
-    FileCatchment,
-    NotificationsCatchment,
     ProfileDataConfigCatchment,
     ProfileIkoluCatchment,
-    ProjectCatchments,
-    RegisterPersons,
-    ResponseNotificationsCatchment,
-    TypeFileCatchment,
 )
+from api.notifications.models import Notification, NotificationResponse
+from api.notifications.models import Notification, NotificationResponse
+from api.notifications.models import Notification, NotificationResponse
 from api.telemetry.models.telemetry import (
     CoreVariable,
     SchemeVariable,
@@ -455,199 +451,7 @@ admin.site.register(User, UserAdm)
 # ========================================
 
 
-# ========================================
-# CLIENT ADMIN
-# ========================================
-
-
-@admin.register(Client)
-class ClientAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin):
-    """
-    Clientes o empresas que contratan los servicios de telemetría.
-    Los proyectos pertenecen a clientes y agrupan múltiples puntos de captación.
-    """
-
-    list_display = ("id", "name", "rut", "email", "phone", "created")
-    search_fields = ("name", "rut", "email", "phone")
-    list_filter = ("created",)
-    list_per_page = ADMIN_LIST_PER_PAGE
-    fieldsets = (
-        (
-            "Información Básica",
-            {
-                "fields": ("name", "rut"),
-                "description": "Datos identificatorios del cliente (razón social y RUT).",
-            },
-        ),
-        (
-            "Contacto",
-            {
-                "fields": ("email", "phone", "address"),
-                "description": "Información de contacto del cliente para comunicación y facturación.",
-            },
-        ),
-    )
-
-    def get_indicators(self, request, queryset):
-        """
-        Obtiene indicadores para Client basados en el queryset filtrado.
-        """
-        indicators = []
-
-        total_clients = queryset.count()
-
-        if total_clients > 0:
-            # Total de proyectos
-            total_projects = ProjectCatchments.objects.filter(
-                client__in=queryset
-            ).count()
-
-            # Total de puntos
-            total_points = CatchmentPoint.objects.filter(
-                project__client__in=queryset
-            ).count()
-
-            # Indicador: Total de clientes
-            indicators.append(
-                {
-                    "value": f"{total_clients}",
-                    "label": "Total Clientes",
-                    "icon": "fas fa-building",
-                    "color": "primary",
-                }
-            )
-
-            # Indicador: Total de proyectos
-            indicators.append(
-                {
-                    "value": f"{total_projects}",
-                    "label": "Proyectos",
-                    "icon": "fas fa-project-diagram",
-                    "color": "info",
-                }
-            )
-
-            # Indicador: Total de puntos
-            indicators.append(
-                {
-                    "value": f"{total_points}",
-                    "label": "Puntos de Captación",
-                    "icon": "fas fa-map-marker-alt",
-                    "color": "success",
-                }
-            )
-        else:
-            indicators.append(
-                {
-                    "value": "0",
-                    "label": "Total Clientes",
-                    "icon": "fas fa-building",
-                    "color": "secondary",
-                }
-            )
-
-        return indicators
-
-
-# ========================================
-# PROJECT ADMIN
-# ========================================
-
-
-@admin.register(ProjectCatchments)
-class ProjectCatchmentsAdmin(
-    AdminIndicatorsMixin, ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin
-):
-    """
-    Proyectos que agrupan múltiples puntos de captación.
-    Cada proyecto pertenece a un cliente y puede tener diferentes configuraciones y esquemas.
-    """
-
-    list_display = (
-        "id",
-        "name",
-        "client",
-        "code_internal",
-        "get_points_count",
-        "created",
-    )
-    search_fields = ("name", "code_internal", "client__name")
-    list_filter = ("created", "client")
-    autocomplete_fields = ["client"]
-    list_per_page = ADMIN_LIST_PER_PAGE
-
-    def get_points_count(self, obj):
-        count = obj.catchment_points.count()
-        return mark_safe(f"<strong>{count}</strong> puntos")
-
-    get_points_count.short_description = "Puntos de Captación"
-
-    def get_indicators(self, request, queryset):
-        """
-        Obtiene indicadores para ProjectCatchments basados en el queryset filtrado.
-        """
-        indicators = []
-
-        total_projects = queryset.count()
-
-        if total_projects > 0:
-            # Total de puntos en los proyectos
-            total_points = CatchmentPoint.objects.filter(project__in=queryset).count()
-
-            # Proyectos con telemetría activa
-            projects_with_telemetry = (
-                queryset.filter(
-                    catchment_points__data_config_profiles__is_telemetry=True
-                )
-                .distinct()
-                .count()
-            )
-
-            # Indicador: Total de proyectos
-            indicators.append(
-                {
-                    "value": f"{total_projects}",
-                    "label": "Total Proyectos",
-                    "icon": "fas fa-project-diagram",
-                    "color": "primary",
-                }
-            )
-
-            # Indicador: Total de puntos
-            indicators.append(
-                {
-                    "value": f"{total_points}",
-                    "label": "Puntos Totales",
-                    "icon": "fas fa-map-marker-alt",
-                    "color": "info",
-                }
-            )
-
-            # Indicador: Proyectos con telemetría
-            telemetry_pct = (
-                (projects_with_telemetry / total_projects * 100)
-                if total_projects > 0
-                else 0
-            )
-            indicators.append(
-                {
-                    "value": f"{projects_with_telemetry} ({telemetry_pct:.0f}%)",
-                    "label": "Con Telemetría",
-                    "icon": "fas fa-satellite-dish",
-                    "color": "success" if telemetry_pct > 80 else "warning",
-                }
-            )
-        else:
-            indicators.append(
-                {
-                    "value": "0",
-                    "label": "Total Proyectos",
-                    "icon": "fas fa-project-diagram",
-                    "color": "secondary",
-                }
-            )
-
-        return indicators
+# PROJECT ADMIN REMOVED - MOVED TO CRM APP
 
 
 # ========================================
@@ -963,8 +767,8 @@ class DgaDataConfigCatchmentAdmin(
 # ========================================
 
 
-@admin.register(NotificationsCatchment)
-class NotificationsCatchmentAdmin(
+@admin.register(Notification)
+class NotificationAdmin(
     AdminIndicatorsMixin, ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin
 ):
     """
@@ -987,14 +791,14 @@ class NotificationsCatchmentAdmin(
     date_hierarchy = "created"
 
     def get_responses_count(self, obj):
-        count = obj.responses.count()
+        count = obj.responses_list.count()
         return mark_safe(f"<strong>{count}</strong> respuestas")
 
     get_responses_count.short_description = "Respuestas"
 
     def get_indicators(self, request, queryset):
         """
-        Obtiene indicadores para NotificationsCatchment basados en el queryset filtrado.
+        Obtiene indicadores para Notification basados en el queryset filtrado.
         """
         indicators = []
 
@@ -1006,7 +810,7 @@ class NotificationsCatchmentAdmin(
 
             # Notificaciones sin respuesta
             without_response = (
-                queryset.filter(responses__isnull=True).distinct().count()
+                queryset.filter(responses_list__isnull=True).distinct().count()
             )
 
             # Notificaciones críticas
@@ -1080,13 +884,12 @@ class NotificationsCatchmentAdmin(
 # ========================================
 
 
-@admin.register(ResponseNotificationsCatchment)
-class ResponseNotificationsCatchmentAdmin(
+@admin.register(NotificationResponse)
+class NotificationResponseAdmin(
     ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin
 ):
     """
     Respuestas de usuarios a las notificaciones.
-    Permite el seguimiento de acciones tomadas ante alertas y problemas detectados.
     """
 
     list_per_page = ADMIN_LIST_PER_PAGE
@@ -1098,94 +901,9 @@ class ResponseNotificationsCatchmentAdmin(
 
 
 # ========================================
-# TYPE FILE ADMIN
+# USER ADMIN
 # ========================================
-
-
-@admin.register(TypeFileCatchment)
-class TypeFileCatchmentAdmin(
-    ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin
-):
-    """
-    Tipos de archivos que se pueden asociar a puntos de captación.
-    Define categorías de documentos (manuales, certificados, planos, etc.).
-    """
-
-    list_per_page = ADMIN_LIST_PER_PAGE
-    list_display = ("id", "name", "internal", "created")
-    list_filter = ("created", "internal")
-    search_fields = ("name",)
-
-
-# ========================================
-# FILE CATCHMENT ADMIN
-# ========================================
-
-
-@admin.register(FileCatchment)
-class FileCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin):
-    """
-    Archivos asociados a puntos de captación.
-    Almacena documentos, imágenes y otros archivos relacionados con cada punto (manuales, certificados, planos, etc.).
-    """
-
-    list_per_page = ADMIN_LIST_PER_PAGE
-    list_display = (
-        "id",
-        "name",
-        "point_catchment",
-        "type_file",
-        "get_file_link",
-        "created",
-    )
-    list_filter = ("created", "type_file__name", "point_catchment__project__name")
-    search_fields = ("name", "point_catchment__title")
-    autocomplete_fields = ["point_catchment", "type_file"]
-    date_hierarchy = "created"
-
-    def get_file_link(self, obj):
-        if obj.file:
-            return mark_safe(
-                f'<a href="{obj.file.url}" target="_blank">📄 Ver archivo</a>'
-            )
-        return "-"
-
-    get_file_link.short_description = "Archivo"
-
-
-# ========================================
-# REGISTER PERSONS ADMIN
-# ========================================
-
-
-@admin.register(RegisterPersons)
-class RegisterPersonsAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin):
-    """
-    Personas registradas asociadas a perfiles de puntos.
-    Permite gestionar contactos y responsables de cada punto de captación.
-    """
-
-    list_per_page = ADMIN_LIST_PER_PAGE
-    list_display = ("id", "name", "email", "phone", "profile", "created")
-    search_fields = ("name", "email", "phone")
-    list_filter = ("created", "profile__point_catchment__project__name")
-    autocomplete_fields = ["profile"]
-    fieldsets = (
-        (
-            "Información Personal",
-            {
-                "fields": ("name", "email", "phone"),
-                "description": "Datos de contacto de la persona registrada.",
-            },
-        ),
-        (
-            "Relación",
-            {
-                "fields": ("profile",),
-                "description": "Perfil Ikolu al que está asociada esta persona.",
-            },
-        ),
-    )
+# PersonAdmin MOVED TO CRM APP
 
 
 # ========================================
@@ -1850,8 +1568,4 @@ CatchmentPointAdmin.actions = [
     generar_excel_anual_comprimido,
 ]
 
-ProjectCatchmentsAdmin.actions = [
-    generar_analisis_telemetria_proyecto_pdf,
-    generar_excel_por_proyecto,
-    generar_excel_ultimo_mes_proyecto,
-]
+# Project Actions MOVED TO CRM APP

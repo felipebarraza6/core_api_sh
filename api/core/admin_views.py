@@ -19,12 +19,11 @@ from django.utils import timezone
 
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    Client,
     DgaDataConfigCatchment,
-    NotificationsCatchment,
     ProfileDataConfigCatchment,
-    ProjectCatchments,
 )
+from api.crm.models import Client, Project
+from api.notifications.models import Notification
 from api.telemetry.models.telemetry import (
     CoreVariable,
     TelemetryRecord,
@@ -123,12 +122,12 @@ def admin_dashboard_view(request):
 
         if project_id:
             try:
-                selected_project = ProjectCatchments.objects.get(id=project_id)
+                selected_project = Project.objects.get(id=project_id)
                 project_filter = Q(point__project=selected_project)
                 logging.info(
                     f"✅ Proyecto seleccionado: {selected_project.name} (ID: {project_id})"
                 )
-            except ProjectCatchments.DoesNotExist:
+            except Project.DoesNotExist:
                 logging.warning(
                     f"❌ Proyecto con ID {project_id} no existe en la base de datos"
                 )
@@ -153,7 +152,7 @@ def admin_dashboard_view(request):
         combined_filter = project_filter & point_filter
 
         # Obtener todos los proyectos para el selector
-        all_projects = ProjectCatchments.objects.all().order_by("name")
+        all_projects = Project.objects.all().order_by("name")
 
         # ========================================
         # MÉTRICAS PRINCIPALES - NUEVOS STATS
@@ -1007,7 +1006,7 @@ def admin_dashboard_view(request):
 
         # Contar notificaciones sin respuesta para estos puntos
         notificaciones_pendientes = (
-            NotificationsCatchment.objects.filter(
+            Notification.objects.filter(
                 point_catchment__in=error_points, responses__isnull=True
             )
             .distinct()
@@ -1872,12 +1871,12 @@ def telemetry_monitoring_view(request):
 
     if project_id:
         try:
-            selected_project = ProjectCatchments.objects.get(id=project_id)
-        except ProjectCatchments.DoesNotExist:
+            selected_project = Project.objects.get(id=project_id)
+        except Project.DoesNotExist:
             project_id = None
 
     # Obtener todos los proyectos para el selector
-    all_projects = ProjectCatchments.objects.all().order_by("name")
+    all_projects = Project.objects.all().order_by("name")
 
     # Obtener todos los puntos con telemetría activa (NO filtrar por d6 - mostrar TODOS)
     points = (

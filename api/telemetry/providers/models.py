@@ -333,3 +333,12 @@ class CatchmentPointProvider(ModelApi):
         if total_attempts < 10:
             return True  # Not enough data
         return (self.error_count / total_attempts) < 0.2
+
+
+# Import compliance models to make them available in this module
+# This allows Django to auto-discover them during migrations
+from .compliance_models import (
+    ComplianceProvider,
+    PointComplianceConfig,
+    ManualComplianceRecord,
+)

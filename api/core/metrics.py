@@ -1,15 +1,16 @@
 """
-Exportador de métricas Prometheus para SmartHydro
-Expone métricas de telemetría, DGA, SMA y sistema
+Exportador de métricas Prometheus para SmartHydro.
+Expone métricas de telemetría, DGA, SMA y sistema.
 """
 from prometheus_client import Counter, Gauge, Histogram, Info
-from django.db.models import Count, Max, Min, Avg
-from api.telemetry.models import (
+from django.db.models import Count
+from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    TelemetryRecord,
-    NotificationsCatchment,
+    DgaDataConfigCatchment,
     ProfileDataConfigCatchment,
 )
+from api.telemetry.models.telemetry import TelemetryRecord
+from api.notifications.models import Notification
 from datetime import datetime, timedelta
 from django.utils import timezone
 import logging
@@ -118,7 +119,7 @@ sma_transmission_errors = Counter(
 )
 
 # ============================================
-# MÉTRICAS DE PROVEEDORES (NUEVO)
+# MÉTRICAS DE PROVEEDORES
 # ============================================
 
 provider_healthy = Gauge(
@@ -146,7 +147,7 @@ smarthydro_provider_info = Gauge(
 )
 
 # ============================================
-# MÉTRICAS DE INFRAESTRUCTURA (NUEVO)
+# MÉTRICAS DE INFRAESTRUCTURA
 # ============================================
 
 database_table_rows = Gauge(
@@ -210,9 +211,8 @@ smarthydro_info = Info(
 # ============================================
 
 def update_telemetry_metrics():
-    """Actualiza métricas de telemetría desde la base de datos"""
+    """Actualiza métricas de telemetría desde la base de datos."""
     now = timezone.now()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Obtener TODOS los puntos con relaciones necesarias
     points = CatchmentPoint.objects.all().select_related('project', 'project__client')
@@ -283,7 +283,7 @@ def update_telemetry_metrics():
 
 
 def update_provider_metrics():
-    """Actualiza métricas de salud de proveedores"""
+    """Actualiza métricas de salud de proveedores."""
     from api.telemetry.providers.models import CatchmentPointProvider
     from django.utils import timezone
 
@@ -319,7 +319,6 @@ def update_provider_metrics():
             seconds_ago = (now - config.last_success).total_seconds()
             provider_last_success_timestamp.labels(**common_labels).set(seconds_ago)
         else:
-            # Si nunca ha tenido éxito, ponemos un valor muy alto (o -1 para indicar "nunca")
             provider_last_success_timestamp.labels(**common_labels).set(999999)
 
     # 2. Información estática de Proveedores
@@ -336,9 +335,7 @@ def update_provider_metrics():
 
 
 def update_dga_metrics():
-    """Actualiza métricas de DGA"""
-    from api.telemetry.models import DgaDataConfigCatchment
-
+    """Actualiza métricas de DGA."""
     # Registros pendientes de envío
     pending_records = TelemetryRecord.objects.filter(
         send_dga=False,
@@ -367,11 +364,11 @@ def update_dga_metrics():
 
 
 def update_alerts_metrics():
-    """Actualiza métricas de alertas"""
+    """Actualiza métricas de alertas."""
     now = timezone.now()
 
     # Alertas activas (últimas 24 horas, no finalizadas)
-    active_notifications = NotificationsCatchment.objects.filter(
+    active_notifications = Notification.objects.filter(
         created__gte=now - timedelta(hours=24)
     ).exclude(
         end_date__isnull=False
@@ -404,23 +401,19 @@ def update_alerts_metrics():
 
 
 def update_system_metrics():
-    """Actualiza métricas del sistema e infraestructura"""
-    from django.db import connection
+    """Actualiza métricas del sistema e infraestructura."""
+    from django.db import connection, transaction
     
     # Conteo de registros en tablas críticas
     tables = [
-        ('core_telemetryrecord', 'Telemetría'),
-        ('core_dgahistory', 'Historial DGA'),
-        ('core_notificationhouse', 'Notificaciones'),
-        ('core_catchmentpoint', 'Puntos de Captación'),
+        ('telemetry_telemetryrecord', 'Telemetría'),
+        ('telemetry_dgahistory', 'Historial DGA'),
+        ('notifications_notification', 'Notificaciones'),
+        ('telemetry_catchmentpoint', 'Puntos de Captación'),
     ]
-    
-    from django.db import transaction
     
     # 1. Conteo de registros en tablas críticas (Infraestructura)
     try:
-        # Usamos un bloque atómico individual para que fallos en SQL crudo 
-        # no invaliden toda la conexión para las siguientes consultas ORM.
         with transaction.atomic():
             with connection.cursor() as cursor:
                 for table_real_name, table_display_name in tables:
@@ -433,7 +426,6 @@ def update_system_metrics():
     except Exception as e:
         logger.error(f"Error de transacción en métricas de infraestructura: {e}")
 
-    # ... (podemos añadir más métricas de sistema aquí si es necesario)
     now = timezone.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -460,15 +452,14 @@ def update_system_metrics():
             telemetry_count = TelemetryRecord.objects.count()
             database_records_total.labels(table='telemetry_records').set(telemetry_count)
 
-            notification_count = NotificationsCatchment.objects.count()
+            notification_count = Notification.objects.count()
             database_records_total.labels(table='notifications').set(notification_count)
     except Exception as e:
         logger.error(f"Error actualizando métricas de negocio: {e}")
 
 
 def update_all_metrics():
-    """Actualiza todas las métricas (llamar desde endpoint o cronjob)"""
-    # NO usamos atomic global aquí para permitir éxitos parciales
+    """Actualiza todas las métricas (llamar desde endpoint o cronjob)."""
     try:
         update_telemetry_metrics()
         update_provider_metrics()
