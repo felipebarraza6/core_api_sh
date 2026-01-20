@@ -9,20 +9,17 @@ usen exactamente la misma lógica robusta.
 IMPORTANTE: Todos los cronjobs deben importar y usar estas funciones.
 """
 
-import logging
-import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-import pytz
-
 from api.telemetry.models import CoreVariable, TelemetryRecord
-
-# ✅ Configuración horaria
-chile_tz = pytz.timezone("America/Santiago")
-
-# ✅ Logging estructurado
-telemetry_logger = logging.getLogger(__name__)
+    calculate_days_not_connection,
+    determine_dga_send,
+    evaluate_dynamic_formula,
+)
+from .processing.totalized import process_totalizado_variable
+from .processing.nivel import process_nivel_variable
+from .processing.caudal import process_caudal_variable, process_caudal_promedio_variable
 
 
 def save_telemetry_data(
@@ -168,6 +165,7 @@ def save_telemetry_data(
         return None
 
 
+<<<<<<< HEAD
 def get_data_with_retry(getter_func, *args, max_retries=None, backoff_factor=None):
     """
     Retry inteligente con backoff exponencial para obtener datos de APIs
@@ -511,6 +509,8 @@ def process_caudal_promedio_variable(
     return created_register
 
 
+=======
+>>>>>>> 6d18eabc7b36d33f849fb857a8f58a74b25f198d
 def process_variable_safely(
     variable: Dict[str, Any],
     data: Dict[str, Any],
@@ -537,25 +537,44 @@ def process_variable_safely(
     type_variable = variable.get("type_variable")
     min_val = variable.get("min_value")
     max_val = variable.get("max_value")
+    operation = variable.get("operation", "PHYSICAL")
 
-    # Validar valor mínimo y máximo
-    if data and data.get("value") is not None:
+    # 1. Obtener Valor Base (Fórmula Dinámica o Dato Físico)
+    if operation == "FORMULA":
+        formula = variable.get("formula")
+        current_val = evaluate_dynamic_formula(formula, created_register)
+        telemetry_logger.info(
+            f"Punto {point_catchment['id']} - Fórmula '{formula}' evaluada: {current_val}"
+        )
+    else:
         try:
-            current_val = float(data["value"])
-            if min_val is not None and current_val < float(min_val):
-                telemetry_logger.warning(
-                    f"Punto {point_catchment['id']} - "
-                    f"Valor {current_val} < min {min_val}. Ignorando."
-                )
-                return date_time_last_logger_total, created_register
-            if max_val is not None and current_val > float(max_val):
-                telemetry_logger.warning(
-                    f"Punto {point_catchment['id']} - "
-                    f"Valor {current_val} > max {max_val}. Ignorando."
-                )
-                return date_time_last_logger_total, created_register
+            current_val = float(data.get("value", 0))
         except (ValueError, TypeError):
-            pass
+            current_val = 0.0
+
+    # 2. Aplicar Factor de Escala y Offset Centralizado
+    scale = variable.get("scale_factor", 1.0)
+    offset = variable.get("offset", 0.0)
+    current_val = (current_val * scale) + offset
+
+    # 3. Validar valor contra límites configurados
+    if min_val is not None and current_val < float(min_val):
+        telemetry_logger.warning(
+            f"Punto {point_catchment['id']} - Valor {current_val} < min {min_val}. Ignorando."
+        )
+        return date_time_last_logger_total, created_register
+    if max_val is not None and current_val > float(max_val):
+        telemetry_logger.warning(
+            f"Punto {point_catchment['id']} - Valor {current_val} > max {max_val}. Ignorando."
+        )
+        return date_time_last_logger_total, created_register
+
+    # Sincronizar value procesado para que lo usen los procesadores especializados
+    data["value"] = current_val
+
+    # Registrar el valor en el acumulador para que otras fórmulas puedan usarlo
+    if variable.get("internal_code"):
+        created_register[variable["internal_code"]] = current_val
 
     # Intentar usar FormulaEngine si está disponible
     try:
@@ -695,6 +714,7 @@ def process_variable_safely(
         )
 
     return date_time_last_logger_total, created_register
+<<<<<<< HEAD
 
 
 def calculate_days_not_connection(
@@ -878,3 +898,5 @@ def get_compliance_configs_for_record(
             exc_info=True
         )
         return []
+=======
+>>>>>>> 6d18eabc7b36d33f849fb857a8f58a74b25f198d
