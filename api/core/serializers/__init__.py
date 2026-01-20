@@ -11,7 +11,6 @@ from .catchment_points import (
     DocumentTypeSerializer,
     DocumentSerializer,
     ProfileDataConfigCatchmentSerializer,
-    DgaDataConfigCatchmentSerializer,
     VariableConfigSerializer,
     VariableSerializer,
     PersonSerializer,

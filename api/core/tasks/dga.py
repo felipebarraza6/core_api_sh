@@ -304,10 +304,10 @@ def generate_compliance_alert(point, dga_config):
     """
     Generate alert for DGA compliance issues
     """
-    from api.telemetry.models import NotificationsCatchment, ResponseNotificationsCatchment
+    from api.notifications.models import Notification, NotificationResponse
 
     try:
-        alert = NotificationsCatchment.objects.create(
+        alert = Notification.objects.create(
             point_catchment=point,
             title=f"Falta envío DGA - {point.title}",
             message=f"El punto {point.title} no ha enviado datos a DGA en las últimas 24 horas. "

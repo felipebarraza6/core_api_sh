@@ -1,0 +1,68 @@
+[
+    {
+        "model": "providers.compliancestandard",
+        "fields": {
+            "code": "MAYOR",
+            "name": "Estándar Mayor",
+            "description": "1 dato por hora (minuto 0 de cada hora)",
+            "frequency_type": "hourly",
+            "hour": 0,
+            "minute": 0,
+            "records_per_period": 24,
+            "is_active": true,
+            "created": "2026-01-20T00:00:00Z",
+            "modified": "2026-01-20T00:00:00Z"
+        }
+    },
+    {
+        "model": "providers.compliancestandard",
+        "fields": {
+            "code": "MEDIO",
+            "name": "Estándar Medio",
+            "description": "1 dato por día (00:00)",
+            "frequency_type": "daily",
+            "hour": 0,
+            "minute": 0,
+            "records_per_period": 1,
+            "is_active": true,
+            "created": "2026-01-20T00:00:00Z",
+            "modified": "2026-01-20T00:00:00Z"
+        }
+    },
+    {
+        "model": "providers.compliancestandard",
+        "fields": {
+            "code": "MENOR",
+            "name": "Estándar Menor",
+            "description": "1 dato por mes (Día 1 a las 00:00)",
+            "frequency_type": "monthly",
+            "hour": 0,
+            "minute": 0,
+            "day_of_month": 1,
+            "records_per_period": 1,
+            "is_active": true,
+            "created": "2026-01-20T00:00:00Z",
+            "modified": "2026-01-20T00:00:00Z"
+        }
+    },
+    {
+        "model": "providers.compliancestandard",
+        "fields": {
+            "code": "CMP",
+            "name": "Caudales Muy Pequeños",
+            "description": "2 datos por año (Semestral: Enero y Julio, Día 1 a las 00:00)",
+            "frequency_type": "semestral",
+            "hour": 0,
+            "minute": 0,
+            "day_of_month": 1,
+            "months": [
+                1,
+                7
+            ],
+            "records_per_period": 2,
+            "is_active": true,
+            "created": "2026-01-20T00:00:00Z",
+            "modified": "2026-01-20T00:00:00Z"
+        }
+    }
+]

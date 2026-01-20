@@ -36,14 +36,19 @@ class UserViewSet(mixins.RetrieveModelMixin,
                   mixins.DestroyModelMixin,
                   viewsets.GenericViewSet,):
 
+    required_permissions = {
+        'list': ['users.can_view_all'],
+    }
+
     def get_permissions(self):
         """Assign permissions based on action."""
-        if self.action in ['login']:
+        if self.action in ['login', 'signup']:
             permissions = [AllowAny]
         elif self.action in ['retrieve']:
             permissions = [IsAuthenticated, IsAccountOwner]
         else:
-            permissions = [IsAuthenticated]
+            from api.core.permissions import HasPermission
+            permissions = [IsAuthenticated, HasPermission]
         return [p() for p in permissions]
 
     filter_backends = (filters.DjangoFilterBackend,)

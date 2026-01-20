@@ -18,7 +18,6 @@ from import_export.admin import ExportActionMixin, ImportExportModelAdmin
 
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    DgaDataConfigCatchment,
     ProfileDataConfigCatchment,
     ProfileIkoluCatchment,
 )
@@ -31,6 +30,11 @@ from api.telemetry.models.telemetry import (
     TelemetryRecord,
     TelemetryScheme,
     VirtualVariable,
+)
+from api.telemetry.models.configuration import (
+    ConfigurationScheme,
+    SamplingFrequency,
+    VariableType,
 )
 from api.telemetry.providers.models import CatchmentPointProvider
 from api.core.models import User
@@ -186,16 +190,35 @@ class VariableAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin)
         "id",
         "name",
         "point",
+        "type_definition",
         "type_variable",
         "internal_code",
         "unit",
         "is_active",
     )
-    list_filter = ("is_active", "unit", "point__project__name")
+    list_filter = ("is_active", "type_definition", "unit", "point__project__name")
     search_fields = ("name", "internal_code", "type_variable", "point__title")
-    autocomplete_fields = ["point"]
+    autocomplete_fields = ["point", "type_definition"]
     list_per_page = ADMIN_LIST_PER_PAGE
     ordering = ("point", "name")
+    
+    fieldsets = (
+        ("Información Básica", {
+            "fields": ("point", "name", "internal_code", "unit")
+        }),
+        ("Tipo y Procesamiento", {
+            "fields": ("type_definition", "type_variable", "operation", "formula")
+        }),
+        ("Configuración de Ingesta", {
+            "fields": ("provider_key", "scale_factor", "offset", "sources", "priority")
+        }),
+        ("Validación", {
+            "fields": ("min_value", "max_value", "configuration")
+        }),
+        ("Estado", {
+            "fields": ("is_virtual", "is_active")
+        }),
+    )
 
 
 class ProfileDataConfigInline(admin.StackedInline):
@@ -231,37 +254,6 @@ class ProfileDataConfigInline(admin.StackedInline):
     )
 
 
-class DgaDataConfigInline(admin.StackedInline):
-    """Inline para configuración DGA del punto"""
-
-    model = DgaDataConfigCatchment
-    extra = 0
-    fieldsets = (
-        (
-            None,
-            {
-                "fields": (
-                    ("send_dga", "standard"),
-                    ("type_dga", "code_dga"),
-                    ("shac", "flow_granted_dga"),
-                    ("total_granted_dga",),
-                )
-            },
-        ),
-        (
-            "Fechas",
-            {
-                "fields": ("date_start_compliance", "date_created_code"),
-            },
-        ),
-        (
-            "Informante",
-            {
-                "fields": ("name_informant", "rut_report_dga", "password_dga_software"),
-                "classes": ("collapse",),
-            },
-        ),
-    )
 
 
 class ProfileIkoluInline(admin.StackedInline):
@@ -296,6 +288,27 @@ class ProviderInline(admin.TabularInline):
     autocomplete_fields = ('provider',)
     verbose_name = "Proveedor de Telemetría"
     verbose_name_plural = "Proveedores de Telemetría"
+
+
+class PointConfigurationValueInline(admin.TabularInline):
+    """Inline para valores de configuración dinámica del punto"""
+    from api.telemetry.models.configuration import PointConfigurationValue
+    
+    model = PointConfigurationValue
+    extra = 0
+    fields = ('field', 'value')
+    readonly_fields = ('field',)
+    verbose_name = "Configuración"
+    verbose_name_plural = "Configuraciones del Punto"
+    can_delete = False
+    
+    def has_add_permission(self, request, obj=None):
+        """Los valores se crean automáticamente desde el esquema."""
+        return False
+    
+    def has_delete_permission(self, request, obj=None):
+        """No permitir eliminar directamente."""
+        return False
 
 
 # ========================================
@@ -473,7 +486,8 @@ class CatchmentPointAdmin(
         "title",
         "project",
         "owner_user",
-        "frecuency",
+        "frequency",
+        "configuration_scheme",
         "get_telemetry_status",
         "last_interaction_detail",
     )
@@ -494,27 +508,36 @@ class CatchmentPointAdmin(
                     "title",
                     "project",
                     "owner_user",
-                    "frecuency",
+                    "frequency",
+                    "configuration_scheme",
                     "processing_scheme",
                 ),
-                "description": "Datos principales del punto: nombre, proyecto asociado, propietario y esquema de procesamiento.",
+                "description": "Datos principales del punto: nombre, proyecto asociado, propietario, frecuencia dinámica, esquema de configuración y esquema de procesamiento.",
             },
         ),
         ("Ubicación", {"fields": ("lat", "lon"), "classes": ("collapse",)}),
         ("Usuarios", {"fields": ("users_viewers",), "classes": ("collapse",)}),
+        ("Legacy", {"fields": ("frecuency",), "classes": ("collapse",), "description": "Campo legacy - usar 'frequency' en su lugar"}),
     )
 
     # ✅ Inlines para ver configuraciones relacionadas
     inlines = [
+        PointConfigurationValueInline,
         VariableInline,
         ProfileDataConfigInline,
-        DgaDataConfigInline,
         ProfileIkoluInline,
         ProviderInline,
     ]
 
+    # ✅ Agregar Compliance Inline si está disponible (Sistema Dinámico V3)
+    try:
+        from api.telemetry.admin import ComplianceConfigInline
+        inlines.append(ComplianceConfigInline)
+    except ImportError:
+        pass  # No disponible aún
+
     # ✅ Autocomplete
-    autocomplete_fields = ["project", "owner_user", "users_viewers"]
+    autocomplete_fields = ["project", "owner_user", "users_viewers", "frequency", "configuration_scheme"]
     filter_horizontal = ["users_viewers"]
 
     # ✅ Búsqueda mejorada
@@ -528,7 +551,8 @@ class CatchmentPointAdmin(
     # ✅ Filtros mejorados
     list_filter = (
         HasDisconnectionFilter,
-        "frecuency",
+        "frequency",
+        "configuration_scheme",
         "project__name",
         ("project__client", admin.RelatedOnlyFieldListFilter),
         TelemetryStatusFilter,
@@ -704,62 +728,6 @@ class ProfileIkoluCatchmentAdmin(
     )
 
 
-# ========================================
-# DGA DATA CONFIG ADMIN
-# ========================================
-
-
-@admin.register(DgaDataConfigCatchment)
-class DgaDataConfigCatchmentAdmin(
-    AdminIndicatorsMixin, ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin
-):
-    """
-    Configuración específica para el envío de datos a la DGA (Dirección General de Aguas).
-    Incluye códigos, estándares, datos otorgados e información del informante.
-    """
-
-    list_per_page = ADMIN_LIST_PER_PAGE
-    list_display = (
-        "id",
-        "point_catchment",
-        "send_dga",
-        "standard",
-        "code_dga",
-        "flow_granted_dga",
-        "total_granted_dga",
-        "date_start_compliance",
-    )
-    list_filter = ("standard", "send_dga", "point_catchment__project__name", "type_dga")
-    search_fields = ("point_catchment__title", "code_dga", "shac")
-    autocomplete_fields = ["point_catchment"]
-    fieldsets = (
-        (
-            "Punto de Captación",
-            {
-                "fields": ("point_catchment",),
-                "description": "Punto de captación asociado a esta configuración DGA.",
-            },
-        ),
-        (
-            "Configuración DGA",
-            {
-                "fields": ("send_dga", "standard", "type_dga", "code_dga", "shac"),
-                "description": "Configuración para el envío de datos a la DGA: estándar, tipo, código y SHAC.",
-            },
-        ),
-        (
-            "Datos Otorgados",
-            {
-                "fields": ("flow_granted_dga", "total_granted_dga"),
-                "description": "Derechos de agua otorgados por la DGA: caudal y total otorgado.",
-            },
-        ),
-        ("Fechas", {"fields": ("date_start_compliance", "date_created_code")}),
-        (
-            "Informante",
-            {"fields": ("name_informant", "rut_report_dga"), "classes": ("collapse",)},
-        ),
-    )
 
 
 # ========================================
@@ -1523,12 +1491,11 @@ class TelemetryRecordAdmin(admin.ModelAdmin):
         "timestamp",
         "get_flow",
         "get_total",
-        "send_dga",
+        "get_compliance_status_icons",
         "is_error",
-        "n_voucher",
+        "is_partial",
     )
     list_filter = (
-        "send_dga",
         "is_error",
         "is_partial",
         "point__project",
@@ -1536,7 +1503,7 @@ class TelemetryRecordAdmin(admin.ModelAdmin):
         "timestamp",
     )
     date_hierarchy = "timestamp"
-    search_fields = ("point__title", "n_voucher")
+    search_fields = ("point__title",)
     list_per_page = ADMIN_LIST_PER_PAGE
     readonly_fields = ("data", "metadata", "timestamp", "point")
 
@@ -1552,10 +1519,23 @@ class TelemetryRecordAdmin(admin.ModelAdmin):
 
     get_total.short_description = "Total (m³)"
 
-    def get_data_summary(self, obj):
-        return ", ".join([f"{k}: {v}" for k, v in obj.data.items()])
+    def get_compliance_status_icons(self, obj):
+        from django.utils.html import format_html
+        if not obj.compliance_status:
+            return "-"
+        
+        lines = []
+        for provider, status in obj.compliance_status.items():
+            icon = "✅" if status.get("sent") else "❌"
+            voucher = status.get("voucher", "")
+            text = f"{provider.upper()}: {icon}"
+            if voucher:
+                text += f" ({voucher})"
+            lines.append(text)
+        
+        return format_html("<br>".join(lines))
 
-    get_data_summary.short_description = "Datos (JSON)"
+    get_compliance_status_icons.short_description = "Compliance"
 
 
 # Asignar acciones al admin

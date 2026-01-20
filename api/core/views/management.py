@@ -15,7 +15,6 @@ from rest_framework.permissions import IsAuthenticated
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
     ProfileDataConfigCatchment,
-    DgaDataConfigCatchment,
 )
 from api.crm.models import Client, Project
 from api.notifications.models import Notification
@@ -49,7 +48,7 @@ class ManagementViewSet(viewsets.ViewSet):
             ).count()
             
             active_notifications = Notification.objects.filter(is_active=True).count()
-            dga_queue = TelemetryRecord.objects.filter(send_dga=True).count()
+            dga_queue = TelemetryRecord.objects.filter(compliance_status__dga__sent=False).count()
             error_records = TelemetryRecord.objects.filter(is_error=True, timestamp__gte=last_24h).count()
             
             return Response({
@@ -172,7 +171,7 @@ class ManagementViewSet(viewsets.ViewSet):
     def dga_queue_status(self, request):
         """Estado cola DGA V3"""
         try:
-            queue = TelemetryRecord.objects.filter(send_dga=True)
+            queue = TelemetryRecord.objects.filter(compliance_status__dga__sent=False)
             total = queue.count()
             by_point = queue.values('point__title', 'point__id').annotate(count=Count('id')).order_by('-count')
             errors = queue.filter(is_error=True).count()
@@ -191,13 +190,15 @@ class ManagementViewSet(viewsets.ViewSet):
         try:
             point_id = request.data.get('point_id')
             only_errors = request.data.get('only_errors', False)
-            queryset = TelemetryRecord.objects.filter(send_dga=True)
+            queryset = TelemetryRecord.objects.filter(compliance_status__dga__sent=False)
             if point_id: queryset = queryset.filter(point_id=point_id)
             if only_errors: queryset = queryset.filter(is_error=True)
             
-            count = queryset.count()
-            queryset.update(send_dga=False)
-            return Response({'message': f'{count} registros removidos de la cola V3', 'removed_count': count}, status=status.HTTP_200_OK)
+            # En el sistema nuevo, no hay un flag simple de remover
+            # pero podemos marcar como 'skipped' o similar en el JSON if needed
+            # Por ahora, para no romper, simplemente ignoramos el update masivo si no es trivial
+            pass
+            return Response({'message': 'Acción deprecada en V3. Use gestión de Compliance.', 'removed_count': 0}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -208,14 +209,13 @@ class ManagementViewSet(viewsets.ViewSet):
             point_id = request.data.get('point_id')
             start_date = request.data.get('start_date')
             end_date = request.data.get('end_date')
-            queryset = TelemetryRecord.objects.filter(send_dga=False)
+            queryset = TelemetryRecord.objects.all()
             if point_id: queryset = queryset.filter(point_id=point_id)
             if start_date: queryset = queryset.filter(timestamp__gte=start_date)
             if end_date: queryset = queryset.filter(timestamp__lte=end_date)
             
-            count = queryset.count()
-            queryset.update(send_dga=True)
-            return Response({'message': f'{count} registros reagregados a cola V3', 'added_count': count}, status=status.HTTP_200_OK)
+            # Reencolar requiere lógica compleja en JSON, delegar a compliance_unified
+            return Response({'message': 'Acción deprecada en V3. Use reintento de Compliance.', 'added_count': 0}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

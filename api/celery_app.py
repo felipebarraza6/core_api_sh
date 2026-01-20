@@ -27,6 +27,8 @@ app.conf.update(
     task_routes={
         'api.core.tasks.telemetry.*': {'queue': 'telemetry'},
         'api.core.tasks.dga.*': {'queue': 'dga'},
+        'api.core.tasks.compliance.*': {'queue': 'compliance'},  # ✅ Nueva cola unificada
+        'api.core.tasks.compliance_unified.*': {'queue': 'compliance'},  # ✅ Sistema dinámico V3
         'api.core.tasks.alerts.*': {'queue': 'alerts'},
         'api.core.tasks.reports.*': {'queue': 'reports'},
     },
@@ -81,11 +83,16 @@ app.conf.update(
             'options': {'queue': 'telemetry', 'priority': 3}
         },
 
-        # DGA processing
-        'process-dga-queue': {
-            'task': 'api.core.tasks.dga.process_dga_queue',
+        # ========================================================================
+        # COMPLIANCE SUBMISSION - UNIFIED SYSTEM V3
+        # ========================================================================
+        # ✅ Sistema dinámico que reemplaza process-dga-queue
+        # Procesa TODOS los proveedores de compliance (DGA, SMA, INDH, etc.)
+
+        'process-compliance-queue': {
+            'task': 'api.core.tasks.compliance_unified.process_compliance_queue',
             'schedule': crontab(minute='*/3'),  # Every 3 minutes
-            'options': {'queue': 'dga'}
+            'options': {'queue': 'compliance', 'priority': 8}
         },
 
         # Alerts processing
@@ -129,6 +136,12 @@ app.conf.update(
             'task': 'api.core.tasks.monitoring.perform_health_check',
             'schedule': 300.0,  # Every 5 minutes
             'options': {'queue': 'monitoring'}
+        },
+        # Cluster Backup Sync (replaces cronjobs/cluster_backup_complete_final.py)
+        'cluster-sync': {
+            'task': 'api.core.tasks.cluster_sync.run_cluster_sync',
+            'schedule': crontab(minute=0),  # Run hourly
+            'options': {'queue': 'maintenance'}
         },
     },
 

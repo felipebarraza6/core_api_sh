@@ -66,6 +66,27 @@ class CatchmentPoint(ModelApi):
         help_text="Esquema reutilizable de procesamiento para este punto.",
     )
 
+    # Nuevos campos dinámicos
+    configuration_scheme = models.ForeignKey(
+        "telemetry.ConfigurationScheme",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="points",
+        verbose_name="Esquema de Configuración",
+        help_text="Plantilla de configuración para este punto (pozo, sensor, etc.)"
+    )
+
+    frequency = models.ForeignKey(
+        "telemetry.SamplingFrequency",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="points",
+        verbose_name="Frecuencia de Muestreo",
+        help_text="Frecuencia dinámica de muestreo"
+    )
+
     class Meta:
         """Meta data catchment points"""
 
@@ -75,6 +96,18 @@ class CatchmentPoint(ModelApi):
 
     def __str__(self):
         return f"{self.title} - {self.owner_user}"
+
+    def get_config_dict(self) -> dict:
+        """
+        Obtiene todas las configuraciones del punto como diccionario para fórmulas.
+        
+        Returns:
+            Dict con formato {field_code: value}
+        """
+        return {
+            cv.field.code: cv.value
+            for cv in self.configuration_values.select_related('field')
+        }
 
 
 class ProfileIkoluCatchment(ModelApi):
@@ -264,97 +297,4 @@ class ProfileDataConfigCatchment(ModelApi):
         return f"{self.point_catchment}"
 
 
-class DgaDataConfigCatchment(ModelApi):
-    """Data Configuration Profile DGA."""
 
-    point_catchment = models.ForeignKey(
-        CatchmentPoint,
-        related_name="dga_data_config_profiles",
-        on_delete=models.CASCADE,
-        verbose_name="Punto de captacion",
-    )
-
-    standards_choices = [
-        ("SIN_ESTANDAR", "sin estandar"),
-        ("MAYOR", "mayor"),
-        ("MEDIO", "medio"),
-        ("MENOR", "menor"),
-        ("CAUDALES_MUY_PEQUENOS", "cmp"),
-    ]
-
-    types_dga_choices = [
-        ("SUBTERRANEO", "subterraneo"),
-        ("SUPERFICIAL", "superficial"),
-    ]
-
-    send_dga = models.BooleanField(default=False, verbose_name="Activar cumplimiento")
-
-    standard = models.CharField(
-        max_length=300,
-        default="SIN_ESTANDAR",
-        choices=standards_choices,
-        verbose_name="Estandar",
-    )
-    type_dga = models.CharField(
-        max_length=300,
-        blank=True,
-        null=True,
-        choices=types_dga_choices,
-        default="SUBTERRANEO",
-        verbose_name="Tipo",
-    )
-    code_dga = models.CharField(
-        max_length=1200, blank=True, null=True, verbose_name="Codigo de obra(dga)"
-    )
-    flow_granted_dga = models.DecimalField(
-        max_length=1200,
-        default=0.0,
-        verbose_name="Caudal otorgado(lt/s)",
-        max_digits=5,
-        decimal_places=2,
-    )
-    total_granted_dga = models.IntegerField(
-        blank=True, null=True, verbose_name="Totalizado otorgado(m3)"
-    )
-    shac = models.CharField(
-        max_length=1200, blank=True, null=True, verbose_name="Sector hidrologico(SHAC)"
-    )
-    region_dga = models.CharField(
-        max_length=300, blank=True, null=True, verbose_name="DGA Región"
-    )
-    date_start_compliance = models.DateField(
-        blank=True, null=True, verbose_name="Fecha inicio envío DGA"
-    )
-    date_created_code = models.DateField(
-        blank=True, null=True, verbose_name="Fecha codigo creacion DGA"
-    )
-    name_informant = models.CharField(
-        max_length=1200, default="Diego Mardones", verbose_name="Nombre informante"
-    )
-    rut_report_dga = models.CharField(
-        max_length=1400, default="17352192-8", verbose_name="RUT"
-    )
-    password_dga_software = models.CharField(
-        max_length=1400,
-        default='',
-        blank=True,
-        verbose_name="clave DGA",
-        help_text='Contraseña software DGA. Dejar vacío para usar default del sistema.'
-    )
-
-    class Meta:
-        """Meta data profile dga config"""
-
-        db_table = "core_dgadataconfigcatchment"
-        verbose_name = "Configuracion de datos DGA"
-        verbose_name_plural = "Configuraciones de datos DGA"
-
-    def get_dga_password(self):
-        """
-        Obtener contraseña DGA.
-        """
-        from django.conf import settings
-        return self.password_dga_software or settings.DGA_DEFAULT_PASSWORD
-
-    def __str__(self):
-        return f"{self.point_catchment}"

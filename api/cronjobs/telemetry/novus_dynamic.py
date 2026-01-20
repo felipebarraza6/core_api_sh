@@ -13,16 +13,8 @@ import pytz
 from api.core.models import CatchmentPoint, DgaDataConfigCatchment, InteractionDetail
 from api.core.serializers import CatchmentPointSerializerDetailCron
 
-# CONTROLADORES UNIFICADOS (iguales que la versión original)
-from .controllers.flow import (
-    average_flow,
-    instantaneous_flow,
-    instantaneous_flow_calculate,
-)
-from .controllers.nivel import nivel_mt, water_table
-from .controllers.total import total_day, total_hour, total_m3
-
-# ✅ NUEVO: Sistema dinámico de proveedores
+# ✅ Sistema dinámico de procesamiento y proveedores
+from api.telemetry.processing import FormulaEngine
 from api.core.providers import get_provider_manager
 
 

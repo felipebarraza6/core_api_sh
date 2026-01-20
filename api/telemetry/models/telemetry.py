@@ -184,6 +184,18 @@ class CoreVariable(ModelApi):
         on_delete=models.CASCADE,
         verbose_name="Punto de captación",
     )
+    
+    # Tipo de variable dinámico
+    type_definition = models.ForeignKey(
+        "telemetry.VariableType",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="variables",
+        verbose_name="Tipo de Variable",
+        help_text="Definición del tipo de variable (reemplaza type_variable hardcodeado)"
+    )
+    
     name = models.CharField(max_length=200, verbose_name="Nombre para mostrar")
     internal_code = models.CharField(
         max_length=100,
@@ -226,11 +238,19 @@ class CoreVariable(ModelApi):
         verbose_name="Tipo de Operación",
     )
     formula = models.CharField(
-        max_length=500,
+        max_length=1000,
         blank=True,
         null=True,
         verbose_name="Fórmula",
-        help_text="Ej: ({var1} + {var2}) * 0.5. Use los internal_codes entre llaves.",
+        help_text="""
+Sintaxis de fórmulas:
+- {var_code}: Valor de otra variable del punto
+- {config.codigo}: Valor de configuración del punto
+- {system.key}: Valor de SystemConfiguration
+- {prev.var_code}: Valor anterior de una variable
+- {time.diff_seconds}: Diferencia de tiempo en segundos
+Ejemplo: ({pulses} * {config.pulses_factor}) / 1000 + {config.addition}
+        """.strip(),
     )
     sources = models.JSONField(
         default=list,
@@ -332,10 +352,12 @@ class TelemetryRecord(ModelApi):
         default=dict, blank=True, help_text="Metadata del proveedor"
     )
 
-    # DGA and Status fields (promoted from metadata for performance)
-    send_dga = models.BooleanField(default=False, db_index=True)
-    n_voucher = models.CharField(max_length=200, blank=True, null=True, db_index=True)
-    return_dga = models.TextField(blank=True, null=True)
+    # Dynamic compliance status (V3)
+    compliance_status = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Estado de envío a proveedores: {'dga': {'sent': True, 'voucher': '...'}}"
+    )
 
     is_error = models.BooleanField(default=False, db_index=True)
     is_partial = models.BooleanField(default=False, db_index=True)
@@ -374,6 +396,19 @@ class TelemetryRecord(ModelApi):
     def total_today_diff(self):
         """Dynamic access to total_today_diff from data JSON."""
         return self.data.get("total_today_diff", 0)
+
+    @property
+    def return_dga(self):
+        """Legacy compatibility for DGA voucher/response."""
+        if not self.compliance_status:
+            return "-"
+        dga_status = self.compliance_status.get("dga", {})
+        return dga_status.get("voucher") or dga_status.get("message") or "-"
+
+    @property
+    def n_voucher(self):
+        """Legacy compatibility alias for n_voucher."""
+        return self.return_dga
 
     @property
     def date_time_last_logger(self):

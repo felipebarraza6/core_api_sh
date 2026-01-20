@@ -204,7 +204,7 @@ def send_health_alert(health_status):
     Send alert for critical health issues
     """
     try:
-        from api.core.models import NotificationsCatchment
+        from api.notifications.models import Notification
         from django.contrib.auth import get_user_model
         
         alert_message = f"🚨 ALERTA DE SISTEMA CRÍTICA (V3)\\n\\n"
@@ -220,7 +220,7 @@ def send_health_alert(health_status):
         for admin in admin_users:
             system_point = CatchmentPoint.objects.filter(owner_user=admin).first()
             if system_point:
-                NotificationsCatchment.objects.create(
+                Notification.objects.create(
                     point_catchment=system_point,
                     title="Alerta Crítica del Sistema V3",
                     message=alert_message,

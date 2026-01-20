@@ -7,7 +7,6 @@ from rest_framework.permissions import IsAuthenticated
 from api.telemetry.models.telemetry import CoreVariable
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    DgaDataConfigCatchment,
     ProfileDataConfigCatchment,
     ProfileIkoluCatchment,
 )
@@ -20,7 +19,6 @@ from api.core.serializers.catchment_points import (
     CatchmentPointSerializer,
     CatchmentPointSerializerDetailCron,
     ClientSerializer,
-    DgaDataConfigCatchmentSerializer,
     DocumentSerializer,
     NotificationSerializer,
     ProfileDataConfigCatchmentSerializer,
@@ -58,7 +56,6 @@ class CatchmentPointViewSet(viewsets.ModelViewSet):
     ).prefetch_related(
         "ikolu_profiles",
         "data_config_profiles",
-        "dga_data_config_profiles",
     )
     serializer_class = CatchmentPointSerializer
     lookup_field = "id"
@@ -139,12 +136,6 @@ class ProfileDataConfigCatchmentViewSet(viewsets.ModelViewSet):
     lookup_field = "id"
 
 
-class DgaDataConfigCatchmentViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
-    filter_backends = (filters.DjangoFilterBackend,)
-    queryset = DgaDataConfigCatchment.objects.all()
-    serializer_class = DgaDataConfigCatchmentSerializer
-    lookup_field = "id"
 
 
 class CoreVariableViewSet(viewsets.ModelViewSet):

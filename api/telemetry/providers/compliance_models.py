@@ -12,6 +12,7 @@ from django.core.exceptions import ValidationError
 from api.core.models.utils import ModelApi
 from api.core.models.users import User
 from ..models.catchment_points import CatchmentPoint
+from .compliance_standard import ComplianceStandard
 
 
 class ComplianceProvider(ModelApi):
@@ -240,6 +241,16 @@ class PointComplianceConfig(ModelApi):
         verbose_name="Proveedor de Cumplimiento"
     )
 
+    compliance_standard = models.ForeignKey(
+        ComplianceStandard,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="point_configs",
+        verbose_name="Estándar de Cumplimiento",
+        help_text="Define la frecuencia de envío (Mayor, Medio, Menor, CMP)"
+    )
+
     # Point-specific Configuration
     config_data = models.JSONField(
         default=dict,
@@ -342,6 +353,21 @@ class PointComplianceConfig(ModelApi):
         if self.credentials_override:
             return {**self.provider.auth_config, **self.credentials_override}
         return self.provider.auth_config
+
+    def should_submit_now(self, current_time) -> bool:
+        """
+        Determina si el registro debe enviarse según el estándar configurado.
+        
+        Args:
+            current_time (datetime): Timestamp del registro a validar.
+            
+        Returns:
+            bool: True si debe enviarse, False si no.
+        """
+        if not self.compliance_standard:
+            return True  # Sin estándar definido, envía siempre (backward compatibility)
+            
+        return self.compliance_standard.matches_time(current_time)
 
     def record_success(self):
         """Record successful submission."""

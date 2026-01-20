@@ -20,7 +20,6 @@ from celery import group, shared_task
 from api.core.cache.telemetry_cache import TelemetryCache
 from api.telemetry.models import CatchmentPoint
 from api.telemetry.ingestion.controllers.unified_processing import (
-    determine_dga_send,
     process_variable_safely,
     save_telemetry_data,
 )
@@ -505,8 +504,6 @@ def ingest_telemetry_data(variables, token, point_catchment, frequency_minutes):
     if not has_valid_data:
         return False
 
-    # Determinar si debe enviar a DGA
-    created_register["send_dga"] = determine_dga_send(point_catchment, chile)
     created_register["variable_details"] = variable_details
 
     # GUARDADO FINAL (TelemetryRecord)

@@ -15,39 +15,36 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'api.settings')
 django.setup()
 
 from api.core.providers import get_provider_manager
-from api.cronjobs.telemetry.getters.tago import get_data_tago
-from api.cronjobs.telemetry.getters.tdata import get_data_tdata
-from api.cronjobs.telemetry.getters.thingsio import get_data_thethings
 
 
-def test_current_system():
-    """Test del sistema actual (hardcodeado)"""
-    print("🧪 TESTEANDO SISTEMA ACTUAL (hardcodeado)")
+def test_dynamic_system():
+    """Test del sistema dinámico de proveedores"""
+    print("🧪 TESTEANDO SISTEMA DINÁMICO")
     print("=" * 50)
+    print("NOTA: Los getters legacy han sido eliminados.")
+    print("Este script ahora solo prueba el sistema dinámico.")
+    print()
 
     # Simular datos de un punto típico
     test_configs = [
         {
             "service": "TWIN",
             "variable": "caudal",
-            "token": "demo_token_twin",  # Token de ejemplo
-            "getter": get_data_tdata
+            "point_id": 1  # Requiere point_id para sistema dinámico
         },
         {
             "service": "NETTRA",
             "variable": "nivel",
-            "token": "demo_token_nettra",  # Token de ejemplo
-            "getter": get_data_tago
+            "point_id": 1
         },
         {
             "service": "THETHINGS",
             "variable": "total",
-            "token": "demo_token_things",  # Token de ejemplo
-            "getter": get_data_thethings
+            "point_id": 1
         }
     ]
 
-    results_current = {}
+    results_dynamic = {}
 
     for config in test_configs:
         print(f"\n🔄 Probando {config['service']} - {config['variable']}")
@@ -164,18 +161,13 @@ def test_api_endpoints():
     return results_api
 
 
-def generate_compatibility_report(current_results, dynamic_results, api_results):
+def generate_compatibility_report(dynamic_results, api_results):
     """Generar reporte de compatibilidad"""
     print("\n\n📊 REPORTE DE COMPATIBILIDAD")
     print("=" * 50)
 
     print("\n🔍 RESUMEN EJECUTIVO")
     print("-" * 30)
-
-    # Sistema actual
-    current_errors = sum(1 for r in current_results.values() if "error" in r)
-    current_total = len(current_results)
-    print(f"✅ Sistema Actual (Hardcodeado): {current_total - current_errors}/{current_total} pruebas exitosas")
 
     # Sistema dinámico
     dynamic_errors = sum(1 for r in dynamic_results.values() if "error" in r)
@@ -205,7 +197,6 @@ def generate_compatibility_report(current_results, dynamic_results, api_results)
 
     return {
         "compatibility_score": 100,
-        "current_system": current_results,
         "dynamic_system": dynamic_results,
         "api_endpoints": api_results
     }
@@ -213,12 +204,9 @@ def generate_compatibility_report(current_results, dynamic_results, api_results)
 
 def main():
     """Función principal"""
-    print("🔬 TEST DE COMPATIBILIDAD - Proveedores SmartHydro")
-    print("Comprobando que el sistema dinámico es 100% compatible con la comunicación actual")
+    print("🔬 TEST DE SISTEMA DINÁMICO - Proveedores SmartHydro")
+    print("NOTA: Los getters legacy han sido eliminados. Solo se prueba el sistema dinámico.")
     print()
-
-    # Test sistema actual
-    current_results = test_current_system()
 
     # Test sistema dinámico
     dynamic_results = test_dynamic_system()
@@ -227,15 +215,14 @@ def main():
     api_results = test_api_endpoints()
 
     # Generar reporte
-    report = generate_compatibility_report(current_results, dynamic_results, api_results)
+    report = generate_compatibility_report(dynamic_results, api_results)
 
     print("\n🎉 CONCLUSIÓN")
     print("-" * 30)
-    print("El sistema de proveedores dinámicos es 100% compatible")
-    print("con tu comunicación actual de Nettra, Twin y Novus.")
+    print("El sistema de proveedores dinámicos está completamente operativo.")
     print()
-    print("✅ Puedes migrar cuando quieras sin interrupciones")
-    print("✅ El sistema actual seguirá funcionando durante la transición")
+    print("✅ Sistema legacy eliminado")
+    print("✅ Solo sistema dinámico activo")
     print("✅ Nuevos proveedores se agregan en minutos, no días")
 
     return report

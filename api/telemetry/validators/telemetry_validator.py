@@ -14,7 +14,7 @@ import pytz
 from django.utils import timezone as django_timezone
 
 from api.telemetry.models import TelemetryRecord, CatchmentPoint, ProfileDataConfigCatchment, CoreVariable
-from api.telemetry.ingestion.controllers.flow import average_flow
+from api.telemetry.processing import FormulaEngine
 
 logger = logging.getLogger(__name__)
 

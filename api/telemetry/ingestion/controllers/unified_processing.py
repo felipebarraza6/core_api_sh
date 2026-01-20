@@ -125,7 +125,6 @@ def save_telemetry_data(
             point_id=point_id,
             timestamp=dt_medition,
             data=v3_data,
-            send_dga=created_register.get("send_dga", False),
             is_error=created_register.get("is_error", False),
             is_partial=created_register.get("is_partial", False),
             metadata=metadata,
@@ -135,6 +134,30 @@ def save_telemetry_data(
             f"Punto {point_id} - Datos guardados en sistema dinámico "
             f"(ID: {v3_record.id}, device: {device_id or 'N/A'})"
         )
+
+        # 5. Enviar a proveedores de compliance dinámicamente (V3)
+        try:
+            compliance_configs = get_compliance_configs_for_record(point_id, dt_medition)
+
+            if compliance_configs:
+                # Importar tarea de Celery para envío asíncrono
+                from api.core.tasks.compliance_unified import send_compliance_data
+
+                for config in compliance_configs:
+                    # Encolar envío asíncrono
+                    send_compliance_data.delay(v3_record.id, config.id)
+                    telemetry_logger.info(
+                        f"Punto {point_id} - Encolado envío a {config.provider.display_name} "
+                        f"(record: {v3_record.id}, config: {config.id})"
+                    )
+
+        except Exception as e:
+            telemetry_logger.error(
+                f"Error encolando envíos de compliance para punto {point_id}: {e}",
+                exc_info=True
+            )
+            # No fallar si hay error en compliance, el registro ya está guardado
+
         return v3_record
 
     except Exception as e:
@@ -145,19 +168,27 @@ def save_telemetry_data(
         return None
 
 
-def get_data_with_retry(getter_func, *args, max_retries=3, backoff_factor=2):
+def get_data_with_retry(getter_func, *args, max_retries=None, backoff_factor=None):
     """
     Retry inteligente con backoff exponencial para obtener datos de APIs
 
     Args:
         getter_func: Función getter a ejecutar
         *args: Argumentos para la función
-        max_retries: Número máximo de intentos
-        backoff_factor: Factor de espera exponencial
+        max_retries: Número máximo de intentos (None = desde configuración)
+        backoff_factor: Factor de espera exponencial (None = desde configuración)
 
     Returns:
         Dict con datos o None si falla
     """
+    from api.core.services.config_service import ConfigService
+    
+    # Obtener valores desde configuración dinámica si no se proporcionan
+    if max_retries is None:
+        max_retries = ConfigService.get_int('retry.max_retries', 3)
+    if backoff_factor is None:
+        backoff_factor = ConfigService.get_int('retry.backoff_factor', 2)
+    
     for attempt in range(max_retries):
         try:
             data = getter_func(*args)
@@ -232,46 +263,23 @@ def log_variable_processing(
             telemetry_logger.error(f"Error enviando alerta chat: {e}")
 
 
-def validate_frequency(point_catchment: Dict[str, Any], current_time: datetime) -> bool:
+
+def get_compliance_configs_for_record(point_id: int, record_timestamp: datetime):
     """
-    Validar si debe procesar según estándar DGA
-
-    Args:
-        point_catchment: Datos del punto de captación
-        current_time: Tiempo actual
-
-    Returns:
-        True si debe procesar, False si no
+    Obtiene las configuraciones de compliance que deben procesar este registro.
+    Sustituye a la lógica de validación individual por proveedor.
     """
-    try:
-        from api.telemetry.models import DgaDataConfigCatchment
-        get = DgaDataConfigCatchment.objects.get(
-            point_catchment__id=point_catchment["id"]
-        )
-        standard = get.standard
-
-        if standard == "MAYOR":
-            return current_time.minute == 0  # Cada hora
-        elif standard == "MEDIO":
-            return current_time.hour == 0 and current_time.minute == 0  # Diario
-        elif standard == "MENOR":
-            return (
-                current_time.day == 1
-                and current_time.hour == 0
-                and current_time.minute == 0
-            )  # Mensual
-        elif standard == "CAUDALES_MUY_PEQUENOS":
-            return (
-                current_time.month in [1, 7]
-                and current_time.day == 1
-                and current_time.hour == 0
-                and current_time.minute == 0
-            )  # Semestral
-
-        return True  # SIN_ESTANDAR siempre procesa
-    except Exception as e:
-        telemetry_logger.error(f"Error validando frecuencia: {e}", exc_info=True)
-        return True
+    from api.telemetry.providers.compliance_models import PointComplianceConfig
+    from api.telemetry.services.compliance_service import get_compliance_service
+    
+    configs = PointComplianceConfig.objects.filter(
+        point_id=point_id,
+        is_active=True,
+        send_compliance=True
+    ).select_related('compliance_standard', 'provider')
+    
+    service = get_compliance_service()
+    return [c for c in configs if service.should_submit(c, record_timestamp)]
 
 
 def process_totalizado_variable(
@@ -295,7 +303,7 @@ def process_totalizado_variable(
     Returns:
         Tuple con (date_time_last_logger_total, created_register actualizado)
     """
-    from .total import total_day, total_hour, total_m3
+    from api.telemetry.processing import FormulaEngine
 
     # 1. VALIDAR Y CONVERTIR VALOR DE PULSOS
     try:
@@ -315,7 +323,7 @@ def process_totalizado_variable(
         )
         pulses_factor = 1000
 
-    total_calculado = total_m3(pulses_factor, value, point_catchment)
+    total_calculado = FormulaEngine.calculate_total_m3(pulses_factor, value, point_catchment)
     created_register["total"] = total_calculado
 
     # 4. CALCULAR DIFERENCIA POR HORA (consumo actual)
@@ -324,11 +332,11 @@ def process_totalizado_variable(
         if data.get("date_time")
         else datetime.now()
     )
-    total_diff = total_hour(created_register["total"], point_catchment, current_dt)
+    total_diff = FormulaEngine.total_hour(created_register["total"], point_catchment, current_dt)
     created_register["total_diff"] = total_diff
 
     # 5. CALCULAR ACUMULADO DEL DÍA (✅ CORRECCIÓN: Pasar total, no diff)
-    total_today_diff = total_day(point_catchment, current_dt, created_register["total"])
+    total_today_diff = FormulaEngine.total_day(point_catchment, current_dt, created_register["total"])
     created_register["total_today_diff"] = total_today_diff
 
     # 6. ASIGNAR TIMESTAMP DEL ÚLTIMO LOGGER
@@ -379,7 +387,7 @@ def process_nivel_variable(
     Returns:
         created_register actualizado
     """
-    from .nivel import nivel_mt, water_table
+    from api.telemetry.processing import FormulaEngine
 
     # Manejar nivel negativo
     try:
@@ -414,7 +422,7 @@ def process_nivel_variable(
     if d3 is None:
         d3 = point_catchment["profile_data_config"].get("d3", 0)
 
-    created_register["nivel"] = nivel_mt(
+    created_register["nivel"] = FormulaEngine.nivel_mt(
         nivel_value,
         variable.get("calculate_nivel"),
         point_catchment["id"],
@@ -428,7 +436,7 @@ def process_nivel_variable(
         )
         d3 = 0
 
-    created_register["water_table"] = water_table(created_register["nivel"], d3)
+    created_register["water_table"] = FormulaEngine.water_table(created_register["nivel"], d3)
     created_register["date_time_last_logger"] = data["date_time"]
 
     log_variable_processing(
@@ -456,9 +464,9 @@ def process_caudal_variable(
     Returns:
         created_register actualizado
     """
-    from .flow import instantaneous_flow
+    from api.telemetry.processing import FormulaEngine
 
-    created_register["flow"] = instantaneous_flow(
+    created_register["flow"] = FormulaEngine.instantaneous_flow(
         data["value"], variable.get("convert_to_lt"), variable.get("calculate_nivel")
     )
     created_register["date_time_last_logger"] = data["date_time"]
@@ -511,7 +519,10 @@ def process_variable_safely(
     date_time_last_logger_total: Optional[str] = None,
 ) -> tuple:
     """
-    Procesar variable de forma segura con manejo de errores
+    Procesar variable de forma segura con manejo de errores.
+    
+    NUEVO: Intenta usar FormulaEngine si la variable tiene type_definition o formula.
+    Fallback a procesadores legacy si no está disponible.
 
     Args:
         variable: Configuración de la variable
@@ -546,6 +557,103 @@ def process_variable_safely(
         except (ValueError, TypeError):
             pass
 
+    # Intentar usar FormulaEngine si está disponible
+    try:
+        from api.telemetry.processing import FormulaEngine
+        from api.telemetry.models import CoreVariable
+        
+        # Buscar CoreVariable si tenemos el ID o internal_code
+        point_id = point_catchment.get("id")
+        var_code = variable.get("internal_code") or variable.get("str_variable")
+        
+        if point_id and var_code:
+            try:
+                core_var = CoreVariable.objects.filter(
+                    point_id=point_id,
+                    internal_code=var_code
+                ).select_related('type_definition').first()
+                
+                if core_var:
+                    # Usar FormulaEngine
+                    engine = FormulaEngine(point_id)
+                    raw_value = data.get("value", 0)
+                    
+                    # Preparar valores actuales
+                    current_values = created_register.copy()
+                    current_values[var_code] = raw_value
+                    
+                    # Obtener timestamp actual
+                    current_timestamp = None
+                    if data.get("date_time"):
+                        try:
+                            current_timestamp = datetime.strptime(
+                                data["date_time"], "%Y-%m-%dT%H:%M:%S"
+                            )
+                        except ValueError:
+                            current_timestamp = datetime.now()
+                    else:
+                        current_timestamp = datetime.now()
+                    
+                    # Procesar con FormulaEngine
+                    processed_value = engine.process_variable(
+                        core_var,
+                        raw_value,
+                        current_values,
+                        current_timestamp
+                    )
+                    
+                    # Guardar resultado según tipo
+                    if type_variable == "TOTALIZADO":
+                        created_register["total"] = processed_value
+                        created_register["pulses"] = raw_value
+                        # Calcular diferencias usando engine
+                        if current_timestamp:
+                            prev_values = engine.prev
+                            if "total" in prev_values:
+                                diff = processed_value - prev_values["total"]
+                                created_register["total_diff"] = diff
+                            time_diff = engine.time.get("diff_seconds", 3600)
+                            if time_diff > 0:
+                                created_register["total_today_diff"] = (
+                                    diff / time_diff * 3600 if diff else 0
+                                )
+                    
+                    elif type_variable == "NIVEL":
+                        created_register["nivel"] = processed_value
+                        # Calcular nivel freático si hay d3
+                        config = engine.config
+                        d3 = config.get("d3", 0)
+                        if d3:
+                            created_register["water_table"] = float(d3) - processed_value
+                    
+                    elif type_variable == "CAUDAL":
+                        created_register["flow"] = processed_value
+                    
+                    # Asignar timestamp del logger
+                    if data.get("date_time"):
+                        created_register["date_time_last_logger"] = data["date_time"]
+                        if type_variable == "TOTALIZADO":
+                            date_time_last_logger_total = data["date_time"]
+                    
+                    # Calcular días sin conexión
+                    created_register = calculate_days_not_connection(
+                        created_register, chile_tz, point_catchment
+                    )
+                    
+                    telemetry_logger.info(
+                        f"Punto {point_id} - Variable '{var_code}' procesada con FormulaEngine: {processed_value}"
+                    )
+                    
+                    return date_time_last_logger_total, created_register
+                    
+            except Exception as e:
+                telemetry_logger.debug(
+                    f"FormulaEngine no disponible para punto {point_id}, usando legacy: {e}"
+                )
+    except ImportError:
+        telemetry_logger.debug("FormulaEngine no disponible, usando procesadores legacy")
+
+    # Fallback a procesadores legacy
     try:
         if type_variable == "TOTALIZADO":
             date_time_last_logger_total, created_register = process_totalizado_variable(
@@ -650,26 +758,123 @@ def calculate_days_not_connection(
     return created_register
 
 
-def determine_dga_send(point_catchment: Dict[str, Any], chile_tz: Any) -> bool:
+
+
+def should_submit_compliance(
+    point_id: int,
+    provider_name: str,
+    record_timestamp: datetime,
+    telemetry_record_id: Optional[int] = None
+) -> bool:
     """
-    Determinar si debe enviar datos a DGA
+    Determinar si debe enviar datos a un proveedor de compliance (DGA, SMA, etc.) - Sistema Dinámico V3.
+
+    Esta función reemplaza determine_dga_send() y valida_frequency() con lógica dinámica
+    que funciona para CUALQUIER proveedor de compliance configurado en la BD.
 
     Args:
-        point_catchment: Datos del punto de captación
-        chile_tz: Zona horaria de Chile
+        point_id: ID del punto de captación
+        provider_name: Nombre del proveedor (ej: 'dga', 'sma', 'indh')
+        record_timestamp: Timestamp del registro de telemetría
+        telemetry_record_id: ID del TelemetryRecord (opcional, para validaciones adicionales)
 
     Returns:
         True si debe enviar, False si no
+
+    Ejemplos:
+        >>> should_submit_compliance(123, 'dga', datetime.now())
+        True  # Si está configurado y corresponde la frecuencia
+
+        >>> should_submit_compliance(456, 'sma', datetime.now())
+        False  # Si no está configurado o no corresponde enviar
     """
     try:
-        from api.telemetry.models import DgaDataConfigCatchment
-        get = DgaDataConfigCatchment.objects.get(
-            point_catchment__id=point_catchment["id"]
-        )
-        current_time = datetime.now(chile_tz)
+        from api.telemetry.providers.compliance_models import PointComplianceConfig
+        from api.telemetry.services.compliance_service import get_compliance_service
 
-        # Solo enviar a DGA si está habilitado Y corresponde la frecuencia
-        return get.send_dga and validate_frequency(point_catchment, current_time)
+        # 1. Buscar configuración activa para este punto + proveedor
+        # Se incluye select_related para optimizar la consulta del estándar y el proveedor
+        config = PointComplianceConfig.objects.filter(
+            point_id=point_id,
+            provider__name=provider_name,
+            is_active=True,
+            send_compliance=True  # Debe tener envío habilitado
+        ).select_related('provider', 'compliance_standard').first()
+
+        if not config:
+            telemetry_logger.debug(
+                f"Punto {point_id} no tiene configuración activa para proveedor '{provider_name}'"
+            )
+            return False
+
+        # 2. Validar contra el estándar de cumplimiento usando el servicio centralizado (V3 Dinámico)
+        service = get_compliance_service()
+        return service.should_submit(config, record_timestamp)
+
     except Exception as e:
-        telemetry_logger.error(f"Error determinando envío a DGA: {e}", exc_info=True)
+        telemetry_logger.error(
+            f"Error determinando envío de compliance para {provider_name} en pto {point_id}: {e}", 
+            exc_info=True
+        )
         return False
+
+
+def get_compliance_configs_for_record(
+    point_id: int,
+    record_timestamp: datetime
+) -> list:
+    """
+    Obtener todas las configuraciones de compliance que deben procesar este registro.
+
+    Esta función centraliza la lógica para determinar qué proveedores de compliance
+    deben recibir este registro de telemetría.
+
+    Args:
+        point_id: ID del punto de captación
+        record_timestamp: Timestamp del registro
+
+    Returns:
+        Lista de PointComplianceConfig que deben procesar el registro
+
+    Ejemplo:
+        >>> configs = get_compliance_configs_for_record(123, datetime.now())
+        >>> for config in configs:
+        >>>     # Enviar a este proveedor de compliance
+        >>>     send_compliance_data.delay(record_id, config.id)
+    """
+    try:
+        from api.telemetry.providers.compliance_models import PointComplianceConfig
+
+        # Obtener todas las configs activas con envío habilitado
+        all_configs = PointComplianceConfig.objects.filter(
+            point_id=point_id,
+            is_active=True,
+            send_compliance=True
+        ).select_related('provider')
+
+        # Filtrar por frecuencia
+        configs_to_submit = []
+
+        for config in all_configs:
+            if should_submit_compliance(
+                point_id,
+                config.provider.name,
+                record_timestamp
+            ):
+                configs_to_submit.append(config)
+
+        if configs_to_submit:
+            provider_names = [c.provider.display_name for c in configs_to_submit]
+            telemetry_logger.info(
+                f"Punto {point_id} - Enviar a {len(configs_to_submit)} proveedor(es): "
+                f"{', '.join(provider_names)}"
+            )
+
+        return configs_to_submit
+
+    except Exception as e:
+        telemetry_logger.error(
+            f"Error obteniendo configuraciones de compliance para punto {point_id}: {e}",
+            exc_info=True
+        )
+        return []

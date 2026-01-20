@@ -67,6 +67,23 @@ class ComplianceService:
         """
         return self._submit_record(record, record.config, 'manual')
 
+    def should_submit(self, config: PointComplianceConfig, record_timestamp: datetime) -> bool:
+        """
+        Determina si un registro debe enviarse según el estándar del punto de captación.
+        
+        Args:
+            config: Configuración de cumplimiento del punto.
+            record_timestamp: Timestamp del registro a validar.
+            
+        Returns:
+            bool: True si debe enviarse ahora, False si no.
+        """
+        if not config.send_compliance or not config.is_active:
+            return False
+        
+        # Validar contra estándar de cumplimiento
+        return config.should_submit_now(record_timestamp)
+
     def _submit_record(
         self,
         record: Union[TelemetryRecord, ManualComplianceRecord],

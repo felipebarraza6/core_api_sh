@@ -98,7 +98,6 @@ class InteractionDetailViewSet(
             model = TelemetryRecord
             fields = {
                 "point": ["exact"],
-                "send_dga": ["exact"],
                 "timestamp": ["contains", "gte", "lte", "year", "month", "day", "hour"],
                 "created": ["contains", "gte", "lte"],
             }
@@ -135,7 +134,6 @@ class InteractionDetailOverrideViewSet(
             model = TelemetryRecord
             fields = {
                 "point": ["exact"],
-                "send_dga": ["exact"],
                 "timestamp": ["contains", "gte", "lte", "year", "month", "day", "hour"],
                 "created": ["contains", "gte", "lte"],
             }
@@ -172,7 +170,6 @@ class InteractionDetailOverrideMonthViewSet(
             model = TelemetryRecord
             fields = {
                 "point": ["exact"],
-                "send_dga": ["exact"],
                 "timestamp": ["contains", "gte", "lte", "year", "month", "day", "hour"],
                 "created": ["contains", "gte", "lte"],
             }
@@ -283,7 +280,6 @@ class InteractionXLSMonth(XLSXFileMixin, ReadOnlyModelViewSet):
             model = TelemetryRecord
             fields = {
                 "point": ["exact"],
-                "send_dga": ["exact"],
                 "timestamp": [
                     "contains",
                     "gte",
@@ -304,14 +300,12 @@ class InteractionXLSMonth(XLSXFileMixin, ReadOnlyModelViewSet):
         "nivel",
         "days_not_conection",
         "point",
-        "send_dga",
-        "return_dga",
         "date_time_last_logger",
         "pulses",
         "total_diff",
-        "n_voucher",
         "is_error",
         "notification",
+        "compliance_status",
     ]
 
     column_header = {
@@ -375,7 +369,6 @@ class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
             model = TelemetryRecord
             fields = {
                 "point": ["exact"],
-                "send_dga": ["exact"],
                 "timestamp": [
                     "contains",
                     "gte",
@@ -395,13 +388,11 @@ class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
         "created",
         "days_not_conection",
         "point",
-        "send_dga",
-        "return_dga",
         "date_time_last_logger",
-        "n_voucher",
         "pulses",
         "is_error",
         "notification",
+        "compliance_status",
     ]
 
     column_header = {
@@ -559,7 +550,6 @@ class InteractionXLSDga(XLSXFileMixin, ReadOnlyModelViewSet):
             model = TelemetryRecord
             fields = {
                 "point": ["exact"],
-                "send_dga": ["exact"],
                 "timestamp": [
                     "contains",
                     "gte",
@@ -580,14 +570,13 @@ class InteractionXLSDga(XLSXFileMixin, ReadOnlyModelViewSet):
         "nivel",
         "days_not_conection",
         "point",
-        "send_dga",
-        "return_dga",
         "date_time_last_logger",
         "pulses",
         "total_diff",
         "total_today_diff",
         "is_error",
         "notification",
+        "compliance_status",
     ]
 
     column_header = {

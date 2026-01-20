@@ -11,13 +11,12 @@ from typing import Optional
 import pytz
 
 from django.db.models import Avg, Q
-from api.telemetry.models import TelemetryRecord, DgaDataConfigCatchment
-from api.telemetry.ingestion.controllers.flow import average_flow
+from api.telemetry.models import TelemetryRecord
+from api.telemetry.providers.compliance_models import PointComplianceConfig
+from api.telemetry.processing import FormulaEngine
 
 
-def calculate_daily_average_flow(
-    register: TelemetryRecord, dga_config: DgaDataConfigCatchment
-) -> float:
+def calculate_daily_average_flow(register: TelemetryRecord) -> float:
     """
     Calcula el caudal medio diario para estándar MEDIO.
 
@@ -31,8 +30,14 @@ def calculate_daily_average_flow(
     Returns:
         float: Caudal medio diario en L/s, o 0.0 si no se puede calcular
     """
-    if dga_config.standard != "MEDIO":
-        # Para otros estándares, usar cálculo actual (no modificar comportamiento)
+    # Validamos si corresponde a estándar MEDIO vía Compliance
+    compliance_config = PointComplianceConfig.objects.filter(
+        point=register.point, provider__name="dga", is_active=True
+    ).select_related("compliance_standard").first()
+
+    if not compliance_config or (
+        compliance_config.compliance_standard and compliance_config.compliance_standard.name != "MEDIO"
+    ):
         return _calculate_dynamic_flow_fallback(register)
 
     try:
@@ -142,14 +147,9 @@ def _calculate_dynamic_flow_fallback(register: TelemetryRecord) -> float:
         return 0.0
 
 
-def calculate_flow_by_standard(
-    register: TelemetryRecord, dga_config: DgaDataConfigCatchment
-) -> float:
+def calculate_flow_by_standard(register: TelemetryRecord) -> float:
     """
     Calcula el caudal según el estándar DGA del punto.
     """
-    if dga_config.standard == "MEDIO":
-        return calculate_daily_average_flow(register, dga_config)
-    else:
-        return _calculate_dynamic_flow_fallback(register)
+    return calculate_daily_average_flow(register)
 

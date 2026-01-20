@@ -15,7 +15,6 @@ router.register(r'users', views_users.UserViewSet, basename='users')
 
 # Interaction details
 router.register(r'interaction_detail', views_detail.InteractionXLS)
-router.register(r'interaction_detail_dga', views_detail.InteractionXLSDga, basename='interaction_detail_dga')
 router.register(r'interaction_detail_override', views_detail.InteractionDetailOverrideViewSet, basename='interaction_detail_override')
 router.register(r'interaction_detail_override_month', views_detail.InteractionDetailOverrideMonthViewSet, basename='interaction_detail_override_month')
 router.register(r'interaction_detail_override_month_xlsx', views_detail.InteractionXLSMonth, basename='interaction_detail_override_month_xlsx')
@@ -31,7 +30,6 @@ router.register(r'response_notifications_catchment', views_catchment.Notificatio
 router.register(r'type_file_catchment', views_catchment.DocumentTypeViewSet, basename='type_file_catchment')
 router.register(r'file_catchment', views_catchment.DocumentViewSet, basename='file_catchment')
 router.register(r'profile_data_config_catchment', views_catchment.ProfileDataConfigCatchmentViewSet, basename='profile_data_config_catchment')
-router.register(r'dga_data_config_catchment', views_catchment.DgaDataConfigCatchmentViewSet, basename='dga_data_config_catchment')
 router.register(r'variable', views_catchment.CoreVariableViewSet, basename='variable')
 router.register(r'register_persons', views_catchment.PersonViewSet, basename='register_persons')
 

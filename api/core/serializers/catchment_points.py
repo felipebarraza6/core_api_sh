@@ -6,7 +6,6 @@ from rest_framework import serializers
 
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    DgaDataConfigCatchment,
     ProfileDataConfigCatchment,
     ProfileIkoluCatchment,
 )
@@ -84,26 +83,6 @@ class ProfileDataConfigCatchmentSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class DgaDataConfigCatchmentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DgaDataConfigCatchment
-        fields = "__all__"
-
-
-class DgaCronSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DgaDataConfigCatchment
-        fields = (
-            "send_dga",
-            "standard",
-            "type_dga",
-            "code_dga",
-            "flow_granted_dga",
-            "total_granted_dga",
-            "shac",
-            "date_start_compliance",
-            "date_created_code",
-        )
 
 
 class VariableCronSerializer(serializers.ModelSerializer):
@@ -340,9 +319,11 @@ class InteractionDetailModuleSerializer(serializers.ModelSerializer):
             "date_time_medition",
             "metadata",
             "data",
-            "send_dga",
-            "return_dga",
-            "n_voucher",
+            "date_time_medition",
+            "metadata",
+            "data",
+            "compliance_status",
+            "is_error",
         )
 
     def to_representation(self, instance):
@@ -365,7 +346,6 @@ class InteractionDetailModuleSerializer(serializers.ModelSerializer):
 class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
     profile_ikolu = serializers.SerializerMethodField("get_profile_ikolu")
     config_data = serializers.SerializerMethodField("get_config_data")
-    dga = serializers.SerializerMethodField("get_dga")
     modules = serializers.SerializerMethodField("get_modules")
 
     def get_modules(self, obj):
@@ -376,8 +356,9 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
         base_qs = TelemetryRecord.objects.filter(point=obj).order_by("-timestamp")
 
         get_data_m1 = base_qs.first()
-        get_data_m2 = base_qs.filter(send_dga=True)[:48]
-        get_data_m22 = base_qs.filter(send_dga=True, timestamp__date=today)[:24]
+        # Registros con compliance (DGA/SMA)
+        get_data_m2 = base_qs.exclude(compliance_status={})[:48]
+        get_data_m22 = base_qs.exclude(compliance_status={}, timestamp__date=today)[:24]
 
         today_qs = base_qs.filter(timestamp__date=today)
         yesterday_qs = base_qs.filter(timestamp__date=yesterday)
@@ -437,8 +418,8 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
 
             item = {
                 "date_time_medition": dt_local.strftime("%Y-%m-%d %H:%M:%S"),
-                "send_dga": r.send_dga,
-                "n_voucher": r.n_voucher or "-",
+                "compliance_status": r.compliance_status,
+                "n_voucher": r.compliance_status.get('dga', {}).get('voucher', '-'),
             }
 
             # Inyectar todos los datos dinámicos del JSONField
@@ -463,9 +444,6 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
             data.append(item)
         return data
 
-    def get_dga(self, obj):
-        get_data = DgaDataConfigCatchment.objects.filter(point_catchment=obj).first()
-        return DgaCronSerializer(get_data).data if get_data else {}
 
     def get_config_data(self, obj):
         get_data = ProfileDataConfigCatchment.objects.filter(
@@ -487,7 +465,6 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
             "frecuency",
             "profile_ikolu",
             "config_data",
-            "dga",
             "modules",
             "lat",
             "lon",

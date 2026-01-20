@@ -14,7 +14,6 @@ from django.utils import timezone
 from api.core.cache.telemetry_cache import TelemetryCache
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    DgaDataConfigCatchment,
     ProfileDataConfigCatchment,
 )
 from api.telemetry.models.telemetry import TelemetryRecord
@@ -173,7 +172,7 @@ class TelemetryService:
                 avg_flow=Avg("data__flow"),
                 max_flow=Max("data__flow"),
                 error_count=Count("id", filter=Q(is_error=True)),
-                dga_pending_count=Count("id", filter=Q(send_dga=True)),
+                dga_pending_count=Count("id", filter=Q(compliance_status__dga__sent=False)),
             )
         )
 
@@ -257,8 +256,7 @@ class TelemetryService:
             "nivel": float(data.get("nivel", 0)),
             "water_table": float(data.get("water_table", 0)),
             "is_error": record.is_error,
-            "send_dga": record.send_dga,
-            "n_voucher": record.n_voucher or "-",
+            "compliance_status": record.compliance_status,
             "days_not_conection": record.metadata.get("days_not_connection", 0),
             "is_partial": record.is_partial,
             "pulses": data.get("pulses", 0),

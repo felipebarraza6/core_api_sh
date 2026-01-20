@@ -282,10 +282,10 @@ def _generate_compliance_alert(config: PointComplianceConfig):
     """
     Generate alert for compliance issues.
     """
-    from api.telemetry.models import NotificationsCatchment
+    from api.notifications.models import Notification
     
     try:
-        NotificationsCatchment.objects.create(
+        Notification.objects.create(
             point_catchment=config.point,
             title=f"Falta envío {config.provider.name.upper()} - {config.point.title}",
             message=f"El punto {config.point.title} no ha enviado datos a "

@@ -342,3 +342,13 @@ from .compliance_models import (
     PointComplianceConfig,
     ManualComplianceRecord,
 )
+
+from .compliance_standard import ComplianceStandard
+
+# Import MQTT models to make them available in this module
+# This allows Django to auto-discover them during migrations
+from .mqtt_models import (
+    MQTTProviderConfig,
+    PayloadParsingRule,
+    CatchmentPointMQTT,
+)

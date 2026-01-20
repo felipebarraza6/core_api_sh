@@ -13,7 +13,7 @@ from django.db.models import Min, Max, Avg, Count, Sum, Q
 import pytz
 
 from api.telemetry.models import CatchmentPoint, TelemetryRecord, CoreVariable
-from api.telemetry.ingestion.controllers.flow import average_flow
+from api.telemetry.processing import FormulaEngine
 
 logger = logging.getLogger(__name__)
 
@@ -236,7 +236,7 @@ def get_month_flows_sample(point: CatchmentPoint, month_start: datetime,
                 if curr_ts.tzinfo is None:
                     curr_ts = chile_tz.localize(curr_ts)
                 
-                flow_calc = average_flow(point_dict, total_actual, curr_ts)
+                flow_calc = FormulaEngine.average_flow(point_dict, total_actual, curr_ts)
                 if flow_calc > 0:
                     month_flows.append(flow_calc)
                     continue

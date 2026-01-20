@@ -14,7 +14,8 @@ from datetime import timedelta
 from api.telemetry.services.telemetry_service import TelemetryService
 from api.core.services.stats_service import StatsService
 from api.core.services.action_service import ActionService
-from api.telemetry.models.catchment_points import CatchmentPoint, DgaDataConfigCatchment
+from api.telemetry.models.catchment_points import CatchmentPoint
+from api.telemetry.providers.compliance_models import PointComplianceConfig
 from api.telemetry.models.telemetry import TelemetryRecord
 from api.telemetry.models.granular_telemetry import DataPoint as DataPointModel
 from api.infrastructure.models import Device, Connection
@@ -345,10 +346,13 @@ class UserActionControlView(APIView):
             raise ValueError(f"Unknown action: {action_code}")
 
     def _toggle_dga_send(self, user, point_id, enable):
-        config = DgaDataConfigCatchment.objects.filter(point_catchment_id=point_id).first()
+        config = PointComplianceConfig.objects.filter(
+            point_id=point_id, 
+            provider__name='dga'
+        ).first()
         if not config:
             raise ValueError(f"No DGA configuration found for point {point_id}")
-        config.send_dga = enable
+        config.send_compliance = enable
         config.save()
         return {"message": f"DGA {'enabled' if enable else 'disabled'}", "point_id": point_id}
 

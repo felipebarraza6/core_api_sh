@@ -11,10 +11,8 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
-from api.telemetry.models import (
-    NotificationsCatchment, TelemetryRecord,
-    CatchmentPoint
-)
+from api.telemetry.models import TelemetryRecord, CatchmentPoint
+from api.notifications.models import Notification
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +25,7 @@ def process_alerts(self):
     start_time = time.time()
     try:
         logger.info("Starting alert processing V3")
-        active_alerts = NotificationsCatchment.objects.filter(
+        active_alerts = Notification.objects.filter(
             is_active=True,
             is_read=False
         ).select_related('point_catchment')
@@ -155,9 +153,9 @@ def create_alert_notification(alert, telemetry_data):
     Create response notification
     """
     try:
-        from api.telemetry.models import ResponseNotificationsCatchment
+        from api.notifications.models import NotificationResponse
         message = format_alert_message(alert, telemetry_data)
-        ResponseNotificationsCatchment.objects.create(
+        NotificationResponse.objects.create(
             notification=alert,
             user=alert.point_catchment.owner_user,
             response=message

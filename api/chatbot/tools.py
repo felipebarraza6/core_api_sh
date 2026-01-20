@@ -478,7 +478,8 @@ def get_dga_compliance(client_name):
     """Obtiene el cumplimiento DGA de un cliente: códigos, vouchers y errores."""
     from datetime import datetime, timedelta
 
-    from api.telemetry.models.catchment_points import CatchmentPoint, Client, DgaDataConfigCatchment
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client
+    from api.telemetry.providers.compliance_models import PointComplianceConfig
 
     clients = Client.objects.filter(name__icontains=client_name)
     if not clients.exists():
@@ -518,12 +519,11 @@ def get_dga_compliance(client_name):
     details = []
 
     for point in points:
-        # Obtener configuración DGA
-        dga_config = DgaDataConfigCatchment.objects.filter(
-            point_catchment=point
-        ).first()
+        compliance_config = PointComplianceConfig.objects.filter(
+            point=point, provider__name="dga"
+        ).select_related("compliance_standard").first()
 
-        if not dga_config or not dga_config.send_dga:
+        if not compliance_config or not compliance_config.send_compliance:
             continue  # Saltar puntos sin DGA activo
 
         points_with_dga += 1
@@ -531,9 +531,8 @@ def get_dga_compliance(client_name):
         # Contar envíos de hoy (registros con voucher)
         envios_hoy = (
             TelemetryRecord.objects.filter(
-                point=point, timestamp__gte=today_start, n_voucher__isnull=False
-            )
-            .exclude(n_voucher="")
+                point=point, timestamp__gte=today_start
+            ).exclude(compliance_status__dga__voucher__isnull=True).exclude(compliance_status__dga__voucher='')
             .count()
         )
 
@@ -545,12 +544,11 @@ def get_dga_compliance(client_name):
         )
 
         if not latest:
-            details.append(
-                {
+            details.append({
                     "icon": "⚪",
                     "title": point.title,
-                    "code": dga_config.code_dga or "N/A",
-                    "standard": dga_config.standard,
+                    "code": compliance_config.config_data.get('code_dga', 'N/A'),
+                    "standard": compliance_config.compliance_standard.name if compliance_config.compliance_standard else 'N/A',
                     "status": "Sin mediciones",
                     "envios_hoy": 0,
                 }
@@ -574,20 +572,21 @@ def get_dga_compliance(client_name):
         )
 
         # Determinar estado basado en voucher y errores
-        has_voucher = latest.n_voucher and latest.n_voucher.strip()
+        compliance_dga = latest.compliance_status.get('dga', {})
+        has_voucher = compliance_dga.get('voucher')
         has_error = latest.is_error or (
-            latest.return_dga and "error" in latest.return_dga.lower()
+            compliance_dga.get('message') and "error" in compliance_dga.get('message').lower()
         )
 
         if has_voucher:
             points_with_vouchers += 1
             estado_icon = "✅"
-            estado_text = f"Voucher: {latest.n_voucher[:20]}"
+            estado_text = f"Voucher: {str(has_voucher)[:20]}"
         elif has_error:
             points_with_errors += 1
             estado_icon = "❌"
             error_msg = (
-                latest.return_dga[:50] if latest.return_dga else "Error desconocido"
+                str(compliance_dga.get('message', 'Error desconocido'))[:50]
             )
             estado_text = f"Error: {error_msg}"
         else:
@@ -603,8 +602,8 @@ def get_dga_compliance(client_name):
             {
                 "icon": estado_icon,
                 "title": point.title,
-                "code": dga_config.code_dga or "N/A",
-                "standard": dga_config.standard,
+                "code": compliance_config.config_data.get('code_dga', 'N/A'),
+                "standard": compliance_config.compliance_standard.name if compliance_config.compliance_standard else 'N/A',
                 "fecha": fecha,
                 "flow": flow_val,
                 "total": total_val,
@@ -655,9 +654,9 @@ def get_point_config(point_name, context_client=None):
     """Obtiene la configuración completa de un punto."""
     from api.telemetry.models.catchment_points import (
         CatchmentPoint,
-        DgaDataConfigCatchment,
         ProfileDataConfigCatchment,
     )
+    from api.telemetry.providers.compliance_models import PointComplianceConfig
     from api.core.models import CoreVariable
 
     # Usar search_points para desambiguar con contexto
@@ -718,16 +717,19 @@ def get_point_config(point_name, context_client=None):
                 res += f"      • Unit: {v.unit} | Factor: {v.scale_factor}\n"
             res += "\n"
 
-    # Configuración DGA
-    dga_config = DgaDataConfigCatchment.objects.filter(point_catchment=point).first()
-    if dga_config and dga_config.send_dga:
-        res += f"📋 *Configuración DGA (Fiscalización)*\n"
-        res += f"   • Código Obra: `{dga_config.code_dga or 'N/A'}`\n"
-        res += f"   • Estándar: {dga_config.get_standard_display() if hasattr(dga_config, 'get_standard_display') else dga_config.standard}\n"
-        res += f"   • Tipo: {dga_config.get_type_dga_display() if hasattr(dga_config, 'get_type_dga_display') else dga_config.type_dga}\n"
-        res += f"   • Caudal Otorgado: {dga_config.flow_granted_dga} L/s\n"
-        if dga_config.total_granted_dga:
-            res += f"   • Total Anual: {dga_config.total_granted_dga} m³\n"
+    # Configuración de Cumplimiento (DGA, SMA, etc.)
+    compliance_configs = PointComplianceConfig.objects.filter(point=point, is_active=True).select_related('provider', 'compliance_standard')
+    if compliance_configs.exists():
+        res += f"📋 *Configuraciones de Cumplimiento (DGA/SMA/Fiscalización)*\n"
+        for config in compliance_configs:
+            provider_name = config.provider.display_name
+            res += f"   🔹 *{provider_name}* (ID: {config.id})\n"
+            res += f"      • Estándar: {config.compliance_standard.display_name if config.compliance_standard else 'N/A'}\n"
+            res += f"      • Envío Activo: {'✅ SI' if config.send_compliance else '❌ NO'}\n"
+            # Mostrar datos técnicos clave del config_data
+            for key in ['code_dga', 'type_dga', 'flow_granted_dga']:
+                if key in config.config_data:
+                    res += f"      • {key}: {config.config_data[key]}\n"
         res += "\n"
 
     res = add_suggestions(res, context="POINT", point=point.title, client=client_name)
@@ -765,10 +767,15 @@ def get_client_alerts(client_name):
             disconnected.append({"point": point.title, "days": int(days_disc)})
 
         if latest.is_error:
+            compliance_msg = ""
+            for prov, status in latest.compliance_status.items():
+                if status.get('message') and "error" in status.get('message').lower():
+                    compliance_msg += f" [{prov}: {status.get('message')[:30]}]"
+            
             errors.append(
                 {
                     "point": point.title,
-                    "error": (latest.return_dga[:50] if latest.return_dga else "Error"),
+                    "error": compliance_msg or "Error técnico",
                 }
             )
 
@@ -879,7 +886,12 @@ def get_client_errors(client_name, days=7):
     res += f"Reporte de los últimos {days} días\n\n"
     for r in error_records:
         fecha = r.timestamp.strftime("%d/%m %H:%M")
-        res += f"• *{r.point.title}* ({fecha}):\n  └─ {r.return_dga[:80]}\n\n"
+        error_info = ""
+        for prov, status in r.compliance_status.items():
+            if status.get('message') and "error" in status.get('message').lower():
+                error_info += f"{prov}: {status.get('message')[:50]} | "
+        
+        res += f"• *{r.point.title}* ({fecha}):\n  └─ {error_info or 'Fallo técnico'}\n\n"
 
     res = add_suggestions(res, context="STATS", client=client.name)
     return res
@@ -892,7 +904,8 @@ def get_global_status():
     import pytz
     from django.db.models import Count, Q
 
-    from api.telemetry.models.catchment_points import CatchmentPoint, Client, NotificationsCatchment
+    from api.telemetry.models.catchment_points import CatchmentPoint, Client
+    from api.notifications.models import Notification
 
     chile_tz = pytz.timezone("America/Santiago")
 
@@ -983,7 +996,7 @@ def get_global_status():
 
     # 3. SECCIÓN NOTIFICACIONES (Agrupadas)
     notifs = (
-        NotificationsCatchment.objects.filter(is_active=True)
+        Notification.objects.filter(is_active=True)
         .select_related("point_catchment__project__client")
         .order_by("-id")[:20]
     )
@@ -1020,10 +1033,10 @@ def get_recent_notifications(limit=10):
     """Obtiene y agrupa las últimas notificaciones importantes generadas por el sistema."""
     from collections import Counter
 
-    from api.telemetry.models.catchment_points import NotificationsCatchment
+    from api.notifications.models import Notification
 
     notifs = (
-        NotificationsCatchment.objects.filter(is_active=True)
+        Notification.objects.filter(is_active=True)
         .select_related("point_catchment", "point_catchment__project__client")
         .order_by("-id")[: limit * 2]
     )  # Pedir más para agrupar

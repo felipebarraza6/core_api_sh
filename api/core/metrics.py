@@ -4,11 +4,11 @@ Expone métricas de telemetría, DGA, SMA y sistema.
 """
 from prometheus_client import Counter, Gauge, Histogram, Info
 from django.db.models import Count
-from api.telemetry.models.catchment_points import (
+from api.telemetry.models import (
     CatchmentPoint,
-    DgaDataConfigCatchment,
     ProfileDataConfigCatchment,
 )
+from api.telemetry.providers.compliance_models import PointComplianceConfig
 from api.telemetry.models.telemetry import TelemetryRecord
 from api.notifications.models import Notification
 from datetime import datetime, timedelta
@@ -336,11 +336,9 @@ def update_provider_metrics():
 
 def update_dga_metrics():
     """Actualiza métricas de DGA."""
-    # Registros pendientes de envío
+    # Registros pendientes de envío a DGA
     pending_records = TelemetryRecord.objects.filter(
-        send_dga=False,
-        is_error=False
-    ).values('point_id', 'point__title').annotate(
+        compliance_status__dga__sent=False,
         count=Count('id')
     )
 
@@ -349,12 +347,12 @@ def update_dga_metrics():
         point_name = record['point__title']
         count = record['count']
 
-        # Obtener tipo de estándar DGA
-        dga_config = DgaDataConfigCatchment.objects.filter(
-            point_catchment_id=point_id
-        ).first()
+        # Obtener tipo de estándar DGA vía Compliance
+        compliance_config = PointComplianceConfig.objects.filter(
+            point_id=point_id, provider__name="dga", is_active=True
+        ).select_related("compliance_standard").first()
 
-        standard_type = dga_config.standard if dga_config else "UNKNOWN"
+        standard_type = compliance_config.compliance_standard.name if compliance_config and compliance_config.compliance_standard else "UNKNOWN"
 
         dga_pending_records.labels(
             point_id=point_id,

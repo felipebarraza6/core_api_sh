@@ -10,6 +10,7 @@ from .compliance_models import (
     ComplianceProvider,
     PointComplianceConfig,
     ManualComplianceRecord,
+    ComplianceStandard,
 )
 from .forms import TelemetryProviderForm
 # Import Manager/Handler for testing connection
@@ -242,6 +243,22 @@ class ComplianceProviderAdmin(admin.ModelAdmin):
     auth_method_badge.short_description = 'Auth'
 
 
+@admin.register(ComplianceStandard)
+class ComplianceStandardAdmin(admin.ModelAdmin):
+    """Admin para estándares de cumplimiento (DGA/SMA)."""
+    list_display = ('code', 'name', 'frequency_type', 'records_per_period', 'is_active')
+    list_filter = ('frequency_type', 'is_active')
+    search_fields = ('code', 'name', 'description')
+    
+    fieldsets = (
+        ('Información Básica', {
+            'fields': ('code', 'name', 'description', 'is_active')
+        }),
+        ('Configuración de Frecuencia', {
+            'fields': ('frequency_type', 'hour', 'minute', 'day_of_month', 'months', 'records_per_period')
+        }),
+    )
+
 class ManualComplianceRecordInline(admin.TabularInline):
     """Inline for viewing manual records in point config."""
     model = ManualComplianceRecord
@@ -256,12 +273,15 @@ class PointComplianceConfigAdmin(admin.ModelAdmin):
     """Admin for Point Compliance Configurations."""
     
     list_display = (
-        'point_title', 'provider_name', 'send_compliance', 
+        'point_title', 'provider_name', 'compliance_standard', 'send_compliance', 
         'data_source', 'is_active', 'success_rate', 'last_success_display'
     )
-    list_filter = ('provider__name', 'send_compliance', 'data_source', 'is_active')
-    search_fields = ('point__title', 'provider__name')
-    autocomplete_fields = ('point', 'provider')
+    list_filter = (
+        'provider__name', 'compliance_standard__code', 
+        'send_compliance', 'data_source', 'is_active'
+    )
+    search_fields = ('point__title', 'provider__name', 'compliance_standard__name')
+    autocomplete_fields = ('point', 'provider', 'compliance_standard')
     readonly_fields = (
         'last_submission', 'last_success', 'last_error', 
         'error_count', 'total_submissions', 'successful_submissions'
@@ -270,7 +290,7 @@ class PointComplianceConfigAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Configuración Principal', {
-            'fields': ('point', 'provider', 'is_active', 'send_compliance', 'data_source')
+            'fields': ('point', 'provider', 'compliance_standard', 'is_active', 'send_compliance', 'data_source')
         }),
         ('Datos del Punto', {
             'fields': ('config_data',),
@@ -367,3 +387,7 @@ class ManualComplianceRecordAdmin(admin.ModelAdmin):
             color, obj.get_status_display()
         )
     status_badge.short_description = 'Estado'
+
+
+# Import MQTT admin to register models and extend existing admin
+from . import admin_mqtt

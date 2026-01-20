@@ -1,4 +1,4 @@
-"""Servicio MQTT para conexión directa de equipos IoT (V3)."""
+"""Servicio MQTT para conexión directa de equipos IoT (V3) - Sistema Dinámico."""
 
 import asyncio
 import json
@@ -14,24 +14,29 @@ from api.infrastructure.models import Device, Connection, MessageLog
 from api.telemetry.models.catchment_points import CatchmentPoint
 from api.telemetry.models.telemetry import TelemetryRecord
 from api.telemetry.ingestion.controllers.unified_processing import save_telemetry_data
+from api.telemetry.providers import get_provider_manager
 
 logger = logging.getLogger(__name__)
 
 
 class MQTTService:
     """
-    Servicio MQTT para gestión de conexiones y mensajes con equipos IoT (V3).
+    Servicio MQTT para gestión de conexiones y mensajes con equipos IoT (V3) - Sistema Dinámico.
+
+    Este servicio ahora delega el procesamiento de mensajes MQTT a los handlers
+    dinámicos configurados en la base de datos a través del ProviderManager.
     """
 
     def __init__(self):
         self.clients: Dict[str, mqtt.Client] = {}
+        self.provider_manager = get_provider_manager()
         self.message_handlers: Dict[str, Callable] = {}
         self._setup_message_handlers()
 
     def _setup_message_handlers(self):
         """Configurar handlers para diferentes tipos de mensajes."""
         self.message_handlers = {
-            'telemetry': self._handle_telemetry_message,
+            'telemetry': self._handle_telemetry_message_dynamic,
             'status': self._handle_status_message,
             'configuration': self._handle_configuration_message,
             'command_response': self._handle_command_response,
@@ -106,19 +111,24 @@ class MQTTService:
 
     def _on_message(self, client, connection: Connection, msg):
         try:
+            # Log the message first
+            self._log_mqtt_message(connection, msg)
+
+            # Decode payload
             try:
                 payload = json.loads(msg.payload.decode('utf-8'))
             except json.JSONDecodeError:
                 payload = {'raw_data': msg.payload.decode('utf-8')}
 
-            self._log_mqtt_message(connection, msg, payload)
-            asyncio.create_task(self._process_message(connection, msg.topic, payload))
+            # Process message using dynamic system
+            asyncio.create_task(self._process_message_dynamic(connection, msg.topic, payload, msg))
         except Exception as exc:
             logger.error(f"Error processing MQTT message: {exc}")
 
-    def _log_mqtt_message(self, connection: Connection, msg, payload):
+    def _log_mqtt_message(self, connection: Connection, msg):
         try:
-            device_id = self._extract_device_id(msg.topic, payload)
+            # Extract device_id for logging
+            device_id = self._extract_device_id_from_topic(msg.topic)
             device = Device.objects.filter(device_id=device_id).first() if device_id else None
 
             MessageLog.objects.create(
@@ -126,78 +136,179 @@ class MQTTService:
                 device=device,
                 message_type='PUBLISH',
                 topic=msg.topic,
-                payload=payload,
+                payload={'raw_payload': True},  # Don't store full payload for performance
                 qos=msg.qos,
                 retained=msg.retain
             )
 
             connection.messages_received_today += 1
-            connection.bytes_received_today += len(str(payload))
+            connection.bytes_received_today += len(msg.payload)
             connection.save(update_fields=['messages_received_today', 'bytes_received_today'])
         except Exception as exc:
             logger.error(f"Error logging MQTT message: {exc}")
 
-    def _extract_device_id(self, topic: str, payload: dict) -> Optional[str]:
+    def _extract_device_id_from_topic(self, topic: str) -> Optional[str]:
+        """Extract device_id from topic using dynamic provider configuration."""
         topic_parts = topic.split('/')
         if len(topic_parts) >= 2:
+            # Try to match against configured providers
+            for provider_name, provider in self.provider_manager._providers.items():
+                if provider.provider_type == 'mqtt' and hasattr(provider, 'mqtt_config'):
+                    try:
+                        # Use the MQTT config to extract device_id
+                        template = provider.mqtt_config.subscribe_topic_template
+                        # Simple extraction: assume {provider}/{device_id}/... format
+                        if template.startswith(f"{provider_name}/{{device_id}}"):
+                            parts = topic.split('/')
+                            if len(parts) > 1:
+                                return parts[1]
+                    except Exception:
+                        continue
+
+            # Fallback to simple extraction
             return topic_parts[1]
-        return payload.get('device_id') or payload.get('id')
+        return None
 
-    async def _process_message(self, connection: Connection, topic: str, payload: dict):
-        message_type = self._determine_message_type(topic, payload)
-        handler = self.message_handlers.get(message_type)
-        if handler:
-            await handler(connection, topic, payload)
-
-    def _determine_message_type(self, topic: str, payload: dict) -> str:
-        if 'telemetry' in topic.lower(): return 'telemetry'
-        if 'status' in topic.lower(): return 'status'
-        if 'config' in topic.lower(): return 'configuration'
-        if 'flow' in payload or 'level' in payload or 'total' in payload: return 'telemetry'
-        return 'telemetry'
-
-    async def _handle_telemetry_message(self, connection: Connection, topic: str, payload: dict):
+    async def _process_message_dynamic(self, connection: Connection, topic: str, payload: dict, msg):
+        """Process message using dynamic provider system."""
         try:
-            device_id = self._extract_device_id(topic, payload)
-            if not device_id: return
+            # Find the appropriate MQTT provider handler for this topic
+            handler = self._find_handler_for_topic(topic)
+            if not handler:
+                logger.debug(f"No handler found for topic: {topic}")
+                return
 
-            device = Device.objects.select_related('catchment_point').filter(device_id=device_id).first()
-            if not device: return
+            # Extract device_id
+            device_id = self._extract_device_id_from_topic(topic)
 
-            await self._process_device_telemetry(device, payload)
-        except Exception as exc:
-            logger.error(f"Error handling telemetry message: {exc}")
+            # Use the handler's parser to process the message
+            parsed_data = handler.parser.parse(topic, msg.payload, device_id or '')
 
-    async def _process_device_telemetry(self, device: Device, payload: dict):
-        """Procesar telemetría MQTT usando lógica V3 unificada."""
-        try:
-            with transaction.atomic():
-                device.update_status_from_data(payload)
-                
-                # Preparar registro para V3
-                created_register = {
-                    "timestamp": timezone.now(),
-                    "metadata": {
-                        "last_logger_timestamp": payload.get('timestamp'),
-                        "source": "MQTT",
-                        "raw_payload": payload
-                    },
-                    "data": {
-                        "flow": payload.get('flow'),
-                        "nivel": payload.get('level'),
-                        "water_table": payload.get('water_table'),
-                        "total": payload.get('total'),
-                        "pulses": payload.get('pulses')
-                    },
-                    "is_error": payload.get('error', False)
-                }
-                
-                # Usar guardado unificado V3
-                save_telemetry_data(device.catchment_point.id, created_register)
-                logger.info(f"Telemetry V3 processed for device {device.device_id}")
+            # Save telemetry data
+            await self._save_telemetry_from_parsed_data(device_id, parsed_data)
 
         except Exception as exc:
-            logger.error(f"Error processing device telemetry V3: {exc}")
+            logger.error(f"Error in dynamic message processing: {exc}")
+
+    def _find_handler_for_topic(self, topic: str):
+        """Find the appropriate MQTT handler for a topic."""
+        for provider_name, provider in self.provider_manager._providers.items():
+            if provider.provider_type == 'mqtt':
+                handler = self.provider_manager.get_handler(provider_name)
+                if handler and hasattr(handler, 'parser'):
+                    # Check if this handler can handle this topic pattern
+                    try:
+                        mqtt_config = provider.mqtt_config
+                        # Simple check: if topic matches the subscribe template pattern
+                        if self._topic_matches_provider(topic, provider):
+                            return handler
+                    except Exception:
+                        continue
+        return None
+
+    def _topic_matches_provider(self, topic: str, provider) -> bool:
+        """Check if topic matches provider's subscription pattern."""
+        try:
+            template = provider.mqtt_config.subscribe_topic_template
+            # Simple pattern matching - could be enhanced with regex
+            provider_prefix = f"{provider.name}/"
+            return topic.startswith(provider_prefix)
+        except Exception:
+            return False
+
+    async def _save_telemetry_from_parsed_data(self, device_id: str, parsed_data: Dict):
+        """Save telemetry data from parsed MQTT message."""
+        try:
+            # Find catchment point by device_id
+            point = await self._find_catchment_point_async(device_id)
+            if not point:
+                logger.warning(f"No catchment point found for device {device_id}")
+                return
+
+            # Prepare register data
+            created_register = {
+                "date_time_medition": parsed_data.get('timestamp') or timezone.now(),
+                "date_time_last_logger": parsed_data.get('timestamp') or timezone.now(),
+                "device_id": device_id,
+                "is_error": False,
+                "is_partial": False,
+            }
+
+            # Map parsed data to register fields
+            data_mapping = {
+                'flow': 'flow',
+                'nivel': 'nivel',
+                'water_table': 'water_table',
+                'total': 'total',
+                'pulses': 'pulses',
+                'temperature': 'temperature',
+                'pressure': 'pressure',
+                'conductivity': 'conductivity',
+            }
+
+            for parsed_field, register_field in data_mapping.items():
+                if parsed_field in parsed_data:
+                    created_register[register_field] = parsed_data[parsed_field]
+
+            # Add metadata
+            created_register["variable_details"] = [{
+                "internal_code": "mqtt_dynamic",
+                "str_variable": "mqtt_data",
+                "type_variable": parsed_data.get('variable_type', 'UNKNOWN'),
+                "service": "MQTT_DYNAMIC",
+                "provider": "mqtt",
+                "success": True,
+                "value": parsed_data.get('value'),
+                "timestamp": parsed_data.get('timestamp'),
+            }]
+
+            # Save using unified processing
+            record = await asyncio.get_event_loop().run_in_executor(
+                None, save_telemetry_data, point.id, created_register
+            )
+
+            if record:
+                logger.info(f"Dynamic MQTT telemetry saved for device {device_id} (record {record.id})")
+
+        except Exception as exc:
+            logger.error(f"Error saving telemetry from parsed data: {exc}")
+
+    async def _find_catchment_point_async(self, device_id: str):
+        """Find catchment point by device_id asynchronously."""
+        from api.telemetry.models.catchment_points import CatchmentPoint
+
+        try:
+            # First try by point_code
+            point = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: CatchmentPoint.objects.filter(point_code=device_id).first()
+            )
+            if point:
+                return point
+
+            # Try to find through MQTT configuration
+            from api.telemetry.providers.mqtt_models import CatchmentPointMQTT
+            mqtt_config = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: CatchmentPointMQTT.objects.filter(
+                    custom_device_id=device_id
+                ).select_related('point').first()
+            )
+
+            return mqtt_config.point if mqtt_config else None
+
+        except Exception as exc:
+            logger.error(f"Error finding catchment point for device {device_id}: {exc}")
+            return None
+
+    async def _handle_telemetry_message_dynamic(self, connection: Connection, topic: str, payload: dict):
+        """
+        Legacy method - now delegates to dynamic processing.
+        Kept for backward compatibility.
+        """
+        logger.debug("Using legacy telemetry handler - consider migrating to dynamic system")
+        # This method is now handled by _process_message_dynamic
+        pass
 
     async def _handle_status_message(self, connection: Connection, topic: str, payload: dict):
         device_id = self._extract_device_id(topic, payload)

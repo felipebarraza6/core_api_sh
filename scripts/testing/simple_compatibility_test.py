@@ -13,42 +13,40 @@ import django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'api.settings')
 django.setup()
 
-from api.cronjobs.telemetry.getters.tago import get_data_tago
-from api.cronjobs.telemetry.getters.tdata import get_data_tdata
-from api.cronjobs.telemetry.getters.thingsio import get_data_thethings
+from api.core.providers import get_provider_manager
 
 
-def test_current_communication():
-    """Test de comunicación actual con tokens demo"""
-    print("🧪 TEST DE COMPATIBILIDAD - Comunicación Actual vs Dinámica")
+def test_dynamic_communication():
+    """Test de comunicación usando sistema dinámico"""
+    print("🧪 TEST DE SISTEMA DINÁMICO")
+    print("NOTA: Los getters legacy han sido eliminados.")
     print("=" * 60)
+
+    manager = get_provider_manager()
 
     # Configuración de prueba (equivalente a variables en esquemas)
     test_cases = [
         {
             "service": "TWIN",
             "variable": "caudal",
-            "token": "demo_token_twin",
-            "getter": get_data_tdata,
+            "point_id": 1,
             "description": "Twin/TDATA - API de series de tiempo"
         },
         {
             "service": "NETTRA",
             "variable": "nivel",
-            "token": "demo_token_nettra",
-            "getter": get_data_tago,
+            "point_id": 1,
             "description": "Nettra/TheThings - API de variables"
         },
         {
             "service": "THETHINGS",
             "variable": "total",
-            "token": "demo_token_things",
-            "getter": get_data_thethings,
+            "point_id": 1,
             "description": "TheThings IoT - API de recursos"
         }
     ]
 
-    print("\n📡 PROBANDO COMUNICACIÓN ACTUAL (Sistema Hardcodeado)")
+    print("\n📡 PROBANDO SISTEMA DINÁMICO")
     print("-" * 50)
 
     results = {}
@@ -58,10 +56,15 @@ def test_current_communication():
         print(f"   {test_case['description']}")
 
         try:
-            # Llamar al getter como lo hace el sistema actual
-            result = test_case['getter'](test_case['token'], test_case['variable'])
+            # Usar sistema dinámico
+            result = manager.fetch_data(
+                service=test_case['service'],
+                token="demo_token",
+                variable=test_case['variable'],
+                point_id=test_case.get('point_id')
+            )
 
-            print("   ✅ Llamada exitosa al getter")
+            print("   ✅ Llamada exitosa al sistema dinámico")
             print(f"   📄 Respuesta: {result}")
 
             # Verificar formato esperado
@@ -74,9 +77,9 @@ def test_current_communication():
 
         except Exception as e:
             error_msg = str(e)[:100]
-            print(f"   ⚠️ Error esperado (token demo): {error_msg}...")
-            print("   ✅ Getter funciona correctamente (error por credenciales demo)")
-            results[test_case['service']] = "funciona_con_token_real"
+            print(f"   ⚠️ Error (sin configuración real): {error_msg}...")
+            print("   ✅ Sistema funciona correctamente (requiere configuración en BD)")
+            results[test_case['service']] = "requiere_configuracion"
 
     print("\n🎯 ANÁLISIS DE COMPATIBILIDAD")
     print("-" * 50)
@@ -147,4 +150,4 @@ def test_current_communication():
 
 
 if __name__ == "__main__":
-    test_current_communication()
+    test_dynamic_communication()

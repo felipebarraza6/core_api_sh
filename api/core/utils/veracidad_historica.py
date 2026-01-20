@@ -8,12 +8,13 @@ import pytz
 from django.utils import timezone
 from django.db.models import Q, Count, Avg
 
-from api.core.models import (
+from api.telemetry.models.telemetry import (
     TelemetryRecord,
-    CatchmentPoint,
-    DgaDataConfigCatchment,
-    ProfileDataConfigCatchment,
     CoreVariable
+)
+from api.telemetry.models.catchment_points import (
+    CatchmentPoint,
+    ProfileDataConfigCatchment
 )
 from api.telemetry.validators.telemetry_validator import calculate_probable_flow_by_velocity
 
@@ -92,8 +93,11 @@ def calculate_historical_veracidad(
         
         if all_excesos_records:
             points_flow_above_probable_count += 1
-            dga_profile = point.dga_data_config_profiles.first()
-            codigo_obra = dga_profile.code_dga if dga_profile else None
+            from api.telemetry.providers.compliance_models import PointComplianceConfig
+            compliance_config = PointComplianceConfig.objects.filter(
+                point=point, provider__name="dga", is_active=True
+            ).first()
+            codigo_obra = compliance_config.config_data.get('code_dga') if compliance_config else None
             
             for exceso_record in all_excesos_records:
                 unique_key = f"{point.id}_{exceso_record['record_id']}"

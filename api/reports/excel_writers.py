@@ -13,6 +13,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
 from typing import List, Dict, Optional
 from api.telemetry.models import CatchmentPoint, TelemetryRecord
+from api.telemetry.providers.compliance_models import PointComplianceConfig
 from .excel_utils import (
     HEADER_FILL, HEADER_FONT, BORDER, 
     write_section_title, write_key_value_pair, 
@@ -70,41 +71,35 @@ def write_pozo_info(worksheet, profile, point, row: int) -> int:
     return row + 1
 
 
-def write_dga_info(worksheet, dga_config, point: CatchmentPoint, row: int) -> int:
-    """
-    Escribir información DGA del punto.
-    
-    Args:
-        worksheet: Worksheet de openpyxl
-        dga_config: DgaDataConfigCatchment
-        point: CatchmentPoint
-        row: Fila inicial donde escribir
+        compliance_config: PointComplianceConfig,
+        point: CatchmentPoint,
+        row: int) -> int:
         
     Returns:
         int: Siguiente fila disponible
     """
-    if not dga_config or not dga_config.send_dga:
+    if not compliance_config or not compliance_config.send_compliance:
         return row
     
     row = write_section_title(worksheet, "Información General DGA", row)
     
-    # Obtener último voucher DGA
-    ultimo_voucher = TelemetryRecord.objects.filter(
+    ultimo_voucher_record = TelemetryRecord.objects.filter(
         point=point,
-        n_voucher__isnull=False
-    ).exclude(n_voucher__exact='').order_by('-timestamp').first()
+    ).exclude(compliance_status__dga__voucher__isnull=True).exclude(compliance_status__dga__voucher='').order_by('-timestamp').first()
     
-    voucher_dga = ultimo_voucher.n_voucher if ultimo_voucher and ultimo_voucher.n_voucher else '-'
+    voucher_dga = "-"
+    if ultimo_voucher_record:
+        voucher_dga = ultimo_voucher_record.compliance_status.get('dga', {}).get('voucher', '-')
     
     # Información DGA (sin Voucher DGA, y "DGA Región" -> "Región")
     dga_info = [
-        ['Estándar', dga_config.get_standard_display() if hasattr(dga_config, 'get_standard_display') else dga_config.standard],
-        ['Tipo DGA', dga_config.get_type_dga_display() if hasattr(dga_config, 'get_type_dga_display') else dga_config.type_dga],
-        ['Código Obra', dga_config.code_dga or 'Sin registros'],
-        ['Caudal Otorgado', f"{format_decimal(dga_config.flow_granted_dga, 2)} L/s" if dga_config.flow_granted_dga else 'Sin registros'],
-        ['Total Otorgado', f"{format_number_with_thousands(dga_config.total_granted_dga)} m³" if dga_config.total_granted_dga else 'Sin registros'],
-        ['SHAC', dga_config.shac or 'Sin registros'],
-        ['Región', dga_config.region_dga or 'Sin registros'],  # ✅ Cambiado de "DGA Región" a "Región"
+        ['Estándar', compliance_config.compliance_standard.display_name if compliance_config.compliance_standard else 'Sin registros'],
+        ['Tipo DGA', compliance_config.config_data.get('type_dga', 'Sin registros')],
+        ['Código Obra', compliance_config.config_data.get('code_dga', 'Sin registros')],
+        ['Caudal Otorgado', f"{format_decimal(compliance_config.config_data.get('flow_granted_dga'), 2)} L/s" if compliance_config.config_data.get('flow_granted_dga') else 'Sin registros'],
+        ['Total Otorgado', f"{format_number_with_thousands(compliance_config.config_data.get('total_granted_dga'))} m³" if compliance_config.config_data.get('total_granted_dga') else 'Sin registros'],
+        ['SHAC', compliance_config.config_data.get('shac', 'Sin registros')],
+        ['Región', compliance_config.config_data.get('region_dga', 'Sin registros')],
     ]
     
     for info in dga_info:
@@ -158,7 +153,7 @@ def write_dga_records_table(worksheet, dga_records: List[TelemetryRecord],
     
     for dga_rec in dga_records:
         logger_date = dga_rec.date_time_last_logger.strftime('%Y-%m-%d %H:%M:%S') if dga_rec.date_time_last_logger else 'Sin registros'
-        voucher_value = dga_rec.n_voucher if dga_rec.n_voucher else '-'
+        voucher_value = dga_rec.compliance_status.get('dga', {}).get('voucher', '-')
         
         data = [
             dga_rec.id,  # ✅ ID del registro para referencia
@@ -195,7 +190,7 @@ def write_detail_records_table(worksheet, records: List[TelemetryRecord],
     
     for record in records:
         logger_date = record.date_time_last_logger.strftime('%Y-%m-%d %H:%M:%S') if record.date_time_last_logger else 'Sin registros'
-        voucher_value = record.n_voucher if record.n_voucher else '-'
+        voucher_value = record.compliance_status.get('dga', {}).get('voucher', '-')
         
         # Calcular flow si se proporciona función
         flow_value = float(record.flow) if record.flow else 0.0

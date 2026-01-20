@@ -3,8 +3,8 @@ from datetime import datetime
 from functools import lru_cache
 
 from api.telemetry.models.telemetry import CoreVariable
-from api.telemetry.models.catchment_points import DgaDataConfigCatchment
-from api.telemetry.ingestion.controllers.flow import average_flow
+from api.telemetry.providers.compliance_models import PointComplianceConfig
+from api.telemetry.processing import FormulaEngine
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +21,17 @@ def _get_cached_point_config(cp_id):
         is_active=True,
     ).exists()
 
-    dga_config = DgaDataConfigCatchment.objects.filter(point_catchment_id=cp_id).first()
+    compliance_config = PointComplianceConfig.objects.filter(
+        point_id=cp_id, provider__name="dga", is_active=True
+    ).select_related("compliance_standard").first()
 
-    return {"has_avg_flow": has_avg_flow, "dga_config": dga_config}
+    standard_name = (
+        compliance_config.compliance_standard.name
+        if compliance_config and compliance_config.compliance_standard
+        else None
+    )
+
+    return {"has_avg_flow": has_avg_flow, "standard_name": standard_name}
 
 
 def get_interaction_flow_display_data(instance, cached_config=None):
@@ -58,15 +66,15 @@ def get_interaction_flow_display_data(instance, cached_config=None):
     use_new_calculation = getattr(settings, "USE_NEW_CAUDAL_CALCULATION_MEDIO", False)
 
     if use_new_calculation:
-        dga_config = cached_config.get("dga_config")
+        standard_name = cached_config.get("standard_name")
 
-        if dga_config and dga_config.standard == "MEDIO":
+        if standard_name == "MEDIO":
             try:
                 from api.telemetry.utils.caudal_calculations import (
                     calculate_daily_average_flow,
                 )
 
-                avg_flow = calculate_daily_average_flow(instance, dga_config)
+                avg_flow = calculate_daily_average_flow(instance)
                 return {
                     "value": avg_flow,
                     "type": "MEDIO_DIARIO",
@@ -91,8 +99,8 @@ def get_interaction_flow_display_data(instance, cached_config=None):
                 except ValueError:
                     last_logger_ts = None
 
-            # Re-usar average_flow del controlador
-            calculated_flow = average_flow(
+            # Usar FormulaEngine para calcular caudal promedio
+            calculated_flow = FormulaEngine.average_flow(
                 point_catchment={"id": catchment_point.id},
                 total=total_val,
                 date_lg=curr_ts,

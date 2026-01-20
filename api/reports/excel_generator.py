@@ -16,8 +16,9 @@ from openpyxl.utils import get_column_letter
 from django.db.models import Min, Max, Avg, Count, Sum
 
 from api.telemetry.models import CatchmentPoint, TelemetryRecord, CoreVariable
+from api.telemetry.providers.compliance_models import PointComplianceConfig
 from api.telemetry.validators.telemetry_validator import analyze_data_coherence
-from api.telemetry.ingestion.controllers.flow import average_flow
+from api.telemetry.processing import FormulaEngine
 
 # Importar utilidades de los nuevos módulos
 from .excel_utils import (
@@ -342,7 +343,7 @@ def generate_excel_by_project(points: List[CatchmentPoint], project_name: Option
             ws.cell(row, 7, int(float(record.total_diff)) if record.total_diff else 0)  # Consumo por hora en entero
             ws.cell(row, 8, int(record.pulses) if record.pulses else 0)
             # ✅ Agregar n_voucher: mostrar "-" si está vacío o es None
-            voucher_value = record.n_voucher if record.n_voucher else '-'
+            voucher_value = record.compliance_status.get('dga', {}).get('voucher', '-')
             ws.cell(row, 9, voucher_value)
             
             for col in range(1, 10):
@@ -457,20 +458,18 @@ def generate_excel_by_point(point: CatchmentPoint, year: Optional[int] = None, m
     
     # Información del Pozo y DGA
     profile = point.data_config_profiles.first()
-    dga_config = point.dga_data_config_profiles.first()
+    compliance_config = PointComplianceConfig.objects.filter(
+        point=point, provider__name="dga", is_active=True
+    ).select_related("compliance_standard").first()
     row = 3
     
     # Usar funciones del módulo excel_writers
     row = write_pozo_info(ws_summary, profile, point, row)  # ✅ Pasar point para tipo de caudal
-    row = write_dga_info(ws_summary, dga_config, point, row)
+    row = write_dga_info(ws_summary, compliance_config, point, row)
     
-    # Últimos 5 registros enviados a DGA (con voucher)
     dga_records = TelemetryRecord.objects.filter(
         point=point,
-        n_voucher__isnull=False
-    ).exclude(
-        n_voucher=''
-    ).order_by('-timestamp')[:5]
+    ).exclude(compliance_status__dga__voucher__isnull=True).exclude(compliance_status__dga__voucher='').order_by('-timestamp')[:5]
     
     if dga_records.exists():
         ws_summary[f'A{row}'] = "Últimos 5 Registros Enviados a DGA"
@@ -683,8 +682,7 @@ def generate_excel_by_point(point: CatchmentPoint, year: Optional[int] = None, m
             point=point,
             timestamp__gte=month_start,
             timestamp__lte=month_end,
-            send_dga=True
-        ).order_by('-timestamp')[:5])
+        ).exclude(compliance_status__dga__voucher__isnull=True).exclude(compliance_status__dga__voucher='').order_by('-timestamp')[:5])
         
         if month_dga_records:
             row = write_dga_records_table(ws, month_dga_records, month_name, row)
@@ -730,8 +728,8 @@ def generate_excel_by_point(point: CatchmentPoint, year: Optional[int] = None, m
         
         # Obtener caudal autorizado DGA para pintar en rojo
         caudal_autorizado_dga = None
-        if dga_config and dga_config.send_dga and dga_config.flow_granted_dga:
-            caudal_autorizado_dga = float(dga_config.flow_granted_dga)
+        if compliance_config and compliance_config.send_compliance and compliance_config.config_data.get('flow_granted_dga'):
+            caudal_autorizado_dga = float(compliance_config.config_data.get('flow_granted_dga'))
         
         for idx, record in enumerate(month_records):
             # ✅ Reordenar: ID, Fecha Medición, Fecha Logger, Totalizado, Consumo m³, Caudal, Nivel, Nivel Freático, Voucher DGA
@@ -779,7 +777,7 @@ def generate_excel_by_point(point: CatchmentPoint, year: Optional[int] = None, m
             ws.cell(row, 8, float(record.water_table) if record.water_table else 0)  # Nivel Freático (m)
             
             # Voucher DGA
-            voucher_value = record.n_voucher if record.n_voucher else '-'
+            voucher_value = record.compliance_status.get('dga', {}).get('voucher', '-')
             ws.cell(row, 9, voucher_value)  # Voucher DGA
             
             # Aplicar bordes a todas las columnas
@@ -1377,8 +1375,8 @@ def generate_excel_last_year_by_points(points: List[CatchmentPoint], project_nam
         ws.merge_cells('A1:H1')
         
         row = 3
-        dga_config = DgaDataConfigCatchment.objects.filter(point_catchment=point).first()
-        caudal_autorizado_dga = float(dga_config.flow_granted_dga) if dga_config and dga_config.flow_granted_dga else None
+        dga_config = PointComplianceConfig.objects.filter(point=point, provider__name='dga').first()
+        caudal_autorizado_dga = float(dga_config.config_data.get('caudal_otorgado', 0)) if dga_config and dga_config.config_data.get('caudal_otorgado') else None
         
         # Encabezados de detalle
         detail_headers = ['Fecha/Hora', 'Fecha/Hora Chile', 'Fecha Logger', 'Totalizado (m³)', 'Consumo (m³)', 'Caudal (L/s)', 'Nivel (m)', 'N. Freático (m)', 'Voucher DGA']
@@ -1559,8 +1557,8 @@ def generate_excel_annual_compressed(points: List[CatchmentPoint], project_name:
         ws['A1'].font = TITLE_FONT
         
         # Obtener DGA info
-        dga_conf = DgaDataConfigCatchment.objects.filter(point_catchment=point).first()
-        flow_granted = dga_conf.flow_granted_dga if dga_conf else 0
+        dga_conf = PointComplianceConfig.objects.filter(point=point, provider__name='dga').first()
+        flow_granted = dga_conf.config_data.get('caudal_otorgado', 0) if dga_conf else 0
         
         ws.cell(3, 1, "Caudal Autorizado DGA (L/s):")
         ws.cell(3, 2, float(flow_granted) if flow_granted else "N/A")

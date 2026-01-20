@@ -19,9 +19,9 @@ from django.utils import timezone
 
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    DgaDataConfigCatchment,
     ProfileDataConfigCatchment,
 )
+from api.telemetry.providers.compliance_models import PointComplianceConfig
 from api.crm.models import Client, Project
 from api.notifications.models import Notification
 from api.telemetry.models.telemetry import (
@@ -158,22 +158,24 @@ def admin_dashboard_view(request):
         # MÉTRICAS PRINCIPALES - NUEVOS STATS
         # ========================================
 
-        # 1. Número de Obras (puntos con código de obra)
-        dga_points_qs = DgaDataConfigCatchment.objects.filter(
-            code_dga__isnull=False
-        ).exclude(code_dga__exact="")
+        # 1. Número de Obras (puntos con código de obra en provider DGA)
+        compliance_points_qs = PointComplianceConfig.objects.filter(
+            provider__name="dga", is_active=True
+        ).exclude(config_data__code_dga__isnull=True).exclude(config_data__code_dga__exact="")
+        
         if project_id:
-            dga_points_qs = dga_points_qs.filter(
-                point_catchment__project=selected_project
+            compliance_points_qs = compliance_points_qs.filter(
+                point__project=selected_project
             )
         if point_id:
-            dga_points_qs = dga_points_qs.filter(point_catchment=selected_point)
-        num_obras = dga_points_qs.values("point_catchment").distinct().count()
+            compliance_points_qs = compliance_points_qs.filter(point=selected_point)
+            
+        num_obras = compliance_points_qs.values("point").distinct().count()
 
         # Obtener los puntos con código de obra (base para todos los cálculos)
         # ✅ OPTIMIZACIÓN: Usar select_related para evitar N+1 queries
-        obras_points_ids = dga_points_qs.values_list(
-            "point_catchment_id", flat=True
+        obras_points_ids = compliance_points_qs.values_list(
+            "point_id", flat=True
         ).distinct()
         obras_points_qs = CatchmentPoint.objects.filter(
             id__in=obras_points_ids
@@ -227,16 +229,19 @@ def admin_dashboard_view(request):
         # Re-usar lógica de obras_with_telemetry pero iterando para clasificar
         # obras_points_list ya tiene TODOS los puntos con código de obra
 
-        # Optimización: Cargar perfiles en memoria para evitar N+1
-        # Use the actual list of IDs from the queryset (line 119), not the empty set from line 142
-        obras_point_ids_list = dga_points_qs.values_list(
-            "point_catchment_id", flat=True
-        ).distinct()
+        # Optimización: Cargar perfiles y compliance en memoria
+        obras_point_ids_list = list(obras_points_ids)
         profiles_map = {
             p.point_catchment_id: p
             for p in ProfileDataConfigCatchment.objects.filter(
                 point_catchment__in=obras_point_ids_list
             )
+        }
+        compliance_map = {
+            c.point_id: c
+            for c in PointComplianceConfig.objects.filter(
+                point_id__in=obras_point_ids_list, provider__name="dga", is_active=True
+            ).select_related("compliance_standard")
         }
 
         for point in obras_points_list:
@@ -260,20 +265,18 @@ def admin_dashboard_view(request):
             unique_point_ids.add(point.id)
             obras_points_ids.add(point.id)
 
-            dga_profile = point.dga_data_config_profiles.first()
-            if dga_profile:
-                # Check DGA Active
-                is_active = dga_profile.send_dga
-                dga_active_status[point.id] = is_active  # ✅ FIX: Guardar status por ID
+            compliance_config = compliance_map.get(point.id)
+            if compliance_config:
+                # Check Compliance Active
+                is_active = compliance_config.send_compliance
+                dga_active_status[point.id] = is_active
 
                 if is_active:
                     obras_dga_active += 1
-                    active_points.add(
-                        point.id
-                    )  # ✅ FIX: Agregar ID al conjunto active_points
+                    active_points.add(point.id)
 
-                # Contar por estándar (para breakdown) - MEJORADO: incluir estado de conexión
-                std = dga_profile.standard or "SIN_ESTANDAR"
+                # Contar por estándar
+                std = compliance_config.compliance_standard.name if compliance_config.compliance_standard else "SIN_ESTANDAR"
 
                 # Inicializar estructura si no existe
                 if std not in dga_standards_count:
@@ -322,7 +325,7 @@ def admin_dashboard_view(request):
             for standard_code, stats in sorted_standards:
                 try:
                     # Intentar obtener label legible
-                    label = standard_labels.get(standard_code, standard_code)
+                    label = stats.get("label", standard_code)
 
                     dga_standards_breakdown.append(
                         {
@@ -446,9 +449,9 @@ def admin_dashboard_view(request):
 
                     # Obtener código de obra
                     codigo_obra = None
-                    dga_profile = point.dga_data_config_profiles.first()
-                    if dga_profile and dga_profile.code_dga:
-                        codigo_obra = dga_profile.code_dga
+                    compliance_config = compliance_map.get(point.id)
+                    if compliance_config:
+                        codigo_obra = compliance_config.config_data.get('code_dga')
 
                     # Obtener nombre del proyecto
                     proyecto_nombre = (
@@ -681,12 +684,13 @@ def admin_dashboard_view(request):
             "Nivel Imposible": 1,
         }
 
-        # FILTRAR: Solo procesar puntos con código de obra
         for point in all_visible_points_list:
-            # Verificar que el punto tenga código de obra
-            dga_profile_check = point.dga_data_config_profiles.first()
-            if not dga_profile_check or not dga_profile_check.code_dga:
-                continue  # Saltar puntos sin código de obra
+            # Verificar que el punto tenga código de obra en compliance DGA
+            compliance_check = PointComplianceConfig.objects.filter(
+                point=point, provider__name="dga", is_active=True
+            ).first()
+            if not compliance_check or not compliance_check.config_data.get('code_dga'):
+                continue
             profile = point.data_config_profiles.first()
             if not profile:
                 continue
@@ -774,10 +778,7 @@ def admin_dashboard_view(request):
                             )
 
                         # Obtener código de obra
-                        codigo_obra_error = None
-                        dga_profile_error = point.dga_data_config_profiles.first()
-                        if dga_profile_error and dga_profile_error.code_dga:
-                            codigo_obra_error = dga_profile_error.code_dga
+                        codigo_obra_error = compliance_check.config_data.get('code_dga')
 
                         # Obtener horario de captura para compatibilidad con template
                         horario_captura_error = (

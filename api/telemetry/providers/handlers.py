@@ -791,3 +791,7 @@ class NovusHandler(APIProviderHandler):
     """DEPRECATED: Use DynamicAPIHandler instead."""
     provider_name = "novus"
     supported_variables = ['CAUDAL', 'NIVEL', 'PRESION', 'TEMPERATURA']
+
+
+# Import dynamic MQTT handler
+from .mqtt_handler import DynamicMQTTHandler

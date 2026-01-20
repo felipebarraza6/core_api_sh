@@ -33,11 +33,11 @@ from reportlab.platypus import (
 from api.core.models import (
     CatchmentPoint,
     CoreVariable,
-    DgaDataConfigCatchment,
-    NotificationsCatchment,
     ProfileDataConfigCatchment,
     TelemetryRecord,
 )
+from api.telemetry.providers.compliance_models import PointComplianceConfig
+from api.notifications.models import Notification
 
 # Colores SmartHydro
 WATER_BLUE = colors.HexColor("#0066CC")
@@ -138,8 +138,8 @@ def detect_anomalies_optimized(point_id: int, months_back: int = 6) -> List[Dict
 
     anomalies = []
 
-    # 1. Resets detectados (de NotificationsCatchment)
-    reset_notifications = NotificationsCatchment.objects.filter(
+    # 1. Resets detectados (de Notification)
+    reset_notifications = Notification.objects.filter(
         point_catchment_id=point_id, title__icontains="Reinicio"
     ).order_by("-start_date")[:10]
 
@@ -392,8 +392,9 @@ def generate_ot_soporte_pdf(
     profile = ProfileDataConfigCatchment.objects.filter(
         point_catchment_id=point_id
     ).first()
-    dga_config = DgaDataConfigCatchment.objects.filter(
-        point_catchment_id=point_id
+    dga_config = PointComplianceConfig.objects.filter(
+        point_id=point_id,
+        provider__name='dga'
     ).first()
     variables = CoreVariable.objects.filter(point_id=point_id, is_active=True)
 

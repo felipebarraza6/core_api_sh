@@ -7,6 +7,9 @@ allowing dynamic configuration and management of different IoT platforms.
 Models available:
 - TelemetryProvider: For data ingestion providers (Nettra, TData, etc.)
 - CatchmentPointProvider: Association between points and telemetry providers
+- MQTTProviderConfig: MQTT-specific configuration for providers
+- PayloadParsingRule: Dynamic payload parsing rules
+- CatchmentPointMQTT: Point-specific MQTT configuration
 - ComplianceProvider: For regulatory compliance services (DGA, SMA, etc.)
 - PointComplianceConfig: Association between points and compliance providers
 - ManualComplianceRecord: Manual measurements for compliance

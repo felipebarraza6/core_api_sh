@@ -50,11 +50,18 @@ class ProviderManager:
         """Load handlers for all active providers."""
         self._handlers = {}
 
-        # Create DynamicAPIHandler for each active provider
+        # Create appropriate handler for each active provider
         for name, provider in self._providers.items():
             try:
-                self._handlers[name] = DynamicAPIHandler(provider)
-                logger.debug(f"Loaded dynamic handler for: {name}")
+                if provider.provider_type == 'mqtt':
+                    # Use DynamicMQTTHandler for MQTT providers
+                    from .handlers import DynamicMQTTHandler
+                    self._handlers[name] = DynamicMQTTHandler(provider)
+                    logger.debug(f"Loaded MQTT dynamic handler for: {name}")
+                else:
+                    # Use DynamicAPIHandler for API providers (REST, HTTP, etc.)
+                    self._handlers[name] = DynamicAPIHandler(provider)
+                    logger.debug(f"Loaded API dynamic handler for: {name}")
             except Exception as e:
                 logger.error(f"Failed to create handler for {name}: {e}")
 
@@ -304,15 +311,13 @@ class ProviderManager:
             if result is not None:
                 return result
 
-        # Si no hay point_id, intentar usar un proveedor 'default' o genérico
-        # Esto sucede si llaman a la función solo con el nombre del servicio
-        # En este caso, intentamos encontrar una configuración "on the fly"
-        # O retornamos error si el sistema legacy ya no es soportado
-        
-        logger.warning(f"Fallback to legacy getter for {service} (No point_id provided)")
-        return self._fetch_via_legacy_getter(
-            service, token, variable, max_retries, backoff_factor
+        # Si no hay point_id, no podemos usar el sistema dinámico
+        # Retornar error indicando que se requiere point_id
+        logger.error(
+            f"No point_id provided for {service}/{variable}. "
+            f"Dynamic provider system requires point_id to function."
         )
+        return {'value': 0, 'date_time': None}
 
     def _fetch_via_dynamic_provider(
         self,
@@ -410,50 +415,6 @@ class ProviderManager:
             logger.error(f"Dynamic provider error: {exc}")
             return None
 
-    def _fetch_via_legacy_getter(
-        self,
-        service: str,
-        token: str,
-        variable: str,
-        max_retries: int,
-        backoff_factor: int
-    ) -> Dict[str, Any]:
-        """
-        Fallback a los getters legacy.
-
-        Este método se usa cuando no hay configuración dinámica
-        o cuando el sistema dinámico falla.
-        """
-        import time
-
-        # Importar getters legacy
-        from api.telemetry.ingestion.getters.tdata import get_data_tdata
-        from api.telemetry.ingestion.getters.thingsio import get_data_thethings
-        from api.telemetry.ingestion.getters.tago import get_data_tago
-
-        getter_map = {
-            'TWIN': get_data_tdata,
-            'NETTRA': get_data_thethings,
-            'NOVUS': get_data_tago,
-        }
-
-        getter_func = getter_map.get(service, get_data_tdata)
-
-        for attempt in range(max_retries):
-            try:
-                data = getter_func(token, variable)
-                if data and data.get('value') is not None:
-                    return data
-            except Exception as exc:
-                if attempt == max_retries - 1:
-                    logger.error(
-                        f"Legacy getter failed after {max_retries} attempts "
-                        f"for {service}/{variable}: {exc}"
-                    )
-                    return {'value': 0, 'date_time': None}
-                time.sleep(backoff_factor ** attempt)
-
-        return {'value': 0, 'date_time': None}
 
     def _format_timestamp(self, timestamp) -> Optional[str]:
         """Formatea un timestamp al formato esperado por el sistema."""
