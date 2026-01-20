@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartHydro | Arquitectura Técnica Completa</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        .app-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        .app-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 10px 40px rgba(0, 211, 255, 0.1);
+        }
+        .app-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .role-section {
+            background: linear-gradient(135deg, rgba(0, 211, 255, 0.05) 0%, rgba(0, 122, 255, 0.05) 100%);
+            border-radius: 20px;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+        .chatbot-example {
+            background: rgba(0, 0, 0, 0.3);
+            border-left: 4px solid var(--accent-cyan);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        .metric-card {
+            text-align: center;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 16px;
+            border: 1px solid var(--glass-border);
+        }
+        .metric-value {
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            margin-bottom: 0.5rem;
+        }
+        .flow-diagram {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2rem 0;
+            text-align: center;
+        }
+        .flow-step {
+            display: inline-block;
+            background: rgba(0, 211, 255, 0.1);
+            border: 1px solid var(--accent-cyan);
+            border-radius: 8px;
+            padding: 1rem 1.5rem;
+            margin: 0.5rem;
+        }
+        .arrow {
+            display: inline-block;
+            color: var(--accent-cyan);
+            font-size: 1.5rem;
+            margin: 0 0.5rem;
+        }
+        .dev-credit {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(135deg, rgba(0, 211, 255, 0.08) 0%, rgba(0, 122, 255, 0.08) 100%);
+            border-radius: 24px;
+            margin: 4rem 0;
+            border: 1px solid rgba(0, 211, 255, 0.2);
+        }
+        .dev-name {
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00d3ff 0%, #007aff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+
+    <main class="container">
+        <!-- Hero Section -->
+        <section class="hero">
+            <div style="margin-bottom: 2rem;">
+                <span class="badge">Arquitectura Técnica Completa</span>
+                <span class="badge" style="background: rgba(255, 107, 107, 0.1); color: #ff6b6b;">9 Django Apps</span>
+                <span class="badge" style="background: rgba(168, 85, 247, 0.1); color: #a855f7;">AI-Powered</span>
+            </div>
+            <h1>Smart<span class="gradient-text">Hydro</span></h1>
+            <p style="font-size: 1.8rem; font-weight: 600;">Plataforma Empresarial de Telemetría Hidrológica</p>
+            <p style="color: var(--text-secondary); max-width: 800px; margin: 0 auto;">Sistema multi-tenant con procesamiento dinámico de variables, IA conversacional, y cumplimiento normativo automatizado.</p>
+        </section>
+
+        <!-- Developer Credit Section -->
+        <section class="dev-credit">
+            <h3 style="text-transform: uppercase; letter-spacing: 2px; font-size: 0.9rem; color: var(--accent-cyan);">Desarrollado y Diseñado por</h3>
+            <h2 class="dev-name">Felipe Barraza</h2>
+            <p style="color: var(--text-secondary); max-width: 700px; margin: 0 auto; font-size: 1.1rem; line-height: 1.6;">
+                Arquitecto de Software y Desarrollador Full-Stack especializado en sistemas de telemetría industrial de alta disponibilidad. Creador del motor dinámico de SmartHydro y su ecosistema de Inteligencia Artificial.
+            </p>
+        </section>
+
+        <!-- Django Apps -->
+        <section>
+            <h2 style="text-align: center; margin-bottom: 3rem;">Las 9 Aplicaciones <span class="gradient-text">Django</span></h2>
+            
+            <div class="app-grid">
+                <div class="app-card">
+                    <div class="app-icon">🎯</div>
+                    <h3 style="color: var(--accent-cyan); margin-bottom: 1rem;">core</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary);">Autenticación, permisos, dashboard administrativo y métricas Prometheus de nivel industrial.</p>
+                    <ul style="font-size: 0.85rem; color: var(--text-secondary); list-style: none; margin-top: 10px;">
+                        <li>• User Model (email-based auth)</li>
+                        <li>• Admin Dashboard & Metrics</li>
+                    </ul>
+                </div>
+
+                <div class="app-card">
+                    <div class="app-icon">📡</div>
+                    <h3 style="color: var(--accent-cyan); margin-bottom: 1rem;">telemetry</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary);">Ingesta y procesamiento dinámico de variables con fórmulas en tiempo real y soporte multi-proveedor.</p>
+                    <ul style="font-size: 0.85rem; color: var(--text-secondary); list-style: none; margin-top: 10px;">
+                        <li>• Dynamic Formulas & Schemes</li>
+                        <li>• Multi-provider Ingestion</li>
+                    </ul>
+                </div>
+
+                <div class="app-card">
+                    <div class="app-icon">🤖</div>
+                    <h3 style="color: var(--accent-cyan); margin-bottom: 1rem;">chatbot</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary);">Asistente inteligente con Gemini 2.0 Flash, contexto conversacional y análisis de tendencias y anomalías.</p>
+                    <ul style="font-size: 0.85rem; color: var(--text-secondary); list-style: none; margin-top: 10px;">
+                        <li>• LLM & Intent Routing</li>
+                        <li>• 15+ Advanced Tools</li>
+                    </ul>
+                </div>
+
+                <div class="app-card">
+                    <div class="app-icon">🏢</div>
+                    <h3 style="color: var(--accent-cyan); margin-bottom: 1rem;">crm</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary);">Gestión multi-tenant de clientes y proyectos con segregación de datos garantizada.</p>
+                </div>
+
+                <div class="app-card">
+                    <div class="app-icon">🔔</div>
+                    <h3 style="color: var(--accent-cyan); margin-bottom: 1rem;">notifications</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary);">Motor de alertas asíncronas vía Celery para desconexiones y valores críticos.</p>
+                </div>
+
+                <div class="app-card">
+                    <div class="app-icon">📄</div>
+                    <h3 style="color: var(--accent-cyan); margin-bottom: 1rem;">documents</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary);">Gestión documental técnica para planos, certificados y actas legales de pozos.</p>
+                </div>
+
+                <div class="app-card">
+                    <div class="app-icon">📊</div>
+                    <h3 style="color: var(--accent-cyan); margin-bottom: 1rem;">reports</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary);">Generación masiva de PDFs y Excels programados para cumplimiento DGA/SMA.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Metrics -->
+        <section>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-top: 3rem;">
+                <div class="metric-card">
+                    <div class="metric-value">~500</div>
+                    <p style="color: var(--text-secondary); font-size: 0.9rem;">Puntos Activos</p>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">8K</div>
+                    <p style="color: var(--text-secondary); font-size: 0.9rem;">Mediciones/Hora</p>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">&lt;200ms</div>
+                    <p style="color: var(--text-secondary); font-size: 0.9rem;">Latencia API (p95)</p>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">99.99%</div>
+                    <p style="color: var(--text-secondary); font-size: 0.9rem;">Uptime</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer style="text-align: center; padding: 4rem 0; color: var(--text-secondary); border-top: 1px solid var(--glass-border); margin-top: 4rem;">
+            <p style="margin-bottom: 1rem;">© 2026 SmartHydro. Powered by extreme engineering.</p>
+            <p style="font-size: 0.9rem;">Lead Developer: <strong>Felipe Barraza</strong></p>
+        </footer>
+    </main>
+
+</body>
+</html>
