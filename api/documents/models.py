@@ -42,7 +42,7 @@ class Document(ModelApi):
     # Polimorfismo simplificado vía FKs opcionales
     point_catchment = models.ForeignKey(
         "telemetry.CatchmentPoint",
-        related_name="documents",
+        related_name="sourced_documents",
         on_delete=models.CASCADE,
         verbose_name="Punto de captacion",
         null=True,
@@ -58,17 +58,18 @@ class Document(ModelApi):
     )
     project = models.ForeignKey(
         "crm.Project",
-        related_name="documents",
+        related_name="sourced_documents",
         on_delete=models.CASCADE,
         verbose_name="Proyecto",
         null=True,
         blank=True
     )
+
     
     # New relationships for CRM flow
     technical_survey = models.ForeignKey(
         "crm.TechnicalSurvey",
-        related_name="documents",
+        related_name="sourced_documents",
         on_delete=models.CASCADE,
         verbose_name="Levantamiento Técnico",
         null=True,
@@ -76,12 +77,13 @@ class Document(ModelApi):
     )
     crm_task = models.ForeignKey(
         "crm.CrmTask",
-        related_name="documents",
+        related_name="sourced_documents",
         on_delete=models.CASCADE,
         verbose_name="Tarea CRM",
         null=True,
         blank=True
     )
+
 
     # Professional Metadata
     valid_until = models.DateField(

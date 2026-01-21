@@ -7,8 +7,6 @@ from rest_framework.permissions import IsAuthenticated
 from api.telemetry.models.telemetry import CoreVariable
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    ProfileDataConfigCatchment,
-    ProfileIkoluCatchment,
 )
 from api.crm.models import Client, Project, Person
 from api.notifications.models import Notification, NotificationResponse
@@ -21,8 +19,6 @@ from api.core.serializers.catchment_points import (
     ClientSerializer,
     DocumentSerializer,
     NotificationSerializer,
-    ProfileDataConfigCatchmentSerializer,
-    ProfileIkoluCatchmentSerializer,
     ProjectSerializer,
     PersonSerializer,
     NotificationResponseDetailSerializer,
@@ -52,10 +48,7 @@ class CatchmentPointViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
     queryset = CatchmentPoint.objects.select_related(
-        "project", "owner_user"
-    ).prefetch_related(
-        "ikolu_profiles",
-        "data_config_profiles",
+        "owner_user"
     )
     serializer_class = CatchmentPointSerializer
     lookup_field = "id"
@@ -66,12 +59,7 @@ class CatchmentPointViewSet(viewsets.ModelViewSet):
         return CatchmentPointSerializer
 
 
-class ProfileIkoluCatchmentViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
-    filter_backends = (filters.DjangoFilterBackend,)
-    queryset = ProfileIkoluCatchment.objects.all()
-    serializer_class = ProfileIkoluCatchmentSerializer
-    lookup_field = "id"
+# ProfileIkoluCatchmentViewSet removed
 
 
 class NotificationViewSet(viewsets.ModelViewSet):
@@ -128,12 +116,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     lookup_field = "id"
 
 
-class ProfileDataConfigCatchmentViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
-    filter_backends = (filters.DjangoFilterBackend,)
-    queryset = ProfileDataConfigCatchment.objects.all()
-    serializer_class = ProfileDataConfigCatchmentSerializer
-    lookup_field = "id"
+# ProfileDataConfigCatchmentViewSet removed
 
 
 

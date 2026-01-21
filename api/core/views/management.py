@@ -14,7 +14,6 @@ from rest_framework.permissions import IsAuthenticated
 
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    ProfileDataConfigCatchment,
 )
 from api.crm.models import Client, Project
 from api.notifications.models import Notification
@@ -33,7 +32,7 @@ class ManagementViewSet(viewsets.ViewSet):
         try:
             total_points = CatchmentPoint.objects.count()
             active_telemetry = CatchmentPoint.objects.filter(
-                data_config_profiles__is_telemetry=True
+                is_active=True
             ).distinct().count()
             
             yesterday = timezone.now() - timedelta(days=1)
@@ -85,7 +84,7 @@ class ManagementViewSet(viewsets.ViewSet):
                 queryset = queryset.filter(telemetry_v3__is_error=True, telemetry_v3__timestamp__gte=yesterday).distinct()
             
             active_only = request.query_params.get('active_telemetry', 'false').lower() == 'true'
-            if active_only: queryset = queryset.filter(data_config_profiles__is_telemetry=True).distinct()
+            if active_only: queryset = queryset.filter(is_active=True).distinct()
             
             points_data = []
             for point in queryset.select_related('project', 'project__client', 'owner_user'):
@@ -95,8 +94,8 @@ class ManagementViewSet(viewsets.ViewSet):
                     'title': point.title,
                     'project': point.project.name if point.project else None,
                     'client': point.project.client.name if point.project and point.project.client else None,
-                    'frecuency': point.frecuency,
-                    'telemetry_active': ProfileDataConfigCatchment.objects.filter(point_catchment=point, is_telemetry=True).exists(),
+                    'frequency': point.frequency_minutes,
+                    'telemetry_active': point.is_active,
                     'last_interaction_v3': None,
                 }
                 if last_v3:
@@ -158,11 +157,11 @@ class ManagementViewSet(viewsets.ViewSet):
             enabled = request.data.get('enabled', True)
             if not point_id: return Response({'error': 'point_id es requerido'}, status=status.HTTP_400_BAD_REQUEST)
             
-            config = ProfileDataConfigCatchment.objects.filter(point_catchment_id=point_id).first()
-            if not config: return Response({'error': 'Configuración no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+            point = CatchmentPoint.objects.filter(id=point_id).first()
+            if not point: return Response({'error': 'Punto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
             
-            config.is_telemetry = enabled
-            config.save()
+            point.is_active = enabled
+            point.save()
             return Response({'message': f'Telemetría {"activada" if enabled else "desactivada"}', 'point_id': point_id, 'enabled': enabled}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -221,19 +220,8 @@ class ManagementViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def update_point_frequency(self, request):
-        """Actualiza frecuencia punto"""
-        try:
-            point_id = request.data.get('point_id')
-            frequency = request.data.get('frequency')
-            if not point_id or frequency not in ['1', '5', '10', '60']:
-                return Response({'error': 'Datos inválidos'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            point = CatchmentPoint.objects.get(id=point_id)
-            point.frecuency = frequency
-            point.save()
-            return Response({'message': 'Frecuencia actualizada', 'frequency': frequency}, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        """Action deprecated in V3. Use SamplingFrequency on CatchmentPoint."""
+        return Response({'message': 'Acción deprecada en V3.'}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'])
     def notifications_summary(self, request):

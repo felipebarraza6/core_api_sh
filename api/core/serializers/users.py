@@ -28,34 +28,11 @@ class UserProfile(serializers.ModelSerializer):
 
     def get_catchment_points(self, obj):
         user = self.context['user'].id
-        from api.telemetry.models.catchment_points import ProfileDataConfigCatchment, ProfileIkoluCatchment, DgaDataConfigCatchment
         from api.telemetry.models.telemetry import CoreVariable as Variable
         
         catchment_points = CatchmentPoint.objects.filter(
             models.Q(owner_user=user) | models.Q(users_viewers=user)
-        ).select_related('project', 'owner_user').prefetch_related(
-            Prefetch(
-                'ikolu_profiles',
-                queryset=ProfileIkoluCatchment.objects.only(
-                    'point_catchment_id', 'entry_by_form', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6'
-                )
-            ),
-            Prefetch(
-                'data_config_profiles',
-                queryset=ProfileDataConfigCatchment.objects.only(
-                    'point_catchment_id', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6',
-                    'date_start_telemetry', 'date_delivery_act', 'is_telemetry'
-                )
-            ),
-            Prefetch(
-                'dga_data_config_profiles',
-                queryset=DgaDataConfigCatchment.objects.only(
-                    'point_catchment_id', 'send_dga', 'standard', 'type_dga', 'code_dga',
-                    'flow_granted_dga', 'total_granted_dga', 'shac', 'date_start_compliance',
-                    'date_created_code'
-                )
-            )
-        ).distinct().order_by('project','title')
+        ).select_related('technical_survey__project', 'owner_user').distinct().order_by('title')
         
         batch_data = {}
         cp_ids = [cp.id for cp in catchment_points]

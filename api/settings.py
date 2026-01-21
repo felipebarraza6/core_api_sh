@@ -65,8 +65,11 @@ LOCAL_APPS = [
     "api.core.apps.CoreAppConfig",
     "api.chatbot.apps.ChatbotConfig",
     "api.telemetry.apps.TelemetryConfig",
-    "api.telemetry.providers.apps.ProvidersConfig",  # Sistema dinámico de proveedores
+    "api.telemetry.providers.apps.ProvidersConfig",  # Sistema dinámico de proveedores (legacy - migrar a api.providers)
     "api.crm.apps.CrmConfig",  # 🆕 Gestión de Clientes y Proyectos
+    "api.subscriptions.apps.SubscriptionsConfig",  # 🆕 Módulos y Suscripciones Ikolu
+    "api.providers.apps.ProvidersConfig",  # 🆕 Proveedores de Telemetría (TData, MQTT)
+    "api.compliance.apps.ComplianceConfig",  # 🆕 Cumplimiento Normativo (DGA, SMA)
     "api.notifications.apps.NotificationsConfig",  # 🆕 Sistema de Notificaciones
     "api.documents.apps.DocumentsConfig",  # 🆕 Gestión Documental
     "api.infrastructure.apps.InfrastructureConfig",  # 🆕 Infraestructura IoT
@@ -368,22 +371,10 @@ JAZZMIN_SETTINGS = {
     "topmenu_links": [
         # Enlaces externos
         {
-            "name": "Panel de control",
-            "url": "/admin/",
+            "name": "Ikolu Home",
+            "url": "https://ikolu.smarthydro.app",
+            "new_window": True,
             "icon": "fas fa-home",
-            "permissions": ["auth.view_user"],
-        },
-        {
-            "name": "Dashboard",
-            "url": "/admin/dashboard/",
-            "icon": "fas fa-chart-line",
-            "permissions": ["auth.view_user"],
-        },
-        {
-            "name": "Monitoreo",
-            "url": "/admin/telemetry-monitoring/",
-            "icon": "fas fa-tachometer-alt",
-            "permissions": ["auth.view_user"],
         },
         {
             "name": "SmartHydro Web",
@@ -399,20 +390,16 @@ JAZZMIN_SETTINGS = {
     "navigation_expanded": True,
     # Orden y agrupación del menú - Organizado por flujo de trabajo
     "order_with_respect_to": [
-        # OPERACIÓN DE TELEMETRÍA (Prioridad 1 - Lo más importante)
-        "core.TelemetryRecord",  # Registros de telemetría
-        "core.CatchmentPoint",  # Puntos de captación
-        # INGESTA DE DATOS (Prioridad 2 - Entrada de datos)
-        "core.TelemetryScheme",  # ✅ Esquemas de Telemetría (NUEVO)
-        "core.Variable",  # Variables capturadas
-        # PROCESAMIENTO (Prioridad 3 - Transformación de datos)
-        "core.ProfileDataConfigCatchment",  # Configuración de procesamiento
-        # CONFIGURACIÓN (Prioridad 4 - Estructura)
+        # OPERACIÓN DE TELEMETRÍA (Prioridad 1)
+        "core.TelemetryRecord",
+        "core.CatchmentPoint",
+        "core.TelemetryScheme",
+        "core.Variable",
+        # CONFIGURACIÓN (Prioridad 2)
         "core.ProjectCatchments",  # Proyectos
         "core.Client",  # Clientes
         # PREPARACIÓN Y ENVÍO (Prioridad 5 - Preparación para DGA)
         "core.DgaDataConfigCatchment",  # Configuración DGA
-        "core.ProfileIkoluCatchment",  # Perfiles Ikolu
         # ALERTAS Y NOTIFICACIONES (Prioridad 6)
         "core.NotificationsCatchment",
         "core.ResponseNotificationsCatchment",
@@ -425,22 +412,7 @@ JAZZMIN_SETTINGS = {
         "core.RegisterPersons",
     ],
     # Personalización de modelos
-    "custom_links": {
-        "core.CatchmentPoint": [
-            {
-                "name": "Ver Dashboard",
-                "url": "/admin/dashboard/",
-                "icon": "fas fa-chart-line",
-            }
-        ],
-        "core.TelemetryRecord": [
-            {
-                "name": "Ver Dashboard",
-                "url": "/admin/dashboard/",
-                "icon": "fas fa-chart-line",
-            }
-        ],
-    },
+    "custom_links": {},
     # Iconos personalizados para modelos - Organizados por flujo
     "icons": {
         # Autenticación
@@ -448,18 +420,12 @@ JAZZMIN_SETTINGS = {
         "auth.user": "fas fa-user",
         "auth.Group": "fas fa-users",
         # Operación de Telemetría
-        "core.TelemetryRecord": "fas fa-database",  # Registros
-        "core.CatchmentPoint": "fas fa-map-marker-alt",  # Puntos
-        "core.ProjectCatchments": "fas fa-project-diagram",  # Proyectos
-        "core.Client": "fas fa-building",  # Clientes
-        # Ingesta
-        "core.TelemetryScheme": "fas fa-layer-group",  # ✅ Esquemas
-        "core.Variable": "fas fa-signal",  # Variables capturadas
-        # Procesamiento
-        "core.ProfileDataConfigCatchment": "fas fa-cogs",  # Config procesamiento
+        "core.TelemetryRecord": "fas fa-database",
+        "core.CatchmentPoint": "fas fa-map-marker-alt",
+        "core.TelemetryScheme": "fas fa-layer-group",
+        "core.Variable": "fas fa-signal",
         # Preparación y Envío
         "core.DgaDataConfigCatchment": "fas fa-paper-plane",  # Envío DGA
-        "core.ProfileIkoluCatchment": "fas fa-user-cog",  # Perfiles
         # Alertas
         "core.NotificationsCatchment": "fas fa-bell",
         "core.ResponseNotificationsCatchment": "fas fa-reply",
@@ -503,14 +469,7 @@ JAZZMIN_SETTINGS = {
     # Personalización de la página de inicio
     "welcome_sign": "Bienvenido a SmartHydro - Panel de Control de Telemetría",
     # Colores personalizados (opcional)
-    "usermenu_links": [
-        {"name": "Dashboard", "url": "/admin/dashboard/", "icon": "fas fa-chart-line"},
-        {
-            "name": "Monitoreo",
-            "url": "/admin/telemetry-monitoring/",
-            "icon": "fas fa-tachometer-alt",
-        },
-    ],
+    "usermenu_links": [],
 }
 
 # Configuración del tema oscuro (opcional) - Mejorado con mejor contraste

@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('providers', '0001_initial'),
+        ('telemetry_providers', '0001_initial'),
         ('telemetry', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
@@ -67,7 +67,7 @@ class Migration(migrations.Migration):
                 ('total_submissions', models.IntegerField(default=0, help_text='Total submissions sent')),
                 ('successful_submissions', models.IntegerField(default=0, help_text='Total successful submissions')),
                 ('point', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='compliance_configs', to='telemetry.catchmentpoint', verbose_name='Punto de Captación')),
-                ('provider', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='providers.complianceprovider', verbose_name='Proveedor de Cumplimiento')),
+                ('provider', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='telemetry_providers.complianceprovider', verbose_name='Proveedor de Cumplimiento')),
             ],
             options={
                 'verbose_name': 'Configuración de Cumplimiento por Punto',
@@ -91,7 +91,7 @@ class Migration(migrations.Migration):
                 ('error_message', models.TextField(blank=True, help_text='Error message if submission failed')),
                 ('submitted_at', models.DateTimeField(blank=True, help_text='When the record was submitted to the provider', null=True)),
                 ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='manual_compliance_records', to=settings.AUTH_USER_MODEL, verbose_name='Creado por')),
-                ('config', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='manual_records', to='providers.pointcomplianceconfig', verbose_name='Configuración de Cumplimiento')),
+                ('config', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='manual_records', to='telemetry_providers.pointcomplianceconfig', verbose_name='Configuración de Cumplimiento')),
             ],
             options={
                 'verbose_name': 'Registro Manual de Cumplimiento',

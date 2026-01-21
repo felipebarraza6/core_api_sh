@@ -51,7 +51,7 @@ def collect_telemetry(self, frequency_minutes):
 
         # Obtener puntos con telemetría activa para esta frecuencia
         points = CatchmentPoint.objects.filter(
-            data_config_profiles__is_telemetry=True, frecuency=str(frequency_minutes)
+            is_active=True, frequency__minutes=int(frequency_minutes)
         ).distinct()
 
         point_count = points.count()
@@ -159,12 +159,10 @@ def process_single_point_unified(point_id, frequency_minutes):
         from api.telemetry.models import CoreVariable
 
         point = CatchmentPoint.objects.get(id=point_id)
-        serializer = CatchmentPointSerializerDetailCron(point)
-        data = serializer.data
-
-        profile_data_config = data.get("profile_data_config", {})
-        variables = profile_data_config.get("scheme", {}).get("variables", [])
-        token = profile_data_config.get("token_service")
+        # Se obtiene la configuración dinámica
+        config_dict = point.get_config_dict()
+        variables = [] # Las variables se obtienen del esquema o del punto directamente
+        token = config_dict.get("token_service")
 
         # ===== NUEVA LÓGICA: Fallback a sistema dinámico de proveedores =====
         if not variables or not token:

@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("telemetry", "0004_configurationscheme_configurationschemefield_and_more"),
-        ("providers", "0002_complianceprovider_pointcomplianceconfig_and_more"),
+        ("telemetry_providers", "0002_complianceprovider_pointcomplianceconfig_and_more"),
     ]
 
     operations = [
@@ -126,7 +126,7 @@ class Migration(migrations.Migration):
                     models.OneToOneField(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="mqtt_config",
-                        to="providers.telemetryprovider",
+                        to="telemetry_providers.telemetryprovider",
                         verbose_name="Proveedor",
                     ),
                 ),
@@ -237,7 +237,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="parsing_rules",
-                        to="providers.telemetryprovider",
+                        to="telemetry_providers.telemetryprovider",
                         verbose_name="Proveedor",
                     ),
                 ),
@@ -312,7 +312,7 @@ class Migration(migrations.Migration):
                     "provider",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
-                        to="providers.telemetryprovider",
+                        to="telemetry_providers.telemetryprovider",
                         verbose_name="Proveedor MQTT",
                     ),
                 ),

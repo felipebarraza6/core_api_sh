@@ -4,6 +4,9 @@ Admin principal del módulo Telemetry - Sistema Dinámico V3.
 Este módulo registra todos los admins de telemetría incluyendo:
 - Modelos de configuración dinámica (admin_configuration.py)
 - Modelos de compliance regulatorio (admin_compliance.py)
+- Modelos de V3 logic (admin_v3.py)
+- Modelos de constantes (admin_constants.py)
+- Modelos de datos granulares (admin_granular.py)
 - Puntos de captación y telemetría (integrados aquí)
 """
 
@@ -15,6 +18,7 @@ from django.urls import reverse
 from .models.catchment_points import CatchmentPoint
 from .models.telemetry import TelemetryRecord
 from .models.configuration import PointConfigurationValue
+from .models.management_super import SystemConfiguration
 
 # Importar inlines de otros módulos
 from .admin_configuration import PointConfigurationValueInline
@@ -48,11 +52,11 @@ class TelemetryRecordInline(admin.TabularInline):
     """Inline para registros de telemetría en CatchmentPoint."""
     model = TelemetryRecord
     extra = 0
-    fields = ('date_time_medition', 'flow', 'nivel', 'total', 'is_error', 'is_partial')
+    fields = ('timestamp', 'flow', 'nivel', 'total', 'is_error', 'is_partial')
     readonly_fields = fields
     can_delete = False
     max_num = 10
-    ordering = ('-date_time_medition',)
+    ordering = ('-timestamp',)
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -61,12 +65,9 @@ class TelemetryRecordInline(admin.TabularInline):
 # =============================================================================
 # ADMIN PARA CATCHMENT POINT
 # =============================================================================
-# NOTA: CatchmentPoint ya está registrado en api/core/admin.py
-# Este código está comentado para evitar duplicación.
-# Para agregar ComplianceConfigInline a CatchmentPoint, modificar api/core/admin.py
 
-# @admin.register(CatchmentPoint)
-class CatchmentPointAdminV3(admin.ModelAdmin):
+@admin.register(CatchmentPoint)
+class CatchmentPointAdmin(admin.ModelAdmin):
     """
     Admin para Puntos de Captación con sistema dinámico.
 
@@ -89,16 +90,13 @@ class CatchmentPointAdminV3(admin.ModelAdmin):
     list_filter = (
         'is_active',
         'configuration_scheme',
-        'sampling_frequency',
-        'client__organization',
+        'frequency',
     )
 
     search_fields = (
         'point_code',
         'title',
-        'client__first_name',
-        'client__last_name',
-        'client__organization__name',
+        'owner_user__username',
     )
 
     readonly_fields = (
@@ -108,7 +106,7 @@ class CatchmentPointAdminV3(admin.ModelAdmin):
         'configuration_preview',
     )
 
-    autocomplete_fields = ('client', 'configuration_scheme', 'sampling_frequency')
+    autocomplete_fields = ('owner_user', 'configuration_scheme', 'frequency')
 
     inlines = [
         PointConfigurationValueInline,
@@ -118,15 +116,14 @@ class CatchmentPointAdminV3(admin.ModelAdmin):
 
     fieldsets = (
         ('Identificación', {
-            'fields': ('point_code', 'title', 'client', 'is_active')
+            'fields': ('point_code', 'title', 'owner_user', 'is_active')
         }),
         ('Configuración Dinámica', {
-            'fields': ('configuration_scheme', 'configuration_preview', 'sampling_frequency'),
+            'fields': ('configuration_scheme', 'configuration_preview', 'frequency'),
             'description': 'Sistema dinámico de configuración V3'
         }),
         ('Ubicación', {
-            'fields': ('latitude', 'longitude', 'address', 'region', 'province'),
-            'classes': ('collapse',)
+            'fields': ('lat', 'lon'),
         }),
         ('Telemetría', {
             'fields': ('last_telemetry_display',),
@@ -287,14 +284,14 @@ class CatchmentPointAdminV3(admin.ModelAdmin):
 # NOTA: TelemetryRecord ya está registrado en api/core/admin.py
 # Este código está comentado para evitar duplicación.
 
-# @admin.register(TelemetryRecord)
-class TelemetryRecordAdminV3(admin.ModelAdmin):
+@admin.register(TelemetryRecord)
+class TelemetryRecordAdmin(admin.ModelAdmin):
     """Admin para registros de telemetría."""
 
     list_display = (
         'id',
         'point_link',
-        'date_time_medition',
+        'timestamp',
         'flow_display',
         'nivel_display',
         'total_display',
@@ -305,8 +302,8 @@ class TelemetryRecordAdminV3(admin.ModelAdmin):
     list_filter = (
         'is_error',
         'is_partial',
-        'date_time_medition',
-        'point__client__organization',
+        'timestamp',
+        'point__owner_user',
     )
 
     search_fields = (
@@ -316,31 +313,31 @@ class TelemetryRecordAdminV3(admin.ModelAdmin):
     )
 
     readonly_fields = (
-        'date_time_medition',
+        'timestamp',
         'date_time_last_logger',
         'variable_details',
-        'processing_metadata',
+        'flow', 'nivel', 'water_table', 'total', 'pulses',
     )
 
     autocomplete_fields = ('point',)
 
-    date_hierarchy = 'date_time_medition'
+    date_hierarchy = 'timestamp'
 
     fieldsets = (
         ('Punto', {
             'fields': ('point',)
         }),
         ('Timestamp', {
-            'fields': ('date_time_medition', 'date_time_last_logger')
+            'fields': ('timestamp', 'date_time_last_logger')
         }),
         ('Datos', {
-            'fields': ('flow', 'nivel', 'water_table', 'total', 'pulses', 'temperature', 'pressure', 'conductivity')
+            'fields': ('flow', 'nivel', 'water_table', 'total', 'pulses')
         }),
         ('Estado', {
             'fields': ('is_error', 'is_partial', 'device_id')
         }),
         ('Metadatos', {
-            'fields': ('variable_details', 'processing_metadata'),
+            'fields': ('variable_details',),
             'classes': ('collapse',)
         }),
     )
@@ -427,7 +424,18 @@ class TelemetryRecordAdminV3(admin.ModelAdmin):
     compliance_status.short_description = 'Compliance'
 
 
+@admin.register(SystemConfiguration)
+class SystemConfigurationAdmin(admin.ModelAdmin):
+    """Admin para configuración global del sistema."""
+    list_display = ('key', 'category', 'is_encrypted', 'modified')
+    list_filter = ('category', 'is_encrypted')
+    search_fields = ('key', 'description')
+    readonly_fields = ('created', 'modified')
+
+
 # =============================================================================
-# NOTA: Los admins de configuración y compliance ya están registrados
-# en sus respectivos archivos (admin_configuration.py y admin_compliance.py)
+# IMPORTAR OTROS ADMINS PARA REGISTRO
 # =============================================================================
+from . import admin_v3
+from . import admin_constants
+from . import admin_granular

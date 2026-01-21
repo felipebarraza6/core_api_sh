@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('providers', '0003_add_mqtt_models'),
+        ('telemetry_providers', '0003_add_mqtt_models'),
     ]
 
     operations = [
@@ -39,6 +39,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='pointcomplianceconfig',
             name='compliance_standard',
-            field=models.ForeignKey(blank=True, help_text='Define la frecuencia de envío (Mayor, Medio, Menor, CMP)', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='point_configs', to='providers.compliancestandard', verbose_name='Estándar de Cumplimiento'),
+            field=models.ForeignKey(blank=True, help_text='Define la frecuencia de envío (Mayor, Medio, Menor, CMP)', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='point_configs', to='telemetry_providers.compliancestandard', verbose_name='Estándar de Cumplimiento'),
         ),
     ]

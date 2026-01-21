@@ -6,7 +6,6 @@ from prometheus_client import Counter, Gauge, Histogram, Info
 from django.db.models import Count
 from api.telemetry.models import (
     CatchmentPoint,
-    ProfileDataConfigCatchment,
 )
 from api.telemetry.providers.compliance_models import PointComplianceConfig
 from api.telemetry.models.telemetry import TelemetryRecord
@@ -221,7 +220,7 @@ def update_telemetry_metrics():
         point_name = point.title
         project_name = point.project.name if point.project else "Sin Proyecto"
         client_name = point.project.client.name if (point.project and point.project.client) else "Sin Cliente"
-        frequency = dict(CatchmentPoint.FRECUENCY_OPTIONS).get(point.frecuency, "Desconocida")
+        frequency = str(point.frequency.minutes if point.frequency else "Desconocida")
 
         # Último registro
         latest_record = TelemetryRecord.objects.filter(
@@ -336,11 +335,10 @@ def update_provider_metrics():
 
 def update_dga_metrics():
     """Actualiza métricas de DGA."""
-    # Registros pendientes de envío a DGA
+    # Registros pendientes de envío a DGA agrupados por punto
     pending_records = TelemetryRecord.objects.filter(
-        compliance_status__dga__sent=False,
-        count=Count('id')
-    )
+        compliance_status__dga__sent=False
+    ).values('point_id', 'point__title').annotate(count=Count('id'))
 
     for record in pending_records:
         point_id = record['point_id']
@@ -386,7 +384,7 @@ def update_alerts_metrics():
         if point:
             project_name = point.project.name if point.project else "Sin Proyecto"
             client_name = point.project.client.name if (point.project and point.project.client) else "Sin Cliente"
-            frequency = dict(CatchmentPoint.FRECUENCY_OPTIONS).get(point.frecuency, "Desconocida")
+            frequency = str(point.frequency.minutes if point.frequency else "Desconocida")
             
             active_alerts.labels(
                 point_id=str(point_id),
@@ -432,8 +430,9 @@ def update_system_metrics():
         with transaction.atomic():
             # Total de puntos por estado
             total_points = CatchmentPoint.objects.count()
-            telemetry_points = ProfileDataConfigCatchment.objects.filter(
-                is_telemetry=True
+            # En la nueva arquitectura, consideramos telemetría si el punto está activo
+            telemetry_points = CatchmentPoint.objects.filter(
+                is_active=True
             ).count()
 
             points_total.labels(status='active', provider='all').set(telemetry_points)

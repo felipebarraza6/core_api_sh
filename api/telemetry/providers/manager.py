@@ -372,10 +372,9 @@ class ProviderManager:
                         metrics.telemetry_ingestion_total.labels(
                             point_id=str(point.id),
                             point_name=str(point.title),
-                            project=str(project.name if project else "Sin Proyecto"),
-                            client=str(client.name if client else "Sin Cliente"),
-                            # Prioritize dynamic frequency (FK) over legacy frecuency (Char)
-                            frequency=str(point.frequency.minutes if point.frequency else dict(point.FRECUENCY_OPTIONS).get(point.frecuency, "Desconocida")),
+                            project=str(point.project.name if point.project else "Sin Proyecto"),
+                            client=str(point.project.client.name if point.project and point.project.client else "Sin Cliente"),
+                            frequency=str(point.frequency.minutes if point.frequency else "Desconocida"),
                             provider=str(provider_name),
                             protocol=str(provider_config.provider.provider_type).upper()
                         ).inc()
@@ -400,8 +399,8 @@ class ProviderManager:
                     metrics.telemetry_ingestion_errors.labels(
                         point_id=str(point.id),
                         point_name=str(point.title),
-                        project=str(project.name if project else "Sin Proyecto"),
-                        client=str(client.name if client else "Sin Cliente"),
+                        project=str(point.project.name if point.project else "Sin Proyecto"),
+                        client=str(point.project.client.name if point.project and point.project.client else "Sin Cliente"),
                         error_type=str(type(exc).__name__),
                         protocol=str(provider_config.provider.provider_type).upper()
                     ).inc()

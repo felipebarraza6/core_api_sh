@@ -59,7 +59,7 @@ class Migration(migrations.Migration):
                 ('error_count', models.IntegerField(default=0, help_text='Consecutive error count')),
                 ('consecutive_successes', models.IntegerField(default=0, help_text='Consecutive successful requests')),
                 ('point', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='provider_configs', to='telemetry.catchmentpoint', verbose_name='Punto de Captación')),
-                ('provider', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='providers.telemetryprovider', verbose_name='Proveedor')),
+                ('provider', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='telemetry_providers.telemetryprovider', verbose_name='Proveedor')),
             ],
             options={
                 'verbose_name': 'Configuración de Proveedor por Punto',

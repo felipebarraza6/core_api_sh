@@ -1,7 +1,5 @@
 from .catchment_points import (
     CatchmentPoint,
-    ProfileDataConfigCatchment,
-    ProfileIkoluCatchment,
 )
 from .configuration import (
     ConfigurationScheme,

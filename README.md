@@ -137,11 +137,19 @@ Para agregar más dominios, editar `docker-compose.production.secure.yml` y agre
 
 Editar `init-db-secure.sql` para modificar configuraciones de PostgreSQL.
 
-## 📞 Soporte
+## 📚 Documentación
 
-- **Documentación**: `maintenance/README.md`
-- **Scripts**: `maintenance/` directory
-- **Configuración**: `conf/` directory
+Para más detalles técnicos y guías, consulta la carpeta `docs/`:
+
+- **[Análisis de Arquitectura](docs/analysis/)**: Esquemas y análisis técnicos del sistema.
+- **[Guías de Usuario](docs/guides/)**: Manuales y guías de configuración.
+- **[Planes y Roadmap](docs/plans/)**: Documentación sobre el desarrollo futuro y planes.
+- **[Migración](docs/migration/)**: Información sobre procesos de migración (Celery, etc).
+
+## 📞 Soporte y Scripts
+
+- **Scripts de mantenimiento**: `scripts/maintenance/`
+- **Configuración de servicios**: `conf/`
 
 ## 🎯 Ventajas de esta Arquitectura
 

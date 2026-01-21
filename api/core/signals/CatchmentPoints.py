@@ -1,18 +1,11 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from api.telemetry.models.catchment_points import (
-    CatchmentPoint,
-    ProfileIkoluCatchment,
-    ProfileDataConfigCatchment,
-)
+from api.telemetry.models.catchment_points import CatchmentPoint
 from api.core.services.variable_service import initialize_default_variables
 
 
 @receiver(post_save, sender=CatchmentPoint)
 def create_related_profiles(sender, instance, created, **kwargs):
     if created:
-        ProfileIkoluCatchment.objects.create(point_catchment=instance)
-        ProfileDataConfigCatchment.objects.create(point_catchment=instance)
-
-        # Inicializar variables por defecto (Sistema Dinámico)
+        # Inicializar variables por defecto (Sistema Dinámico V3)
         initialize_default_variables(instance.id)

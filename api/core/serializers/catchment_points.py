@@ -6,8 +6,6 @@ from rest_framework import serializers
 
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    ProfileDataConfigCatchment,
-    ProfileIkoluCatchment,
 )
 from api.crm.models import Client, Project, Person
 from api.notifications.models import Notification, NotificationResponse
@@ -40,10 +38,7 @@ class CatchmentPointSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class ProfileIkoluCatchmentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProfileIkoluCatchment
-        fields = "__all__"
+# Legacy profile serializers removed
 
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -77,10 +72,7 @@ class DocumentSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class ProfileDataConfigCatchmentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProfileDataConfigCatchment
-        fields = "__all__"
+# Legacy configuration serializer removed
 
 
 
@@ -122,115 +114,39 @@ class CatchmentPointSerializerDetailCron(serializers.ModelSerializer):
         return {"project_name": "N/A", "client_name": "N/A"}
 
     def get_profile_data_config(self, obj):
-        profile = ProfileDataConfigCatchment.objects.filter(point_catchment=obj).first()
-        if not profile:
-            return {}
-
-        # Serializar el perfil básico (incluyendo extra_config)
-        profile_data = ProfileDataConfigCatchmentSerializer(profile).data
-
-        # 1. Variables directas del punto
-        point_variables = CoreVariable.objects.filter(point=obj, is_active=True)
-
-        # 2. Variables heredadas del esquema (si existe)
-        scheme_variables = []
-        virtual_variables = []
-        scheme_name = "Dynamic Scheme"
-
-        if obj.processing_scheme:
-            scheme_name = obj.processing_scheme.name
-            scheme_variables = obj.processing_scheme.variables.filter(is_active=True)
-            virtual_variables = obj.processing_scheme.virtual_variables.filter(
-                is_active=True
-            )
-
-        # Combinar variables (las del punto tienen prioridad sobre las del esquema
-        # si coinciden en internal_code)
-        all_vars_dict = {}
-
-        # Primero cargar las del esquema
-        for v in scheme_variables:
-            all_vars_dict[v.internal_code] = {
-                "id": f"scheme_{v.id}",
-                "str_variable": v.provider_key or v.internal_code,
-                "type_variable": v.type_variable,
-                "internal_code": v.internal_code,
-                "service": "UNIFIED",
-                "scale_factor": v.scale_factor,
-                "offset": v.offset,
-                "operation": v.operation,
-                "formula": v.formula,
-                "sources": v.sources,
-                "priority": v.priority,
-                "is_virtual": v.is_virtual,
-                "min_value": v.min_value,
-                "max_value": v.max_value,
-                "configuration": v.configuration,
-            }
-
-        # Luego cargar/sobreescribir con las del punto
-        for v in point_variables:
-            all_vars_dict[v.internal_code] = {
-                "id": v.id,
-                "str_variable": v.provider_key or v.internal_code,
-                "type_variable": v.type_variable,
-                "internal_code": v.internal_code,
-                "service": "UNIFIED",
-                "scale_factor": v.scale_factor,
-                "offset": v.offset,
-                "operation": v.operation,
-                "formula": v.formula,
-                "sources": v.sources,
-                "priority": v.priority,
-                "is_virtual": v.is_virtual,
-                "min_value": v.min_value,
-                "max_value": v.max_value,
-                "configuration": v.configuration,
-            }
-
-        # Construir lista final de variables procesables
-        processed_variables = []
-        for v_code, v_data in all_vars_dict.items():
-            # Inyectar parámetros legacy esperados por unified_processing.py
-            v_data["pulses_factor"] = v_data.get("configuration", {}).get(
-                "pulses_factor", (v_data["scale_factor"] * 1000)
-            )
-            v_data["calculate_nivel"] = v_data.get("configuration", {}).get(
-                "calculate_nivel", True
-            )
-            v_data["convert_to_lt"] = v_data.get("configuration", {}).get(
-                "convert_to_lt", True
-            )
-            processed_variables.append(v_data)
-
-        # Retornar estructura completa, incluyendo extra_config del perfil
+        # Updated to use dynamic configuration system (V3)
+        # instead of the legacy ProfileDataConfigCatchment model.
+        
+        config_dict = obj.get_config_dict()
+        
+        # Inyectar parámetros legacy si existen en la configuración dinámica
+        # o usar valores por defecto seguros.
         result = {
-            "token_service": profile.token_service or "",
-            "d3": float(profile.d3),
-            "scheme": {
-                "name": scheme_name,
-                "variables": processed_variables,
-                "virtual_variables": sorted(
-                    [
-                        {
-                            "name": vv.name,
-                            "internal_code": vv.internal_code,
-                            "operation": vv.operation,
-                            "sources": vv.sources,
-                            "formula": vv.formula,
-                            "priority": vv.priority,
-                        }
-                        for vv in virtual_variables
-                    ],
-                    key=lambda x: x["priority"],
-                ),
-            },
+            "token_service": config_dict.get("token_service", ""),
+            "d3": float(config_dict.get("d3", 0.0)),
+            "is_telemetry": obj.is_active,
+            "extra_config": config_dict,
         }
 
-        # Inyectar campos del perfil incluyendo extra_config
-        if profile_data:
-            result.update(profile_data)
+        # variables heredadas del esquema
+        scheme_variables = []
+        virtual_variables = []
+        scheme_name = obj.processing_scheme.name if obj.processing_scheme else "Dynamic Scheme"
 
+        if obj.processing_scheme:
+            scheme_variables = obj.processing_scheme.variables.filter(is_active=True)
+            virtual_variables = obj.processing_scheme.virtual_variables.filter(is_active=True)
+
+        all_vars_dict = {}
+        for v in scheme_variables:
+            all_vars_dict[v.internal_code] = v.id # basic map
+            
+        result["scheme"] = {
+            "name": scheme_name,
+            "variables": [], # To be filled if needed or handled by processor
+            "virtual_variables": []
+        }
+        
         return result
 
     def _map_internal_to_legacy_type(self, code):
@@ -245,13 +161,10 @@ class CatchmentPointSerializerDetailCron(serializers.ModelSerializer):
 
     class Meta:
         model = CatchmentPoint
-        fields = ("id", "title", "frecuency", "profile_data_config", "project_info")
+        fields = ("id", "title", "frequency_minutes", "profile_data_config", "project_info")
 
 
-class ProfileIkoluCatchmentRetrieveSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProfileIkoluCatchment
-        fields = ("entry_by_form", "m1", "m2", "m3", "m4", "m5", "m6")
+# Retrieve serializer removed
 
 
 class VariableConfigSerializer(serializers.ModelSerializer):
@@ -279,33 +192,7 @@ class VariableSerializer(VariableConfigSerializer):
     pass
 
 
-class DataConfigUserSerializer(serializers.ModelSerializer):
-    variables = serializers.SerializerMethodField("get_variables")
-
-    def get_variables(self, obj):
-        if not obj or not obj.point_catchment:
-            return []
-        variables = CoreVariable.objects.filter(
-            point=obj.point_catchment, is_active=True
-        )
-        return VariableConfigSerializer(variables, many=True).data
-
-    class Meta:
-        model = ProfileDataConfigCatchment
-        fields = (
-            "d1",
-            "d2",
-            "d3",
-            "d4",
-            "d5",
-            "d6",
-            "addition",
-            "date_start_telemetry",
-            "date_delivery_act",
-            "is_telemetry",
-            "extra_config",
-            "variables",
-        )
+# Legacy DataConfigUserSerializer removed
 
 
 class InteractionDetailModuleSerializer(serializers.ModelSerializer):
@@ -446,23 +333,54 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
 
 
     def get_config_data(self, obj):
-        get_data = ProfileDataConfigCatchment.objects.filter(
-            point_catchment=obj
-        ).first()
-        return DataConfigUserSerializer(get_data).data if get_data else {}
+        # Now returns dynamic configuration values
+        config_dict = obj.get_config_dict()
+        return {
+            "is_telemetry": obj.is_active,
+            "extra_config": config_dict,
+            **config_dict
+        }
 
     def get_profile_ikolu(self, obj):
-        get_data = ProfileIkoluCatchment.objects.filter(point_catchment=obj).first()
-        return (
-            ProfileIkoluCatchmentRetrieveSerializer(get_data).data if get_data else {}
-        )
+        # Now dynamically fetches active modules from the subscriptions app
+        from api.subscriptions.models import PointModuleAccess
+        
+        active_access = PointModuleAccess.objects.filter(
+            point=obj, 
+            is_active=True
+        ).select_related('module')
+        
+        # Map dynamic modules to legacy return format for frontend compatibility
+        profile = {
+            "entry_by_form": False,
+            "m1": False, "m2": False, "m3": False, "m4": False, "m5": False, "m6": False, "m7": False
+        }
+        
+        module_mapping = {
+            "mi_pozo": "m1",
+            "dga": "m2",
+            "reportes": "m3",
+            "graficos": "m4",
+            "indicadores": "m5",
+            "alarmas": "m6",
+            "documentos": "m7"
+        }
+        
+        for access in active_access:
+            code = access.module.code
+            if code in module_mapping:
+                profile[module_mapping[code]] = True
+            # Also include the dynamic code itself
+            profile[code] = True
+            
+        return profile
 
     class Meta:
         model = CatchmentPoint
         fields = (
             "id",
             "title",
-            "frecuency",
+            "frequency_minutes",
             "profile_ikolu",
             "config_data",
             "modules",

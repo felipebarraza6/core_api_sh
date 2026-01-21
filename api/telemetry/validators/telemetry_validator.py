@@ -13,7 +13,7 @@ from django.db.models import Max, Min, Avg, Count, Q
 import pytz
 from django.utils import timezone as django_timezone
 
-from api.telemetry.models import TelemetryRecord, CatchmentPoint, ProfileDataConfigCatchment, CoreVariable
+from api.telemetry.models import TelemetryRecord, CatchmentPoint, CoreVariable
 from api.telemetry.processing import FormulaEngine
 
 logger = logging.getLogger(__name__)
@@ -102,11 +102,9 @@ def analyze_data_coherence(point_catchment_id: int, days_back: int = 30) -> Dict
     start_date = end_date - timedelta(days=days_back)
     
     try:
-        point = CatchmentPoint.objects.select_related('project')\
-            .prefetch_related('data_config_profiles', 'dga_data_config_profiles')\
-            .get(id=point_catchment_id)
-        profile = point.data_config_profiles.first()
-        dga_config = point.dga_data_config_profiles.first()
+        point = CatchmentPoint.objects.get(id=point_catchment_id)
+        config = point.get_config_dict()
+        # dga_config handled separately if needed, for now focusing on removing profile
     except CatchmentPoint.DoesNotExist:
         return {"error": "Punto no encontrado"}
     
@@ -154,8 +152,8 @@ def analyze_data_coherence(point_catchment_id: int, days_back: int = 30) -> Dict
             'max': max(flows),
             'promedio': sum(flows) / len(flows)
         }
-        if profile and profile.d5 and max(flows) > 0:
-            is_impossible, msg = validate_flow_impossible(max(flows), float(profile.d5))
+        if config.get("d5") and max(flows) > 0:
+            is_impossible, msg = validate_flow_impossible(max(flows), float(config.get("d5")))
             if is_impossible:
                 incidencias.append({'tipo': 'CRITICA', 'descripcion': 'Caudal imposible', 'detalle': msg})
 
@@ -165,8 +163,12 @@ def analyze_data_coherence(point_catchment_id: int, days_back: int = 30) -> Dict
             'max': max(levels),
             'promedio': sum(levels) / len(levels)
         }
-        if profile:
-            is_impossible, msg = validate_level_impossible(max(levels), float(profile.d1 or 0), float(profile.d3 or 0))
+        if config:
+            is_impossible, msg = validate_level_impossible(
+                max(levels), 
+                float(config.get("d1", 0)), 
+                float(config.get("d3", 0))
+            )
             if is_impossible:
                 incidencias.append({'tipo': 'CRITICA', 'descripcion': 'Nivel imposible', 'detalle': msg})
 

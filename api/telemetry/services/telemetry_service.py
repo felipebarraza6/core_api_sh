@@ -14,7 +14,6 @@ from django.utils import timezone
 from api.core.cache.telemetry_cache import TelemetryCache
 from api.telemetry.models.catchment_points import (
     CatchmentPoint,
-    ProfileDataConfigCatchment,
 )
 from api.telemetry.models.telemetry import TelemetryRecord
 # Notification model moved to api.notifications
@@ -33,14 +32,7 @@ class TelemetryService:
 
         if with_related:
             queryset = queryset.select_related(
-                "point", "point__project", "point__project__client"
-            ).prefetch_related(
-                Prefetch(
-                    "point__data_config_profiles",
-                    queryset=ProfileDataConfigCatchment.objects.only(
-                        "point_catchment_id", "d6", "is_telemetry"
-                    ),
-                )
+                "point", "point__owner_user"
             )
 
         return queryset
