@@ -374,7 +374,8 @@ class ProviderManager:
                             point_name=str(point.title),
                             project=str(project.name if project else "Sin Proyecto"),
                             client=str(client.name if client else "Sin Cliente"),
-                            frequency=str(dict(point.FRECUENCY_OPTIONS).get(point.frecuency, "Desconocida")),
+                            # Prioritize dynamic frequency (FK) over legacy frecuency (Char)
+                            frequency=str(point.frequency.minutes if point.frequency else dict(point.FRECUENCY_OPTIONS).get(point.frecuency, "Desconocida")),
                             provider=str(provider_name),
                             protocol=str(provider_config.provider.provider_type).upper()
                         ).inc()

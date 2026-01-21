@@ -64,7 +64,6 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     "api.core.apps.CoreAppConfig",
     "api.chatbot.apps.ChatbotConfig",
-    "api.reports.apps.ReportsConfig",
     "api.telemetry.apps.TelemetryConfig",
     "api.telemetry.providers.apps.ProvidersConfig",  # Sistema dinámico de proveedores
     "api.crm.apps.CrmConfig",  # 🆕 Gestión de Clientes y Proyectos

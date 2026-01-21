@@ -8,7 +8,10 @@
       "Bash(curl:*)",
       "Bash(chmod:*)",
       "Bash(python scripts/testing/test_mqtt_subscriber.py:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(xargs:*)",
+      "Bash(python manage.py check:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []

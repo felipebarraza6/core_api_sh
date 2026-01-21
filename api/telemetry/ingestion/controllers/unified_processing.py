@@ -8,18 +8,22 @@ usen exactamente la misma lógica robusta.
 
 IMPORTANTE: Todos los cronjobs deben importar y usar estas funciones.
 """
-
+import time
+import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+import pytz
+
 from api.telemetry.models import CoreVariable, TelemetryRecord
-    calculate_days_not_connection,
-    determine_dga_send,
-    evaluate_dynamic_formula,
-)
-from .processing.totalized import process_totalizado_variable
-from .processing.nivel import process_nivel_variable
-from .processing.caudal import process_caudal_variable, process_caudal_promedio_variable
+from api.telemetry.processing.formula_engine import FormulaEngine
+
+# Alias para compatibilidad
+evaluate_dynamic_formula = FormulaEngine.evaluate_dynamic_formula
+
+# Timezone y logger
+chile_tz = pytz.timezone("America/Santiago")
+telemetry_logger = logging.getLogger(__name__)
 
 
 def save_telemetry_data(
@@ -165,7 +169,9 @@ def save_telemetry_data(
         return None
 
 
-<<<<<<< HEAD
+
+
+
 def get_data_with_retry(getter_func, *args, max_retries=None, backoff_factor=None):
     """
     Retry inteligente con backoff exponencial para obtener datos de APIs
@@ -260,24 +266,6 @@ def log_variable_processing(
         except Exception as e:
             telemetry_logger.error(f"Error enviando alerta chat: {e}")
 
-
-
-def get_compliance_configs_for_record(point_id: int, record_timestamp: datetime):
-    """
-    Obtiene las configuraciones de compliance que deben procesar este registro.
-    Sustituye a la lógica de validación individual por proveedor.
-    """
-    from api.telemetry.providers.compliance_models import PointComplianceConfig
-    from api.telemetry.services.compliance_service import get_compliance_service
-    
-    configs = PointComplianceConfig.objects.filter(
-        point_id=point_id,
-        is_active=True,
-        send_compliance=True
-    ).select_related('compliance_standard', 'provider')
-    
-    service = get_compliance_service()
-    return [c for c in configs if service.should_submit(c, record_timestamp)]
 
 
 def process_totalizado_variable(
@@ -509,8 +497,7 @@ def process_caudal_promedio_variable(
     return created_register
 
 
-=======
->>>>>>> 6d18eabc7b36d33f849fb857a8f58a74b25f198d
+
 def process_variable_safely(
     variable: Dict[str, Any],
     data: Dict[str, Any],
@@ -714,7 +701,8 @@ def process_variable_safely(
         )
 
     return date_time_last_logger_total, created_register
-<<<<<<< HEAD
+
+
 
 
 def calculate_days_not_connection(
@@ -898,5 +886,3 @@ def get_compliance_configs_for_record(
             exc_info=True
         )
         return []
-=======
->>>>>>> 6d18eabc7b36d33f849fb857a8f58a74b25f198d

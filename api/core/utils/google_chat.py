@@ -6,15 +6,25 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Webhooks configurados desde settings
-WEBHOOK_URL = getattr(settings, "GOOGLE_CHAT_WEBHOOK_URL", "https://chat.googleapis.com/v1/spaces/AAQAm9y1FaI/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=IMIDu11REWEYRywIk-zC_QFo5tPi04IqvY1ToNuk9Vo")
-WEBHOOK_DGA_URL = getattr(settings, "GOOGLE_CHAT_WEBHOOK_DGA_URL", "https://chat.googleapis.com/v1/spaces/AAQAuNyVmJc/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vGilyWJuJR8AKXYSobhQYLYNalVAqtUwyiEpm6iLGhU")
+# Helper to get config from DB
+def get_system_config(key, default=None):
+    from api.telemetry.models.management_super import SystemConfiguration
+    try:
+        config = SystemConfiguration.objects.filter(key=key).first()
+        return config.value if config else default
+    except Exception:
+        return default
+
+# Webhooks configurados (prioridad: settings > base de datos > None)
+WEBHOOK_URL = getattr(settings, "GOOGLE_CHAT_WEBHOOK_URL", None)
+WEBHOOK_DGA_URL = getattr(settings, "GOOGLE_CHAT_WEBHOOK_DGA_URL", None)
 
 def send_google_chat_message(text, webhook_url=None):
     """Envía un mensaje simple a Google Chat."""
-    url = webhook_url or WEBHOOK_URL
+    url = webhook_url or WEBHOOK_URL or get_system_config('google_chat.webhook_url')
+    
     if not url:
-        logger.warning("Google Chat Webhook URL not configured.")
+        logger.warning("Google Chat Webhook URL not configured in settings or database.")
         return False
 
     try:
@@ -27,7 +37,8 @@ def send_google_chat_message(text, webhook_url=None):
 
 def send_dga_chat_message(text):
     """Envía un mensaje al canal de reportes DGA."""
-    return send_google_chat_message(text, webhook_url=WEBHOOK_DGA_URL)
+    url = WEBHOOK_DGA_URL or get_system_config('google_chat.webhook_dga_url')
+    return send_google_chat_message(text, webhook_url=url)
 
 def check_and_notify_reconnection(point_id, new_days_not_conection, point_name="Unknown", client_name="Unknown",
                                    flow=None, nivel=None, total=None, date_time_medition=None, date_time_last_logger=None,

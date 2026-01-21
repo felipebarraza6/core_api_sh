@@ -115,24 +115,16 @@ DEFAULT_SYNC_CONFIG = {
     }
 }
 
-# Configuración de constantes históricas por defecto
+# Configuración de constantes históricas por defecto (Ejemplos genéricos)
 DEFAULT_HISTORICAL_CONSTANTS = [
-    {
-        'name': 'Reset Contador 2024-01-15',
-        'code': 'RESET_20240115',
-        'constant_type': 'TOTALIZER_OFFSET',
-        'value_numeric': 15000.5,  # Valor perdido por reset
-        'scope': 'GLOBAL',  # Aplica a todos
-        'description': 'Corrección por reset de contador general el 15/01/2024'
-    },
-    {
-        'name': 'Calibración Caudal Q1 2024',
-        'code': 'FLOW_CAL_Q1_2024',
-        'constant_type': 'FLOW_MULTIPLIER',
-        'value_numeric': 1.05,  # 5% de corrección
-        'scope': 'GLOBAL',
-        'description': 'Ajuste de calibración para todos los medidores de caudal Q1 2024'
-    }
+    # {
+    #     'name': 'Reset Contador Ejemplo',
+    #     'code': 'RESET_GENERIC_1',
+    #     'constant_type': 'TOTALIZER_OFFSET',
+    #     'value_numeric': 0.0,
+    #     'scope': 'GLOBAL',
+    #     'description': 'Ejemplo de corrección por reset'
+    # },
 ]
 
 def initialize_provider_constants_and_sync():

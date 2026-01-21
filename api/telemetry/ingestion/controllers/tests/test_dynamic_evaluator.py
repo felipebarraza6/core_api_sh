@@ -1,6 +1,9 @@
 import unittest
 from datetime import datetime
-from api.telemetry.ingestion.controllers.processing.utils import evaluate_dynamic_formula
+from api.telemetry.processing.formula_engine import FormulaEngine
+
+# Use the static method from FormulaEngine
+evaluate_dynamic_formula = FormulaEngine.evaluate_dynamic_formula
 
 class TestDynamicEvaluator(unittest.TestCase):
     def test_basic_math(self):

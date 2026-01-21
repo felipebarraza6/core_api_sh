@@ -53,8 +53,13 @@ INSTALLED_APPS = [
     # Nuestras apps
     "api.core.apps.CoreAppConfig",
     "api.telemetry.apps.TelemetryConfig",
+    "api.telemetry.providers.apps.ProvidersConfig",
     "api.chatbot.apps.ChatbotConfig",
-    "api.reports.apps.ReportsConfig",
+    "api.crm.apps.CrmConfig",
+    "api.notifications.apps.NotificationsConfig",
+    "api.documents.apps.DocumentsConfig",
+    "api.infrastructure.apps.InfrastructureConfig",
+    "api.support.apps.SupportConfig",
 ]
 
 MIDDLEWARE = [
@@ -133,5 +138,6 @@ REST_FRAMEWORK = {
 }
 
 # Google Chat Webhooks para modo DEV
-GOOGLE_CHAT_WEBHOOK_URL = "https://chat.googleapis.com/v1/spaces/AAQAanhYkmQ/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=aUeu_emgDuSJHUP0vPOpqI7ZAaDjA88X6vU-BHJv4rQ"
-GOOGLE_CHAT_WEBHOOK_DGA_URL = "https://chat.googleapis.com/v1/spaces/AAQAanhYkmQ/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=aUeu_emgDuSJHUP0vPOpqI7ZAaDjA88X6vU-BHJv4rQ"
+# GOOGLE_CHAT_WEBHOOK_URL is handled via DB (SystemConfiguration) or .env
+GOOGLE_CHAT_WEBHOOK_URL = os.getenv("GOOGLE_CHAT_WEBHOOK_URL", None)
+GOOGLE_CHAT_WEBHOOK_DGA_URL = os.getenv("GOOGLE_CHAT_WEBHOOK_DGA_URL", None)

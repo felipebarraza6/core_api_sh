@@ -40,6 +40,8 @@ class CatchmentPoint(ModelApi):
         max_length=300, blank=True, null=True, verbose_name="longitud"
     )
 
+    # [DEPRECATED] Use SamplingFrequency model instead.
+    # Keep choices for backward compatibility until migration is complete.
     FRECUENCY_OPTIONS = [
         ("1", "1 minuto"),
         ("5", "5 minutos"),
@@ -47,13 +49,15 @@ class CatchmentPoint(ModelApi):
         ("60", "60 minutos"),
     ]
 
+    # [DEPRECATED] Use ForeignKey 'frequency' field instead.
     frecuency = models.CharField(
         blank=True,
         null=True,
         max_length=300,
         choices=FRECUENCY_OPTIONS,
-        verbose_name="Frecuencia",
+        verbose_name="Frecuencia (Legacy)",
         default="60",
+        help_text="[DEP] Use el campo 'frequency' (FK) en su lugar."
     )
 
     processing_scheme = models.ForeignKey(

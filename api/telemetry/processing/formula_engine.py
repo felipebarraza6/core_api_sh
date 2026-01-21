@@ -355,6 +355,106 @@ class FormulaEngine:
     # ====================================================================
     
     @staticmethod
+    def apply_operation(operation: str, values: list) -> float:
+        """
+        Aplica una operación sobre una lista de valores.
+
+        Args:
+            operation: "SUM", "DIFF", "AVG", "MUL", "MIN", "MAX"
+            values: Lista de valores numéricos
+
+        Returns:
+            Resultado de la operación
+
+        Examples:
+            >>> FormulaEngine.apply_operation("SUM", [1, 2, 3])
+            6.0
+            >>> FormulaEngine.apply_operation("AVG", [10, 20, 30])
+            20.0
+        """
+        try:
+            # Filtrar valores None y convertir a float
+            numeric_values = []
+            for v in values:
+                if v is not None:
+                    try:
+                        numeric_values.append(float(v))
+                    except (ValueError, TypeError):
+                        continue
+
+            if not numeric_values:
+                return 0.0
+
+            if operation == "SUM":
+                return sum(numeric_values)
+            elif operation == "DIFF":
+                # Primer valor menos la suma del resto
+                return numeric_values[0] - sum(numeric_values[1:])
+            elif operation == "AVG":
+                return sum(numeric_values) / len(numeric_values)
+            elif operation == "MUL":
+                result = 1.0
+                for v in numeric_values:
+                    result *= v
+                return result
+            elif operation == "MIN":
+                return min(numeric_values)
+            elif operation == "MAX":
+                return max(numeric_values)
+            else:
+                logger.error(f"Operación no soportada: {operation}")
+                return 0.0
+        except Exception as e:
+            logger.error(f"Error en apply_operation({operation}): {e}")
+            return 0.0
+
+    @staticmethod
+    def get_previous_value(
+        point_id: int,
+        variable_code: str,
+        hours_back: int = 1,
+        current_timestamp: Optional[datetime] = None
+    ) -> Optional[float]:
+        """
+        Obtiene el valor previo de una variable.
+
+        Útil para cálculos de diferencias (consumos, cambios, etc.)
+
+        Args:
+            point_id: ID del punto
+            variable_code: Código de la variable
+            hours_back: Horas hacia atrás a buscar
+            current_timestamp: Timestamp actual (para buscar el anterior)
+
+        Returns:
+            Valor previo o None si no existe
+        """
+        try:
+            from datetime import timedelta
+
+            query = TelemetryRecord.objects.filter(point_id=point_id)
+
+            if current_timestamp:
+                query = query.filter(timestamp__lt=current_timestamp)
+            else:
+                cutoff = datetime.now() - timedelta(hours=hours_back)
+                query = query.filter(timestamp__lte=cutoff)
+
+            record = query.order_by('-timestamp').first()
+
+            if record and record.data:
+                value = record.data.get(variable_code)
+                if value is not None:
+                    try:
+                        return float(value)
+                    except (ValueError, TypeError):
+                        return None
+            return None
+        except Exception as e:
+            logger.error(f"Error en get_previous_value: {e}")
+            return None
+
+    @staticmethod
     def calculate_total_m3(
         pulses_factor, value, point_catchment, variable_id=None, return_full_details=False
     ):
@@ -853,3 +953,56 @@ class FormulaEngine:
         except (ValueError, TypeError) as e:
             logger.error(f"Error en water_table: {e}")
             return "00.00"
+    
+    @staticmethod
+    def evaluate_dynamic_formula(formula: str, context: Dict[str, Any]) -> float:
+        """
+        Evaluates a dynamic formula replacing {internal_code} with values from context.
+        Use this to execute user-defined rules from the database.
+
+        This is a standalone static method for backward compatibility.
+        For more complex evaluations with config/system vars, use the instance method evaluate().
+
+        Args:
+            formula: String like "({v1} + {v2}) * 0.5"
+            context: Dict mapping internal_code to current values
+
+        Returns:
+            float: Result of calculation or 0.0 if error
+        """
+        if not formula:
+            return 0.0
+
+        processed_formula = formula
+        # Find all {var} patterns
+        tokens = re.findall(r"\{([a-zA-Z0-9_]+)\}", formula)
+
+        # Sort tokens by length descending to avoid partial replacement issues (e.g. {v1} and {v11})
+        tokens = sorted(list(set(tokens)), key=len, reverse=True)
+
+        for token in tokens:
+            # Get value from context, fallback to 0 if not found
+            try:
+                val = float(context.get(token, 0))
+            except (ValueError, TypeError):
+                val = 0.0
+            processed_formula = processed_formula.replace(f"{{{token}}}", str(val))
+
+        # Whitelist characters for security (allow numbers, operators, dots, parens, spaces)
+        # We also allow scientific notation e.g. 1e-5
+        if not re.match(r"^[0-9\.\+\-\*\/\(\)\s eE]+$", processed_formula):
+            logger.error(
+                f"Formula contains insecure characters after processing: {processed_formula} (Original: {formula})"
+            )
+            return 0.0
+
+        try:
+            # Evaluate safely without builtins
+            result = eval(processed_formula, {"__builtins__": {}})
+            return float(result)
+        except ZeroDivisionError:
+            logger.warning(f"Division by zero in formula: {formula}")
+            return 0.0
+        except Exception as e:
+            logger.error(f"Error evaluating formula '{formula}' (processed: '{processed_formula}'): {e}")
+            return 0.0

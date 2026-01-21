@@ -37,7 +37,7 @@ services:
     aliases:
       - django-app
     volumes:
-      - .:/app
+      - .:/ap p
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     environment:
