@@ -185,7 +185,7 @@ class CatchmentPointAdmin(admin.ModelAdmin):
 
     def telemetry_status(self, obj):
         """Estado de telemetría."""
-        latest = TelemetryRecord.objects.filter(point=obj).order_by('-date_time_medition').first()
+        latest = TelemetryRecord.objects.filter(point=obj).order_by('-timestamp').first()
 
         if not latest:
             return format_html(
@@ -197,7 +197,7 @@ class CatchmentPointAdmin(admin.ModelAdmin):
         from datetime import timedelta
 
         now = timezone.now()
-        delta = now - latest.date_time_medition
+        delta = now - latest.timestamp
 
         if delta < timedelta(hours=1):
             color = '#28a745'
@@ -220,7 +220,7 @@ class CatchmentPointAdmin(admin.ModelAdmin):
         """Mostrar últimos registros de telemetría."""
         records = TelemetryRecord.objects.filter(
             point=obj
-        ).order_by('-date_time_medition')[:5]
+        ).order_by('-timestamp')[:5]
 
         if not records:
             return format_html('<p style="color: #999;">No hay registros de telemetría</p>')
@@ -238,7 +238,7 @@ class CatchmentPointAdmin(admin.ModelAdmin):
             status_icon = '❌' if record.is_error else ('⚠️' if record.is_partial else '✅')
 
             html += '<tr style="border-bottom: 1px solid #dee2e6;">'
-            html += f'<td style="padding: 8px;">{record.date_time_medition.strftime("%Y-%m-%d %H:%M")}</td>'
+            html += f'<td style="padding: 8px;">{record.timestamp.strftime("%Y-%m-%d %H:%M")}</td>'
             html += f'<td style="padding: 8px; text-align: right;">{record.flow or "-"}</td>'
             html += f'<td style="padding: 8px; text-align: right;">{record.nivel or "-"}</td>'
             html += f'<td style="padding: 8px; text-align: right;">{record.total or "-"}</td>'
@@ -299,6 +299,7 @@ class TelemetryRecordAdmin(admin.ModelAdmin):
         'total_display',
         'status_display',
         'compliance_status',
+        'get_device_id',
     )
 
     list_filter = (
@@ -311,7 +312,7 @@ class TelemetryRecordAdmin(admin.ModelAdmin):
     search_fields = (
         'point__title',
         'point__point_code',
-        'device_id',
+        # 'device_id', # No existe columna device_id
     )
 
     readonly_fields = (
@@ -319,6 +320,7 @@ class TelemetryRecordAdmin(admin.ModelAdmin):
         'date_time_last_logger',
         'variable_details',
         'flow', 'nivel', 'water_table', 'total', 'pulses',
+        'get_device_id',
     )
 
     autocomplete_fields = ('point',)
@@ -336,13 +338,18 @@ class TelemetryRecordAdmin(admin.ModelAdmin):
             'fields': ('flow', 'nivel', 'water_table', 'total', 'pulses')
         }),
         ('Estado', {
-            'fields': ('is_error', 'is_partial', 'device_id')
+            'fields': ('is_error', 'is_partial', 'get_device_id')
         }),
         ('Metadatos', {
             'fields': ('variable_details',),
             'classes': ('collapse',)
         }),
     )
+
+    def get_device_id(self, obj):
+        """Obtener ID del dispositivo desde metadata o data."""
+        return obj.metadata.get('device_id') or obj.data.get('device_id') or '-'
+    get_device_id.short_description = 'Device ID'
 
     def point_link(self, obj):
         """Link al punto."""

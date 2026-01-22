@@ -121,14 +121,24 @@ def save_telemetry_data(
         if frequency:
             metadata["frequency_minutes"] = frequency
 
+        # Helper para garantizar serialización JSON
+        def make_json_serializable(obj):
+            if isinstance(obj, dict):
+                return {k: make_json_serializable(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [make_json_serializable(v) for v in obj]
+            elif isinstance(obj, datetime):
+                return obj.isoformat()
+            return obj
+
         # 4. Crear el registro
         v3_record = TelemetryRecord.objects.create(
             point_id=point_id,
             timestamp=dt_medition,
-            data=v3_data,
+            data=make_json_serializable(v3_data),
             is_error=created_register.get("is_error", False),
             is_partial=created_register.get("is_partial", False),
-            metadata=metadata,
+            metadata=make_json_serializable(metadata),
         )
 
         telemetry_logger.info(
