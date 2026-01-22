@@ -29,6 +29,17 @@ class MQTTProviderConfig(models.Model):
         verbose_name="Proveedor"
     )
 
+    # Identificación del Servicio (ej: netra, novus, twin)
+    service_identifier = models.SlugField(
+        max_length=50,
+        default="generic",
+        help_text="Identificador único del servicio/protocolo (ej: 'netra', 'novus')"
+    )
+    service_description = models.TextField(
+        blank=True,
+        help_text="Descripción del propósito de este servicio MQTT"
+    )
+
     # Conexión al broker
     broker_host = models.CharField(
         max_length=255,
@@ -110,7 +121,7 @@ class MQTTProviderConfig(models.Model):
         verbose_name_plural = "Configuraciones MQTT de Proveedores"
 
     def __str__(self):
-        return f"MQTT Config for {self.provider.display_name}"
+        return f"MQTT Config: {self.service_identifier} ({self.provider.display_name})"
 
     def clean(self):
         """Validar configuración MQTT."""
@@ -127,11 +138,13 @@ class MQTTProviderConfig(models.Model):
     def generate_client_id(self) -> str:
         """Generar un client_id único para esta conexión."""
         unique_id = uuid.uuid4().hex[:8]
-        return f"{self.client_id_prefix}_{unique_id}"
+        return f"{self.client_id_prefix}_{self.service_identifier}_{unique_id}"
 
     def build_subscribe_topic(self, **kwargs) -> str:
         """Construir topic de suscripción con variables."""
         try:
+            # Inject service_identifier into variables
+            kwargs.setdefault('service', self.service_identifier)
             return self.subscribe_topic_template.format(**kwargs)
         except KeyError as e:
             raise ValueError(f"Variable faltante en template de suscripción: {e}")
@@ -142,6 +155,8 @@ class MQTTProviderConfig(models.Model):
             raise ValueError("No hay template de publicación configurado")
 
         try:
+            # Inject service_identifier into variables
+            kwargs.setdefault('service', self.service_identifier)
             return self.publish_topic_template.format(**kwargs)
         except KeyError as e:
             raise ValueError(f"Variable faltante en template de publicación: {e}")

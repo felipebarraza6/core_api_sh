@@ -108,7 +108,7 @@ class DynamicMQTTHandler(BaseProviderHandler):
             self.client.max_queued_messages_set(100)
 
             # Conectar
-            logger.info(f"Connecting MQTT client {client_id} to {self.mqtt_config.broker_host}:{port}")
+            logger.info(f"Connecting MQTT client {client_id} [Service: {self.mqtt_config.service_identifier}] to {self.mqtt_config.broker_host}:{port}")
             self.client.connect(
                 self.mqtt_config.broker_host,
                 port,
@@ -295,33 +295,8 @@ class DynamicMQTTHandler(BaseProviderHandler):
         logger.debug(f"MQTT unsubscription confirmed (mid={mid})")
 
     def _extract_device_id_from_topic(self, topic: str) -> Optional[str]:
-        """
-        Extraer device_id del topic usando el template del proveedor.
-
-        Ejemplo:
-        Template: "{provider}/{device_id}/telemetry"
-        Topic: "novus/ABC123/telemetry"
-        Result: "ABC123"
-        """
-        try:
-            template = self.mqtt_config.subscribe_topic_template
-
-            # Crear patrón regex del template
-            pattern = re.escape(template)
-            pattern = pattern.replace(r'\{provider\}', r'([^/]+)')
-            pattern = pattern.replace(r'\{device_id\}', r'([^/]+)')
-            pattern = pattern.replace(r'\{[^}]+\}', r'[^/]+')  # Otros placeholders
-
-            match = re.match(pattern, topic)
-            if match:
-                # El device_id está en el segundo grupo (después del provider)
-                groups = match.groups()
-                return groups[1] if len(groups) > 1 else groups[0]
-
-        except Exception as exc:
-            logger.debug(f"Could not extract device_id from topic {topic}: {exc}")
-
-        return None
+        """Extraer device_id del topic usando el motor dinámico."""
+        return self.parser.extract_device_id_from_topic(topic)
 
     async def _handle_connection_established(self):
         """Manejar establecimiento de conexión."""

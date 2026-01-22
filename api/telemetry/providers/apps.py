@@ -7,7 +7,7 @@ class ProvidersConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'api.telemetry.providers'
     label = 'telemetry_providers'  # Evita conflicto con api.providers
-    verbose_name = 'Proveedores Dinámicos (Legacy)'
+    verbose_name = 'Proveedores de Ingestión (Telemetría)'
 
     def ready(self):
         # Import metrics to register them with Prometheus on startup

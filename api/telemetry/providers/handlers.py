@@ -772,26 +772,7 @@ def get_dynamic_handler(provider_name: str) -> Optional[DynamicAPIHandler]:
         return None
 
 
-# Handlers legacy para compatibilidad (deprecated)
-# Estos se mantienen por compatibilidad pero el código debería usar DynamicAPIHandler
-
-class NettraHandler(APIProviderHandler):
-    """DEPRECATED: Use DynamicAPIHandler instead."""
-    provider_name = "nettra"
-    supported_variables = ['CAUDAL', 'NIVEL', 'TOTALIZADO']
-
-
-class TwinHandler(APIProviderHandler):
-    """DEPRECATED: Use DynamicAPIHandler instead."""
-    provider_name = "twin"
-    supported_variables = ['CAUDAL', 'NIVEL', 'TOTALIZADO', 'CONDUCTIVIDAD']
-
-
-class NovusHandler(APIProviderHandler):
-    """DEPRECATED: Use DynamicAPIHandler instead."""
-    provider_name = "novus"
-    supported_variables = ['CAUDAL', 'NIVEL', 'PRESION', 'TEMPERATURA']
-
+# Handlers legacy removidos. Todo el procesamiento se realiza vía DynamicAPIHandler o DynamicMQTTHandler.
 
 # Import dynamic MQTT handler
 from .mqtt_handler import DynamicMQTTHandler

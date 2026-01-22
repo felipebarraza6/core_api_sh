@@ -53,10 +53,15 @@ class Migration(migrations.Migration):
             name='position',
             field=models.CharField(blank=True, max_length=200, null=True, verbose_name='Cargo'),
         ),
-        migrations.AddField(
-            model_name='person',
-            name='profile',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='persons', to='telemetry.profiledataconfigcatchment'),
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.AddField(
+                    model_name='person',
+                    name='profile',
+                    field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='persons', to='telemetry.profiledataconfigcatchment'),
+                ),
+            ],
+            database_operations=[]
         ),
         migrations.AddField(
             model_name='project',

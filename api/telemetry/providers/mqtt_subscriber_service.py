@@ -172,80 +172,49 @@ class MQTTSubscriberService:
 
             logger.debug(f"Mensaje recibido en topic: {topic}")
 
-            # Decodificar payload
-            try:
-                payload = json.loads(payload_raw.decode('utf-8'))
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                # Si no es JSON, intentar como texto
-                payload = {"raw": payload_raw.decode('utf-8', errors='ignore')}
-
             # Procesar mensaje
-            self._process_message(topic, payload)
+            self._process_message(topic, message.payload)
 
         except Exception as e:
             logger.error(f"Error procesando mensaje MQTT: {e}", exc_info=True)
 
-    def _process_message(self, topic: str, payload: dict):
+    def _process_message(self, topic: str, payload_bytes: bytes):
         """
         Procesar mensaje MQTT y guardar telemetría.
-
-        Args:
-            topic: Topic MQTT donde llegó el mensaje
-            payload: Payload decodificado del mensaje
         """
         try:
-            # Extraer device_id del topic o payload
-            device_id = self._extract_device_id(topic, payload)
-
-            if not device_id:
-                logger.warning(f"No se pudo extraer device_id de topic: {topic}")
-                return
-
-            # Buscar configuración del punto
-            mqtt_point = self.point_configs.get(device_id)
-
-            if not mqtt_point:
-                logger.warning(f"No hay configuración para device_id: {device_id}")
-                return
-
-            # Actualizar last_seen
-            mqtt_point.last_seen = timezone.now()
-            mqtt_point.save(update_fields=['last_seen'])
-
-            # Obtener reglas de parsing
-            provider = mqtt_point.provider
-            rules = self.parsing_rules.get(provider.id, [])
-
-            # Encontrar regla que aplique
-            applicable_rule = None
-            for rule in rules:
-                if rule.matches_condition(topic, payload, device_id):
-                    applicable_rule = rule
+            # 1. Encontrar configuración de punto por topic
+            # Para esto necesitamos un parser temporal o una forma de mapear topics
+            # Por ahora buscaremos en el cache de configuraciones
+            
+            applicable_mqtt_point = None
+            device_id = None
+            
+            for d_id, mqtt_p in self.point_configs.items():
+                parser = MQTTPayloadParser(mqtt_p.provider.mqtt_config)
+                extracted_id = parser.extract_device_id_from_topic(topic)
+                if extracted_id == d_id:
+                    applicable_mqtt_point = mqtt_p
+                    device_id = d_id
                     break
 
-            if not applicable_rule:
-                logger.warning(f"No hay regla de parsing aplicable para {device_id} en topic {topic}")
+            if not applicable_mqtt_point:
+                logger.debug(f"Topic {topic} no corresponde a ningún punto configurado")
                 return
 
-            # Parsear datos usando la regla
-            parser = MQTTPayloadParser(provider.mqtt_config)
-            parsed_data = parser.parse(payload, applicable_rule)
+            # 2. Parsear usando el motor dinámico
+            parser = MQTTPayloadParser(applicable_mqtt_point.provider.mqtt_config)
+            parsed_data = parser.parse(topic, payload_bytes, device_id)
 
-            # Validar datos parseados
-            validation_errors = applicable_rule.validate_parsed_data(parsed_data)
-            if validation_errors:
-                logger.error(f"Errores de validación para {device_id}: {validation_errors}")
-                return
-
-            # Guardar telemetría
-            self._save_telemetry(mqtt_point, parsed_data)
-
-            logger.info(f"Telemetría guardada exitosamente para {device_id}")
+            # 3. Guardar telemetría
+            self._save_telemetry(applicable_mqtt_point, parsed_data)
 
         except Exception as e:
             logger.error(f"Error procesando mensaje de {topic}: {e}", exc_info=True)
 
     def _extract_device_id(self, topic: str, payload: dict) -> Optional[str]:
+        """DEPRECATED: Usar MQTTPayloadParser.extract_device_id_from_topic"""
+        return None
         """
         Extraer device_id del topic o payload.
 

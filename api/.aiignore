@@ -1,0 +1,52 @@
+# .aiignore - AI Assistant Filtering Rules
+# This file tells AI agents (Antigravity, Cursor, etc.) which files to ignore for cleaner context.
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database
+*.sqlite3
+backups/
+init-db-secure.sql
+
+# Media and Statics
+media/
+staticfiles/
+static/
+
+# Environment and Secrets
+.env
+.venv
+env/
+venv/
+ENV/
+env.production.example
+
+# Logs and runtime
+logs/
+*.log
+celerybeat-schedule
+
+# Migrations (Exclude by default for better reasoning, unless specifically requested)
+**/migrations/*.py
+!**/migrations/__init__.py
+
+# Tests and temporary
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation and meta
+.git/
+.vscode/
+.cursor/
+.trae/
+.claude/
+.gemini/
+brain/
+walkthrough.md
+task.md
+implementation_plan.md
