@@ -40,6 +40,22 @@ class MQTTProviderConfig(models.Model):
         help_text="Descripción del propósito de este servicio MQTT"
     )
 
+    # Modo MQTT (cliente vs servidor)
+    MQTT_MODES = [
+        ('server', 'Servidor MQTT (escuchar broker local)'),
+        ('client', 'Cliente MQTT (conectar a broker externo)'),
+    ]
+    mode = models.CharField(
+        max_length=10,
+        choices=MQTT_MODES,
+        default='server',
+        help_text="""
+        Rol MQTT:
+        - server: SmartHydro ESCUCHA topics en broker local (equipos publican hacia SmartHydro)
+        - client: SmartHydro se CONECTA a broker externo (SmartHydro consume de terceros)
+        """
+    )
+
     # Conexión al broker
     broker_host = models.CharField(
         max_length=255,

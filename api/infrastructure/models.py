@@ -1,14 +1,18 @@
 """
-Infrastructure Models - IoT Devices and MQTT
+Infrastructure Models - Hardware físico (Fabricantes, Modelos, Dispositivos).
+
+Este módulo gestiona el inventario de hardware. La configuración MQTT
+se maneja en telemetry.providers.mqtt_models.
 """
 
-from datetime import timedelta
+import uuid
 from django.db import models
-from django.db.models import JSONField
-from django.core.validators import MaxValueValidator, MinValueValidator
-from django.utils import timezone
 from api.core.models.utils import ModelApi
-from api.core.models.users import User
+
+
+def generate_device_token():
+    """Genera un token único para dispositivos."""
+    return uuid.uuid4().hex
 
 
 class Manufacturer(ModelApi):
@@ -27,25 +31,6 @@ class Manufacturer(ModelApi):
         max_length=20, blank=True, help_text="Teléfono de contacto"
     )
 
-    # MQTT Configuration
-    mqtt_broker_host = models.CharField(
-        max_length=255, blank=True, help_text="Host del broker MQTT del proveedor"
-    )
-    mqtt_broker_port = models.PositiveIntegerField(
-        default=1883,
-        validators=[MinValueValidator(1), MaxValueValidator(65535)],
-        help_text="Puerto del broker MQTT",
-    )
-    mqtt_username = models.CharField(
-        max_length=100, blank=True, help_text="Usuario MQTT"
-    )
-    mqtt_password = models.CharField(
-        max_length=255, blank=True, help_text="Contraseña MQTT"
-    )
-    mqtt_use_tls = models.BooleanField(default=False, help_text="Usar TLS para MQTT")
-
-    # Status
-    is_active = models.BooleanField(default=True, help_text="Proveedor activo")
     integration_status = models.CharField(
         max_length=20,
         choices=[
@@ -80,8 +65,6 @@ class DeviceModel(ModelApi):
     model_code = models.CharField(max_length=50, help_text="Código del modelo")
     description = models.TextField(blank=True, help_text="Descripción del modelo")
 
-    is_active = models.BooleanField(default=True, help_text="Modelo activo")
-
     class Meta:
         verbose_name = "Modelo de Equipo"
         verbose_name_plural = "Modelos de Equipos"
@@ -94,20 +77,14 @@ class DeviceModel(ModelApi):
 class Device(ModelApi):
     """IoT Device (renamed from IoTDevice)."""
 
-    device_id = models.CharField(
-        max_length=100,
+    device_id = models.UUIDField(
+        default=uuid.uuid4,
         unique=True,
-        help_text="ID único del dispositivo (MAC, Serial, etc.)",
+        editable=False,
+        help_text="ID único del dispositivo (generado automáticamente)",
     )
     name = models.CharField(
         max_length=100, help_text="Nombre descriptivo del dispositivo"
-    )
-
-    catchment_point = models.ForeignKey(
-        "telemetry.CatchmentPoint",
-        on_delete=models.CASCADE,
-        related_name="devices",
-        help_text="Punto de captación al que pertenece",
     )
 
     device_model = models.ForeignKey(
@@ -124,15 +101,30 @@ class Device(ModelApi):
             ("ONLINE", "Online"),
             ("ERROR", "Error"),
             ("MAINTENANCE", "Mantenimiento"),
-            ("BATTERY_LOW", "Batería baja"),
         ],
         default="OFFLINE",
         help_text="Estado actual del dispositivo",
     )
 
     last_seen = models.DateTimeField(null=True, blank=True)
-    battery_level = models.DecimalField(
-        max_digits=5, decimal_places=2, null=True, blank=True
+
+    # Identificación para comunicación con proveedor
+    imei = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="IMEI del dispositivo (opcional)"
+    )
+
+    # Configuración de autenticación
+    use_internal_mqtt = models.BooleanField(
+        default=True,
+        help_text="Si es True, usa MQTT interno y genera token automático. Si es False, usa proveedor externo."
+    )
+    token = models.CharField(
+        max_length=255,
+        unique=True,
+        blank=True,
+        help_text="Token para autenticación. Auto-generado si usa MQTT interno, manual si es proveedor externo."
     )
 
     class Meta:
@@ -140,51 +132,24 @@ class Device(ModelApi):
         verbose_name = "Dispositivo IoT"
         verbose_name_plural = "Dispositivos IoT"
 
+    def save(self, *args, **kwargs):
+        """Genera token automático si usa MQTT interno y no tiene token."""
+        if self.use_internal_mqtt and not self.token:
+            self.token = generate_device_token()
+        super().save(*args, **kwargs)
+
     def clean(self):
-        """Validate device integrity."""
+        """Validar configuración del dispositivo."""
         from django.core.exceptions import ValidationError
-        
-        # Validación 1: Un dispositivo no puede estar en dos puntos al mismo tiempo
-        # Si este dispositivo ya existe (self.pk) y se está cambiando de punto...
-        # O si es nuevo.
-        
-        # Buscar otros dispositivos con el mismo device_id
-        # (device_id ya es unique en DB, pero validamos lógica de negocio adicional si fuera necesario)
-        pass
+
+        # Si no usa MQTT interno, debe tener token manual
+        if not self.use_internal_mqtt and not self.token:
+            raise ValidationError({
+                'token': 'Debe ingresar el token del proveedor externo.'
+            })
 
     def __str__(self):
         return f"{self.name} ({self.device_id})"
 
 
-class Connection(ModelApi):
-    """MQTT Connection (renamed from MQTTConnection)."""
 
-    manufacturer = models.ForeignKey(
-        Manufacturer,
-        on_delete=models.CASCADE,
-        related_name="connections",
-    )
-    connection_name = models.CharField(max_length=100)
-    broker_host = models.CharField(max_length=255)
-    broker_port = models.PositiveIntegerField(default=1883)
-    username = models.CharField(max_length=100, blank=True)
-    password = models.CharField(max_length=255, blank=True)
-    client_id = models.CharField(max_length=100, unique=True)
-    status = models.CharField(
-        max_length=15,
-        choices=[
-            ("DISCONNECTED", "Desconectado"),
-            ("CONNECTING", "Conectando"),
-            ("CONNECTED", "Conectado"),
-            ("ERROR", "Error"),
-        ],
-        default="DISCONNECTED",
-    )
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        verbose_name = "Conexión MQTT"
-        verbose_name_plural = "Conexiones MQTT"
-
-    def __str__(self):
-        return f"{self.connection_name} ({self.manufacturer.name})"

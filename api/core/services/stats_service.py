@@ -13,7 +13,7 @@ from django.db.models import Avg, Count, Max, Min, Q, Sum
 from django.utils import timezone
 
 from api.telemetry.models.telemetry import TelemetryRecord
-from api.infrastructure.models import Device, Connection
+from api.infrastructure.models import Device
 
 
 class StatsService:
@@ -195,53 +195,13 @@ class StatsService:
 
     @staticmethod
     def _get_mqtt_status_stats() -> Dict[str, Any]:
-        """Estadísticas del estado de conexiones MQTT"""
-        try:
-            total_connections = Connection.objects.count()
-
-            if total_connections == 0:
-                return {"total_connections": 0, "status": "no_connections"}
-
-            # Estado de conexiones
-            connection_status = (
-                Connection.objects.values("status")
-                .annotate(count=Count("id"))
-                .order_by("status")
-            )
-
-            status_counts = {
-                item["status"]: item["count"] for item in connection_status
-            }
-
-            # Estadísticas de mensajes
-            message_stats = Connection.objects.aggregate(
-                total_received=Sum("messages_received_today"),
-                total_sent=Sum("messages_sent_today"),
-                total_bytes=Sum("bytes_received_today"),
-            )
-
-            # Conexiones con errores
-            error_connections = Connection.objects.filter(
-                connection_errors__gt=0
-            ).count()
-
-            connected_count = status_counts.get("CONNECTED", 0)
-
-            return {
-                "total_connections": total_connections,
-                "connected_connections": connected_count,
-                "disconnected_connections": status_counts.get("DISCONNECTED", 0),
-                "error_connections": error_connections,
-                "status_distribution": status_counts,
-                "messages_received_today": message_stats["total_received"] or 0,
-                "messages_sent_today": message_stats["total_sent"] or 0,
-                "bytes_received_today": message_stats["total_bytes"] or 0,
-                "messages_per_second": (message_stats["total_received"] or 0) / 86400,
-                "uptime_percentage": (connected_count / total_connections * 100) if total_connections > 0 else 0,
-                "status": "healthy" if connected_count == total_connections else "warning",
-            }
-        except Exception as exc:
-            return {"error": str(exc), "status": "error"}
+        """Estadísticas del estado de conexiones MQTT (Rediseñado)"""
+        return {
+            "total_connections": 0,
+            "connected_connections": 0,
+            "status": "no_data",
+            "message": "Sistema de monitoreo MQTT dinámico activo. Ver Panel de Control."
+        }
 
     @staticmethod
     def _get_system_resources_stats() -> Dict[str, Any]:

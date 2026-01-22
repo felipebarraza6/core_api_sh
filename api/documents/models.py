@@ -84,6 +84,35 @@ class Document(ModelApi):
         blank=True
     )
 
+    # Infrastructure relationships (guías, datasheets, informes)
+    manufacturer = models.ForeignKey(
+        "infrastructure.Manufacturer",
+        related_name="documents",
+        on_delete=models.CASCADE,
+        verbose_name="Fabricante",
+        null=True,
+        blank=True,
+        help_text="Documentos del fabricante (catálogos, guías)"
+    )
+    device_model = models.ForeignKey(
+        "infrastructure.DeviceModel",
+        related_name="documents",
+        on_delete=models.CASCADE,
+        verbose_name="Modelo de Equipo",
+        null=True,
+        blank=True,
+        help_text="Documentos del modelo (datasheets, manuales)"
+    )
+    device = models.ForeignKey(
+        "infrastructure.Device",
+        related_name="documents",
+        on_delete=models.CASCADE,
+        verbose_name="Dispositivo",
+        null=True,
+        blank=True,
+        help_text="Documentos del dispositivo (calibraciones, informes)"
+    )
+
 
     # Professional Metadata
     valid_until = models.DateField(
@@ -119,5 +148,9 @@ class Document(ModelApi):
         verbose_name_plural = "Archivos/Documentos"
 
     def __str__(self):
-        target = self.point_catchment or self.project or self.client or "General"
+        target = (
+            self.point_catchment or self.project or self.client or
+            self.device or self.device_model or self.manufacturer or
+            "General"
+        )
         return f"{self.name} ({target})"

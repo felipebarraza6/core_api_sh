@@ -68,7 +68,7 @@ LOCAL_APPS = [
     "api.telemetry.providers.apps.ProvidersConfig",  # Sistema dinámico de proveedores (legacy - migrar a api.providers)
     "api.crm.apps.CrmConfig",  # 🆕 Gestión de Clientes y Proyectos
     "api.subscriptions.apps.SubscriptionsConfig",  # 🆕 Módulos y Suscripciones Ikolu
-    "api.providers.apps.ProvidersConfig",  # 🆕 Proveedores de Telemetría (TData, MQTT)
+
     "api.compliance.apps.ComplianceConfig",  # 🆕 Cumplimiento Normativo (DGA, SMA)
     "api.notifications.apps.NotificationsConfig",  # 🆕 Sistema de Notificaciones
     "api.documents.apps.DocumentsConfig",  # 🆕 Gestión Documental

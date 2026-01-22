@@ -19,8 +19,8 @@ from .handlers import DynamicAPIHandler
 class CatchmentPointProviderInline(admin.TabularInline):
     model = CatchmentPointProvider
     extra = 0
-    fields = ('point', 'point_code', 'is_active')
-    autocomplete_fields = ('point',)
+    fields = ('point', 'provider_device_id', 'device', 'priority', 'is_active')
+    autocomplete_fields = ('point', 'device')
     show_change_link = True
 
 @admin.register(TelemetryProvider)
@@ -130,19 +130,28 @@ class TelemetryProviderAdmin(admin.ModelAdmin):
 
 @admin.register(CatchmentPointProvider)
 class CatchmentPointProviderAdmin(admin.ModelAdmin):
-    list_display = ('point_title', 'provider_name', 'point_code', 'is_active', 'created')
-    list_filter = ('provider__name', 'is_active')
-    search_fields = ('point__title', 'point_code', 'provider__name')
-    autocomplete_fields = ('point', 'provider')
-    
+    list_display = ('point_title', 'provider_name', 'device_serial', 'provider_device_id', 'priority', 'is_active', 'created')
+    list_filter = ('provider__name', 'is_active', 'provider__provider_type')
+    search_fields = ('point__title', 'provider_device_id', 'provider__name', 'device__serial_number')
+    autocomplete_fields = ('point', 'provider', 'device')
+
     fieldsets = (
         ('Configuración de Conexión', {
-            'fields': ('point', 'provider', 'is_active'),
-            'description': 'Selecciona el punto y el proveedor a conectar.'
+            'fields': ('point', 'provider', 'priority', 'is_active'),
+            'description': 'Selecciona el punto y el proveedor a conectar. Priority define el orden de failover (mayor = preferido).'
         }),
-        ('Credenciales del Dispositivo', {
-            'fields': ('point_code',),
-            'description': '⚠️ IMPORTANTE: Aquí va el TOKEN o ID del dispositivo proporcionado por el proveedor de telemetría (ej: device_key, API token, etc.)'
+        ('Dispositivo Físico', {
+            'fields': ('device',),
+            'description': 'Dispositivo físico que genera los datos (opcional, para trazabilidad e inventario).'
+        }),
+        ('ID en el Proveedor', {
+            'fields': ('provider_device_id',),
+            'description': '⚠️ ID del dispositivo en el sistema del PROVEEDOR (ej: Nettra "station_123", TTN "eui-abc", MQTT "NXP-001")'
+        }),
+        ('Configuración del Dispositivo', {
+            'fields': ('device_config',),
+            'classes': ('collapse',),
+            'description': 'Configuración específica del dispositivo (calibración, offset, etc.)'
         }),
         ('Configuración Adicional (Opcional)', {
             'fields': ('config_override',),
@@ -160,6 +169,11 @@ class CatchmentPointProviderAdmin(admin.ModelAdmin):
         return obj.provider.display_name
     provider_name.short_description = 'Proveedor'
     provider_name.admin_order_field = 'provider__display_name'
+
+    def device_serial(self, obj):
+        return obj.device.serial_number if obj.device else '-'
+    device_serial.short_description = 'Serial Dispositivo'
+    device_serial.admin_order_field = 'device__serial_number'
 
 
 # =============================================================================

@@ -12,8 +12,9 @@ from django.db.models import Q, F
 
 from ..models import (
     ConstantDefinition, ConstantApplication, DataCorrectionLog,
-    DataPoint, IoTDevice, CatchmentPoint
+    DataPoint, CatchmentPoint
 )
+from api.infrastructure.models import Device
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +253,7 @@ class ConstantsService:
 
     @staticmethod
     def get_applicable_constants_for_point(
-        device: IoTDevice = None,
+        device: Device = None,
         point: CatchmentPoint = None,
         timestamp: datetime = None
     ) -> List[ConstantDefinition]:

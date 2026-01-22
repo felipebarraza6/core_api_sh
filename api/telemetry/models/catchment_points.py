@@ -8,6 +8,27 @@ from api.core.models.utils import ModelApi
 
 class CatchmentPoint(ModelApi):
     """Catchment points model."""
+
+    # Dispositivo físico instalado en este punto
+    device = models.ForeignKey(
+        "infrastructure.Device",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="catchment_points",
+        verbose_name="Dispositivo IoT",
+        help_text="Dispositivo físico (logger/datalogger) instalado en este punto. Puede estar vacío si el punto no tiene equipo asignado."
+    )
+
+    project = models.ForeignKey(
+        "crm.Project",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="points",
+        verbose_name="Proyecto",
+        help_text="Proyecto al que pertenece este punto de captación."
+    )
     
     # Punto generado desde un levantamiento técnico
     technical_survey = models.OneToOneField(
@@ -101,11 +122,6 @@ class CatchmentPoint(ModelApi):
         db_table = "core_catchmentpoint"
         verbose_name = "Punto de captacion"
         verbose_name_plural = "Puntos de captacion"
-
-    @property
-    def project(self):
-        """Helper to access project through technical survey"""
-        return self.technical_survey.project if self.technical_survey else None
 
     @property
     def frequency_minutes(self):

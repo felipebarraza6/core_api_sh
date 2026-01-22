@@ -31,16 +31,22 @@ class MQTTSubscriberService:
     este servicio escucha TU broker local donde los dispositivos publican.
     """
 
-    def __init__(self, broker_host: str = 'localhost', broker_port: int = 1883):
+    def __init__(self, provider: TelemetryProvider = None, broker_host: str = None, broker_port: int = None):
         """
         Inicializar servicio de suscripción.
 
         Args:
-            broker_host: Host del broker local (default: localhost)
-            broker_port: Puerto del broker (default: 1883)
+            provider: Instancia de TelemetryProvider (Opcional)
+            broker_host: Host del broker (Override)
+            broker_port: Puerto del broker (Override)
         """
-        self.broker_host = broker_host
-        self.broker_port = broker_port
+        self.provider = provider
+        
+        # Obtener config de MQTT si hay provider
+        mqtt_config = getattr(provider, 'mqtt_config', None) if provider else None
+        
+        self.broker_host = broker_host or (mqtt_config.broker_host if mqtt_config else 'localhost')
+        self.broker_port = broker_port or (mqtt_config.broker_port if mqtt_config else 1883)
         self.client = None
         self.is_running = False
 
@@ -48,7 +54,7 @@ class MQTTSubscriberService:
         self.point_configs: Dict[str, CatchmentPointMQTT] = {}
         self.parsing_rules: Dict[int, list] = {}
 
-        logger.info(f"Inicializando MQTT Subscriber Service en {broker_host}:{broker_port}")
+        logger.info(f"Inicializando MQTT Subscriber Service para {provider.name if provider else 'Global'} en {self.broker_host}:{self.broker_port}")
 
     def start(self):
         """Iniciar servicio de suscripción."""
@@ -57,8 +63,9 @@ class MQTTSubscriberService:
             self._load_configurations()
 
             # Crear cliente MQTT
-            client_id = f"smarthydro_subscriber_{timezone.now().timestamp()}"
+            client_id = f"smarthydro_{self.provider.name if self.provider else 'sub'}_{timezone.now().timestamp()}"
             self.client = mqtt.Client(client_id=client_id, clean_session=False)
+
 
             # Configurar callbacks
             self.client.on_connect = self._on_connect
@@ -92,10 +99,15 @@ class MQTTSubscriberService:
         """Cargar configuraciones de puntos y reglas desde BD."""
         try:
             # Cargar configuraciones MQTT de puntos activos
-            mqtt_points = CatchmentPointMQTT.objects.filter(
+            query = CatchmentPointMQTT.objects.filter(
                 is_active=True,
                 point__is_active=True
-            ).select_related(
+            )
+            
+            if self.provider:
+                query = query.filter(provider=self.provider)
+
+            mqtt_points = query.select_related(
                 'point',
                 'provider',
                 'provider__mqtt_config'
@@ -268,29 +280,34 @@ class MQTTSubscriberService:
             }
         }
 
-        # Obtener variables del punto
+        # Obtener configuraciones de proveedor para este punto y proveedor MQTT
+        # Cada CatchmentPointProvider mapea una variable del punto a datos del proveedor
         point_providers = CatchmentPointProvider.objects.filter(
             point=point,
+            provider=mqtt_point.provider,
             is_active=True
         ).select_related('variable')
 
-        # Procesar cada variable
+        # Procesar cada variable configurada
         for pp in point_providers:
-            variable = pp.variable
-            var_code = variable.variable_code
+            variable = pp.variable  # CoreVariable
+
+            # El provider_device_id indica qué campo del payload mapea a esta variable
+            # Si no está configurado, usar el internal_code de la variable
+            provider_key = pp.provider_device_id or variable.internal_code
 
             # Verificar si el dato parseado contiene esta variable
-            if var_code in parsed_data:
-                raw_value = parsed_data[var_code]
+            if provider_key in parsed_data:
+                raw_value = parsed_data[provider_key]
 
                 # Procesar variable usando sistema unificado
                 try:
                     variable_dict = {
                         'id': variable.id,
-                        'variable_code': var_code,
+                        'variable_code': variable.internal_code,
                         'type_variable': variable.type_variable,
-                        'min_val': variable.min_val,
-                        'max_val': variable.max_val,
+                        'min_val': variable.min_value,
+                        'max_val': variable.max_value,
                         'scale_factor': variable.scale_factor,
                         'offset': variable.offset,
                     }
@@ -314,12 +331,23 @@ class MQTTSubscriberService:
                     )
 
                 except Exception as e:
-                    logger.error(f"Error procesando variable {var_code}: {e}")
+                    logger.error(f"Error procesando variable {variable.internal_code}: {e}")
 
         # Guardar registro final
         try:
             save_telemetry_data(point.id, created_register)
             logger.info(f"Telemetría guardada para punto {point.point_code}")
+
+            # Actualizar last_seen del punto MQTT
+            mqtt_point.last_seen = timezone.now()
+            mqtt_point.save(update_fields=['last_seen'])
+
+            # Actualizar last_seen del Device si está vinculado
+            if point.device:
+                point.device.last_seen = timezone.now()
+                point.device.status = 'ONLINE'
+                point.device.save(update_fields=['last_seen', 'status'])
+
         except Exception as e:
             logger.error(f"Error guardando telemetría: {e}")
 

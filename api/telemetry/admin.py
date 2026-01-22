@@ -80,6 +80,7 @@ class CatchmentPointAdmin(admin.ModelAdmin):
     list_display = (
         'point_code',
         'title',
+        'project',
         'client_link',
         'configuration_scheme_display',
         'compliance_providers_display',
@@ -89,6 +90,7 @@ class CatchmentPointAdmin(admin.ModelAdmin):
 
     list_filter = (
         'is_active',
+        'project',
         'configuration_scheme',
         'frequency',
     )
@@ -106,7 +108,7 @@ class CatchmentPointAdmin(admin.ModelAdmin):
         'configuration_preview',
     )
 
-    autocomplete_fields = ('owner_user', 'configuration_scheme', 'frequency')
+    autocomplete_fields = ('owner_user', 'project', 'configuration_scheme', 'frequency')
 
     inlines = [
         PointConfigurationValueInline,
@@ -116,7 +118,7 @@ class CatchmentPointAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('Identificación', {
-            'fields': ('point_code', 'title', 'owner_user', 'is_active')
+            'fields': ('point_code', 'title', 'project', 'owner_user', 'is_active')
         }),
         ('Configuración Dinámica', {
             'fields': ('configuration_scheme', 'configuration_preview', 'frequency'),
@@ -438,4 +440,4 @@ class SystemConfigurationAdmin(admin.ModelAdmin):
 # =============================================================================
 from . import admin_v3
 from . import admin_constants
-from . import admin_granular
+

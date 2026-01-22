@@ -1,0 +1,281 @@
+[
+  {
+    "model": "infrastructure.manufacturer",
+    "pk": 1,
+    "fields": {
+      "name": "Novus Automation",
+      "code": "NOVUS",
+      "description": "Fabricante brasileño de equipos de automatización y telemetría",
+      "website": "https://www.novusautomation.com",
+      "contact_email": "",
+      "contact_phone": "",
+      "integration_status": "PRODUCTION"
+    }
+  },
+  {
+    "model": "infrastructure.manufacturer",
+    "pk": 2,
+    "fields": {
+      "name": "Nettra",
+      "code": "NETTRA",
+      "description": "Proveedor de soluciones IoT para monitoreo remoto",
+      "website": "https://www.nettra.io",
+      "contact_email": "",
+      "contact_phone": "",
+      "integration_status": "PRODUCTION"
+    }
+  },
+  {
+    "model": "infrastructure.manufacturer",
+    "pk": 3,
+    "fields": {
+      "name": "Twin",
+      "code": "TWIN",
+      "description": "Fabricante de sensores y dataloggers industriales",
+      "website": "https://www.twin.cl",
+      "contact_email": "",
+      "contact_phone": "",
+      "integration_status": "TESTING"
+    }
+  },
+  {
+    "model": "infrastructure.devicemodel",
+    "pk": 1,
+    "fields": {
+      "manufacturer": 1,
+      "model_name": "NXperience",
+      "model_code": "NXP-IoT-4G",
+      "description": "Datalogger IoT con conectividad 4G y múltiples entradas analógicas/digitales"
+    }
+  },
+  {
+    "model": "infrastructure.devicemodel",
+    "pk": 2,
+    "fields": {
+      "manufacturer": 2,
+      "model_name": "Nettra RTU",
+      "model_code": "NRTU-2000",
+      "description": "Unidad de telemetría remota con soporte MQTT y Modbus"
+    }
+  },
+  {
+    "model": "infrastructure.devicemodel",
+    "pk": 3,
+    "fields": {
+      "manufacturer": 3,
+      "model_name": "Twin Logger",
+      "model_code": "TL-500",
+      "description": "Logger compacto con batería solar y comunicación LoRa/4G"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 1,
+    "fields": {
+      "device_id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "NOVUS-NXP-IoT-4G-001",
+      "device_model": 1,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "350000000000NO01",
+      "use_internal_mqtt": true,
+      "token": "novus001token00000000000000000001"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 2,
+    "fields": {
+      "device_id": "a1b2c3d4-0001-4000-8000-000000000002",
+      "name": "NOVUS-NXP-IoT-4G-002",
+      "device_model": 1,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "350000000000NO02",
+      "use_internal_mqtt": true,
+      "token": "novus002token00000000000000000002"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 3,
+    "fields": {
+      "device_id": "a1b2c3d4-0001-4000-8000-000000000003",
+      "name": "NOVUS-NXP-IoT-4G-003",
+      "device_model": 1,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "",
+      "use_internal_mqtt": true,
+      "token": "novus003token00000000000000000003"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 4,
+    "fields": {
+      "device_id": "a1b2c3d4-0001-4000-8000-000000000004",
+      "name": "NOVUS-NXP-IoT-4G-004",
+      "device_model": 1,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "",
+      "use_internal_mqtt": true,
+      "token": "novus004token00000000000000000004"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 5,
+    "fields": {
+      "device_id": "a1b2c3d4-0001-4000-8000-000000000005",
+      "name": "NOVUS-NXP-IoT-4G-005",
+      "device_model": 1,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "",
+      "use_internal_mqtt": true,
+      "token": "novus005token00000000000000000005"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 6,
+    "fields": {
+      "device_id": "a1b2c3d4-0002-4000-8000-000000000001",
+      "name": "NETTRA-NRTU-2000-001",
+      "device_model": 2,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "350000000000NE01",
+      "use_internal_mqtt": true,
+      "token": "nettra001token0000000000000000001"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 7,
+    "fields": {
+      "device_id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "NETTRA-NRTU-2000-002",
+      "device_model": 2,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "350000000000NE02",
+      "use_internal_mqtt": true,
+      "token": "nettra002token0000000000000000002"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 8,
+    "fields": {
+      "device_id": "a1b2c3d4-0002-4000-8000-000000000003",
+      "name": "NETTRA-NRTU-2000-003",
+      "device_model": 2,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "",
+      "use_internal_mqtt": true,
+      "token": "nettra003token0000000000000000003"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 9,
+    "fields": {
+      "device_id": "a1b2c3d4-0002-4000-8000-000000000004",
+      "name": "NETTRA-NRTU-2000-004",
+      "device_model": 2,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "",
+      "use_internal_mqtt": true,
+      "token": "nettra004token0000000000000000004"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 10,
+    "fields": {
+      "device_id": "a1b2c3d4-0002-4000-8000-000000000005",
+      "name": "NETTRA-NRTU-2000-005",
+      "device_model": 2,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "",
+      "use_internal_mqtt": true,
+      "token": "nettra005token0000000000000000005"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 11,
+    "fields": {
+      "device_id": "a1b2c3d4-0003-4000-8000-000000000001",
+      "name": "TWIN-TL-500-001",
+      "device_model": 3,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "350000000000TW01",
+      "use_internal_mqtt": true,
+      "token": "twin0001token00000000000000000001"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 12,
+    "fields": {
+      "device_id": "a1b2c3d4-0003-4000-8000-000000000002",
+      "name": "TWIN-TL-500-002",
+      "device_model": 3,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "350000000000TW02",
+      "use_internal_mqtt": true,
+      "token": "twin0002token00000000000000000002"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 13,
+    "fields": {
+      "device_id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "TWIN-TL-500-003",
+      "device_model": 3,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "",
+      "use_internal_mqtt": true,
+      "token": "twin0003token00000000000000000003"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 14,
+    "fields": {
+      "device_id": "a1b2c3d4-0003-4000-8000-000000000004",
+      "name": "TWIN-TL-500-004",
+      "device_model": 3,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "",
+      "use_internal_mqtt": true,
+      "token": "twin0004token00000000000000000004"
+    }
+  },
+  {
+    "model": "infrastructure.device",
+    "pk": 15,
+    "fields": {
+      "device_id": "a1b2c3d4-0003-4000-8000-000000000005",
+      "name": "TWIN-TL-500-005",
+      "device_model": 3,
+      "status": "OFFLINE",
+      "last_seen": null,
+      "imei": "",
+      "use_internal_mqtt": true,
+      "token": "twin0005token00000000000000000005"
+    }
+  }
+]

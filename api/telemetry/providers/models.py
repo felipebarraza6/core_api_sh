@@ -39,7 +39,9 @@ class TelemetryProvider(ModelApi):
     # Provider Type & Protocol
     PROVIDER_TYPES = [
         ('api', 'REST API'),
-        ('mqtt', 'MQTT'),
+        ('mqtt_server', 'MQTT Server (broker local - equipos publican hacia SmartHydro)'),
+        ('mqtt_client', 'MQTT Client (broker externo - SmartHydro consume de terceros)'),
+        ('mqtt', 'MQTT (legacy - usar mqtt_server o mqtt_client)'),
         ('modbus', 'ModBus TCP'),
         ('http', 'HTTP Endpoint'),
         ('websocket', 'WebSocket'),
@@ -48,7 +50,13 @@ class TelemetryProvider(ModelApi):
         max_length=20,
         choices=PROVIDER_TYPES,
         default='api',
-        help_text="Communication protocol used by the provider"
+        help_text="""
+        Protocolo de comunicación:
+        - api: REST API de terceros
+        - mqtt_server: Broker local, equipos publican hacia SmartHydro
+        - mqtt_client: Broker externo, SmartHydro se conecta como cliente
+        - modbus: ModBus TCP/IP
+        """
     )
 
     # Connection Configuration
@@ -229,6 +237,26 @@ class CatchmentPointProvider(ModelApi):
         verbose_name="Proveedor"
     )
 
+    # Device físico (opcional, para trazabilidad - el Device principal está en CatchmentPoint)
+    device = models.ForeignKey(
+        'infrastructure.Device',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='provider_configs',
+        verbose_name="Dispositivo Físico",
+        help_text="Dispositivo físico que genera los datos (opcional, para trazabilidad)"
+    )
+
+    # Variable que esta configuración de proveedor alimenta
+    variable = models.ForeignKey(
+        'telemetry.CoreVariable',
+        on_delete=models.CASCADE,
+        related_name='provider_configs',
+        verbose_name="Variable",
+        help_text="Variable del punto que recibe datos de este proveedor"
+    )
+
     # Configuration Override
     config_override = models.JSONField(
         blank=True,
@@ -240,10 +268,17 @@ class CatchmentPointProvider(ModelApi):
     )
 
     # Point-specific Configuration
-    point_code = models.CharField(
+    provider_device_id = models.CharField(
         max_length=100,
         blank=True,
-        help_text="Provider-specific identifier for this point (e.g., device ID, sensor code)"
+        verbose_name="ID del Dispositivo en el Proveedor",
+        help_text="""
+        Identificador del dispositivo en el sistema del proveedor externo.
+        Ejemplos:
+        - Nettra: "station_123"
+        - TTN: "eui-70b3d57ed0012345"
+        - MQTT: "device_001" o serial del equipo
+        """
     )
 
     device_config = models.JSONField(
@@ -289,7 +324,7 @@ class CatchmentPointProvider(ModelApi):
     class Meta:
         verbose_name = "Configuración de Proveedor por Punto"
         verbose_name_plural = "Configuraciones de Proveedor por Punto"
-        unique_together = ['point', 'provider']
+        unique_together = ['point', 'provider', 'variable']
         ordering = ['-priority', 'provider__name']
 
     def __str__(self):
@@ -333,6 +368,97 @@ class CatchmentPointProvider(ModelApi):
         if total_attempts < 10:
             return True  # Not enough data
         return (self.error_count / total_attempts) < 0.2
+
+
+
+class ProviderDataSync(ModelApi):
+    """
+    Estado de Sincronización de Datos con Proveedores.
+    Rastrea el progreso y estado de los trabajos de sincronización.
+    """
+    
+    provider = models.ForeignKey(
+        TelemetryProvider,
+        on_delete=models.CASCADE,
+        related_name='sync_jobs',
+        verbose_name="Proveedor"
+    )
+
+    SYNC_TYPES = [
+        ('FULL_HISTORICAL', 'Histórico Completo'),
+        ('INCREMENTAL', 'Incremental'),
+        ('REALTIME', 'Tiempo Real (Polling)'),
+    ]
+    sync_type = models.CharField(
+        max_length=20,
+        choices=SYNC_TYPES,
+        default='INCREMENTAL'
+    )
+
+    current_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('IDLE', 'Inactivo'),
+            ('RUNNING', 'Ejecutando'),
+            ('SUCCESS', 'Exitoso'),
+            ('PARTIAL_SUCCESS', 'Parcialmente Exitoso'),
+            ('FAILED', 'Fallido'),
+            ('CANCELLED', 'Cancelado')
+        ],
+        default='IDLE'
+    )
+
+    last_sync_attempt = models.DateTimeField(null=True, blank=True)
+    last_successful_sync = models.DateTimeField(null=True, blank=True)
+    
+    # Stats
+    total_records_synced = models.BigIntegerField(default=0)
+    last_sync_records = models.IntegerField(default=0)
+    consecutive_failures = models.IntegerField(default=0)
+    last_error_message = models.TextField(blank=True)
+    
+    # Configuration for this specific job
+    sync_config = models.JSONField(
+        default=dict, 
+        blank=True,
+        help_text="Configuración específica del trabajo (buffer, threads, etc)"
+    )
+    
+    # Scheduling
+    is_active = models.BooleanField(default=True)
+    sync_interval_minutes = models.IntegerField(default=60)
+    
+    # New Fields for Metrics
+    messages_received_today = models.IntegerField(default=0)
+    messages_sent_today = models.IntegerField(default=0)
+    bytes_received_today = models.BigIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Sincronización de Proveedor"
+        verbose_name_plural = "Sincronizaciones de Proveedores"
+        unique_together = ['provider', 'sync_type']
+
+    def __str__(self):
+        return f"{self.provider.display_name} - {self.get_sync_type_display()}"
+    
+    def update_sync_status(self, status, records=0, error_message=None):
+        """Helper to update status efficiently."""
+        from django.utils import timezone
+        self.current_status = status
+        self.last_sync_attempt = timezone.now()
+        
+        if status == 'SUCCESS' or status == 'PARTIAL_SUCCESS':
+            self.last_successful_sync = timezone.now()
+            self.consecutive_failures = 0
+            self.last_sync_records = records
+            self.total_records_synced += records
+            self.messages_received_today += records # Simplification
+        elif status == 'FAILED':
+            self.consecutive_failures += 1
+            if error_message:
+                self.last_error_message = error_message[:1000]
+                
+        self.save()
 
 
 # Import compliance models to make them available in this module

@@ -23,6 +23,9 @@ from api.telemetry.models.telemetry import *
 from api.telemetry.models.management_super import *
 # Import models moved to support
 from api.support.models import SupportTicket
+# Import new infrastructure models
+from api.infrastructure.models import Device, Manufacturer, DeviceModel
+from api.telemetry.providers.models import ProviderDataSync
 from .services.constants_service import constants_service
 from .services.stats_service import StatsService
 
@@ -32,7 +35,7 @@ from .services.stats_service import StatsService
 # ============================================================================
 
 class DeviceInline(TabularInline):
-    model = IoTDevice
+    model = Device
     fields = ['device_id', 'name', 'status', 'last_seen']
     readonly_fields = ['last_seen']
     extra = 0
@@ -81,7 +84,7 @@ class DataPointAdmin(ModelAdmin):
     list_filter = [
         'quality', 'is_valid', 'is_processed', 'is_archived',
         ('stream__stream_type', admin.ChoicesFieldListFilter),
-        ('device__equipment_model__provider', admin.RelatedFieldListFilter),
+        ('device__device_model__manufacturer', admin.RelatedFieldListFilter),
         ('collected_at', admin.DateFieldListFilter),
     ]
 
@@ -111,7 +114,7 @@ class DataPointAdmin(ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related(
-            'stream', 'device__equipment_model__provider', 'point'
+            'stream', 'device__device_model__manufacturer', 'point'
         )
 
     def stream_name(self, obj):
@@ -206,7 +209,7 @@ class ConstantDefinitionAdmin(ModelAdmin):
 
     list_filter = [
         'constant_type', 'is_active',
-        ('device__equipment_model__provider', admin.RelatedFieldListFilter),
+        ('device__device_model__manufacturer', admin.RelatedFieldListFilter),
         ('point__project__client', admin.RelatedFieldListFilter),
     ]
 
@@ -491,8 +494,8 @@ class SmartHydroAdminSite(admin.AdminSite):
         """Obtener datos para el dashboard ejecutivo"""
         try:
             # Estadísticas generales
-            total_devices = IoTDevice.objects.count()
-            active_devices = IoTDevice.objects.filter(status='ONLINE').count()
+            total_devices = Device.objects.count()
+            active_devices = Device.objects.filter(status='ONLINE').count()
             total_tickets = SupportTicket.objects.count()
             open_tickets = SupportTicket.objects.filter(status__in=['OPEN', 'IN_PROGRESS']).count()
 
@@ -534,7 +537,7 @@ class SmartHydroAdminSite(admin.AdminSite):
         alerts = []
 
         # Alertas de dispositivos offline
-        offline_devices = IoTDevice.objects.filter(
+        offline_devices = Device.objects.filter(
             status__in=['OFFLINE', 'ERROR'],
             last_seen__lt=timezone.now() - timezone.timedelta(hours=1)
         ).count()
@@ -604,7 +607,7 @@ class SmartHydroAdminSite(admin.AdminSite):
 
                     if model_name in ['datapoint', 'datastream', 'variabledefinition', 'dataaggregation', 'dataqualitymetric']:
                         telemetry_models.append(model)
-                    elif model_name in ['equipmentprovider', 'equipmentmodel', 'iotdevice', 'providerdatasync']:
+                    elif model_name in ['manufacturer', 'devicemodel', 'device', 'providerdatasync']:
                         provider_models.append(model)
                     elif model_name in ['constantdefinition', 'constantapplication', 'datacorrectionlog']:
                         constants_models.append(model)
@@ -667,7 +670,7 @@ smarthydro_admin.register(ProviderDataSync, ProviderDataSyncAdmin)
 # Registrar modelos adicionales automáticamente
 additional_models = [
     DataStream, VariableDefinition, DataAggregation, DataQualityMetric,
-    EquipmentProvider, EquipmentModel, IoTDevice,
+    Manufacturer, DeviceModel, Device,
     ConstantApplication, DataCorrectionLog,
     SystemConfiguration, AlertRule, SystemMetrics
 ]

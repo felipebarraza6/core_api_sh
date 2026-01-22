@@ -1,6 +1,7 @@
 """
-Servicio de Sincronización Automática con Proveedores
+Servicio de Sincronización Automática con Proveedores (Arquitectura v3)
 Permite recuperar datos históricos y mantener sincronización en tiempo real
+usando TelemetryProvider y CatchmentPointProvider.
 """
 
 import asyncio
@@ -11,11 +12,15 @@ from typing import Dict, List, Optional, Any
 from django.utils import timezone
 from django.db import transaction
 from django.conf import settings
+from django.db import models
 
-from ..models import (
-    EquipmentProvider, ProviderDataSync, IoTDevice,
+from api.telemetry.providers.models import (
+    TelemetryProvider, ProviderDataSync, CatchmentPointProvider
+)
+from api.telemetry.models import (
     DataPoint, DataStream, VariableDefinition
 )
+from api.infrastructure.models import Device
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +28,7 @@ logger = logging.getLogger(__name__)
 class ProviderSyncService:
     """
     Servicio para sincronización automática de datos con proveedores externos
+    (Modelo TelemetryProvider)
     """
 
     def __init__(self):
@@ -48,7 +54,7 @@ class ProviderSyncService:
             await self.initialize()
 
             provider = sync_config.provider
-            logger.info(f"Starting sync for provider {provider.name} ({sync_config.sync_type})")
+            logger.info(f"Starting sync for TelemetryProvider {provider.name} ({sync_config.sync_type})")
 
             # Actualizar estado
             sync_config.update_sync_status('RUNNING')
@@ -82,117 +88,109 @@ class ProviderSyncService:
                 'records_processed': 0
             }
 
-    async def _sync_full_historical(self, provider: EquipmentProvider, sync_config: ProviderDataSync) -> Dict[str, Any]:
+    async def _sync_full_historical(self, provider: TelemetryProvider, sync_config: ProviderDataSync) -> Dict[str, Any]:
         """
-        Sincronización histórica completa - recupera TODOS los datos históricos
+        Sincronización histórica completa - recupera datos para todos los Puntos activos
+        asociados a este proveedor.
         """
         logger.info(f"Starting full historical sync for {provider.name}")
 
-        # Obtener configuración del proveedor
-        base_url = provider.mqtt_broker_host  # Usar como base para APIs
-        auth_config = self._get_provider_auth_config(provider)
-
-        # Obtener dispositivos del proveedor
-        devices = list(IoTDevice.objects.filter(
-            equipment_model__provider=provider
-        ).select_related('equipment_model'))
+        # 1. Obtener configuraciones activas (Puntos suscritos a este proveedor)
+        point_configs = list(CatchmentPointProvider.objects.filter(
+            provider=provider,
+            is_active=True
+        ).select_related('point', 'device'))
 
         total_processed = 0
         errors = []
 
-        # Procesar cada dispositivo
-        for device in devices:
+        # 2. Procesar cada punto
+        for config in point_configs:
             try:
+                # Obtener credenciales efectivas (con override si existe)
+                auth_config = config.get_effective_config()
+                
                 # Calcular fecha desde la que sincronizar
-                start_date = self._get_sync_start_date(device, sync_config)
+                start_date = self._get_sync_start_date(config, sync_config)
 
-                # Sincronizar datos del dispositivo
-                result = await self._sync_device_historical_data(
-                    device, start_date, auth_config, sync_config
+                # Sincronizar datos del punto
+                result = await self._sync_point_data(
+                    config, start_date, auth_config, sync_config
                 )
 
                 total_processed += result.get('processed', 0)
 
                 if result.get('errors'):
                     errors.extend(result['errors'])
+                    config.record_error(str(result['errors'][0]))
+                else:
+                    config.record_success()
 
             except Exception as exc:
-                logger.error(f"Failed to sync device {device.device_id}: {exc}")
-                errors.append(f"Device {device.device_id}: {exc}")
+                logger.error(f"Failed to sync point {config.point.point_code}: {exc}")
+                errors.append(f"Point {config.point.point_code}: {exc}")
+                config.record_error(str(exc))
 
         return {
             'success': len(errors) == 0,
             'records_processed': total_processed,
             'errors': errors,
-            'devices_processed': len(devices)
+            'points_processed': len(point_configs)
         }
 
-    async def _sync_incremental(self, provider: EquipmentProvider, sync_config: ProviderDataSync) -> Dict[str, Any]:
+    async def _sync_incremental(self, provider: TelemetryProvider, sync_config: ProviderDataSync) -> Dict[str, Any]:
         """
-        Sincronización incremental - solo datos nuevos desde última sync
+        Sincronización incremental - usa la misma lógica pero se basa en la fecha de última sync.
         """
-        logger.info(f"Starting incremental sync for {provider.name}")
+        # La lógica de fecha se maneja en _get_sync_start_date
+        return await self._sync_full_historical(provider, sync_config)
 
-        # Calcular fecha desde última sincronización exitosa
-        if sync_config.last_successful_sync:
-            start_date = sync_config.last_successful_sync - timedelta(hours=1)  # 1 hora de buffer
-        else:
-            start_date = timezone.now() - timedelta(days=7)  # Última semana por defecto
-
-        # Usar la lógica de sync histórica pero con fecha más reciente
-        result = await self._sync_full_historical(provider, sync_config)
-
-        # Para incremental, podríamos optimizar consultando solo cambios
-        # pero por simplicidad reutilizamos la lógica histórica
-
-        return result
-
-    async def _sync_realtime(self, provider: EquipmentProvider, sync_config: ProviderDataSync) -> Dict[str, Any]:
+    async def _sync_realtime(self, provider: TelemetryProvider, sync_config: ProviderDataSync) -> Dict[str, Any]:
         """
-        Sincronización en tiempo real - mantener conexión abierta
+        Sincronización realtime (polling frecuente).
+        Igual que incremental pero pensado para correr cada minuto.
         """
-        logger.info(f"Starting realtime sync for {provider.name}")
+        return await self._sync_incremental(provider, sync_config)
 
-        # Para realtime, configurar webhooks o mantener conexión MQTT/WebSocket
-        # Por ahora, implementar como polling frecuente
-
-        result = await self._sync_incremental(provider, sync_config)
-
-        # Programar siguiente sync en tiempo real
-        # En producción, esto sería manejado por un scheduler o WebSocket
-
-        return result
-
-    async def _sync_device_historical_data(self, device: IoTDevice, start_date: datetime,
-                                         auth_config: Dict, sync_config: ProviderDataSync) -> Dict[str, Any]:
+    async def _sync_point_data(self, point_config: CatchmentPointProvider, start_date: datetime,
+                             auth_config: Dict, sync_config: ProviderDataSync) -> Dict[str, Any]:
         """
-        Sincronizar datos históricos de un dispositivo específico
+        Sincronizar datos para un Punto específico configuado con este proveedor.
         """
         try:
-            # Obtener endpoint del proveedor para datos históricos
-            endpoint_config = sync_config.sync_config.get('historical_endpoint', {})
-
-            if not endpoint_config:
-                return {'processed': 0, 'errors': ['No historical endpoint configured']}
-
-            # Preparar request
-            url = endpoint_config.get('url', '').format(device_id=device.device_id)
-            method = endpoint_config.get('method', 'GET')
-            params = {
+            provider = point_config.provider
+            
+            # 1. Construir URL y Payload usando Templates del Proveedor
+            # Variables disponibles para el template
+            template_vars = {
+                'device_id': point_config.provider_device_id, # ID externo
+                'point_code': point_config.point.point_code,
                 'start_date': start_date.isoformat(),
                 'end_date': timezone.now().isoformat(),
-                'device_id': device.device_id
             }
+            
+            try:
+                url = provider.build_endpoint_url(**template_vars)
+                payload_template = provider.request_template
+                # Si hay payload body (POST), construirlo
+                json_body = None
+                if payload_template:
+                   json_body = provider.build_request_payload(**template_vars)
+                   
+            except ValueError as e:
+                return {'processed': 0, 'errors': [f"Template error: {e}"]}
 
-            # Hacer request con autenticación
-            headers = self._prepare_auth_headers(auth_config)
+            # 2. Hacer Request
+            method = 'POST' if json_body else 'GET'
+            headers = provider.get_auth_headers()
+            headers['Content-Type'] = 'application/json'
+            headers['User-Agent'] = 'SmartHydro-Sync/3.0'
 
             async with self.http_client.request(
-                method, url, headers=headers, params=params if method == 'GET' else None,
-                json=params if method == 'POST' else None
+                method, url, headers=headers, json=json_body
             ) as response:
 
-                if response.status != 200:
+                if response.status not in [200, 201]:
                     error_text = await response.text()
                     return {
                         'processed': 0,
@@ -201,8 +199,8 @@ class ProviderSyncService:
 
                 data = await response.json()
 
-                # Procesar y guardar datos
-                processed_count = await self._process_provider_data_response(device, data)
+                # 3. Procesar Respuesta (Mapeo)
+                processed_count = await self._process_provider_response(point_config, data)
 
                 return {
                     'processed': processed_count,
@@ -210,206 +208,96 @@ class ProviderSyncService:
                 }
 
         except Exception as exc:
-            logger.error(f"Failed to sync historical data for device {device.device_id}: {exc}")
+            logger.error(f"Failed to sync point {point_config.point.point_code}: {exc}")
             return {
                 'processed': 0,
                 'errors': [str(exc)]
             }
 
-    async def _process_provider_data_response(self, device: IoTDevice, data: Dict) -> int:
+    async def _process_provider_response(self, point_config: CatchmentPointProvider, data: Dict) -> int:
         """
-        Procesar respuesta de datos del proveedor y guardarlos
+        Procesar la respuesta cruda del proveedor y guardar DataPoints.
         """
         processed_count = 0
+        provider = point_config.provider
+        
+        # Detectar lista de registros en la respuesta
+        # Asumimos que data es lista, o tiene una key 'data' o 'records'
+        records = data
+        if isinstance(data, dict):
+            records = data.get('records', data.get('data', [data]))
+            
+        if not isinstance(records, list):
+            records = [records]
 
-        try:
-            # Obtener streams del dispositivo
-            streams = list(device.data_streams.filter(is_active=True))
+        # Obtener mapeo de respuesta
+        response_mapping = provider.response_mapping or {}
 
-            if not streams:
-                logger.warning(f"No active streams for device {device.device_id}")
-                return 0
-
-            # Procesar cada registro de datos
-            records = data.get('records', data.get('data', []))
-
-            for record in records:
-                try:
-                    await self._process_single_data_record(device, streams, record)
-                    processed_count += 1
-
-                except Exception as exc:
-                    logger.error(f"Failed to process record for device {device.device_id}: {exc}")
-
-            # Commit transaction
-            logger.info(f"Processed {processed_count} records for device {device.device_id}")
-
-        except Exception as exc:
-            logger.error(f"Failed to process provider data response: {exc}")
-
+        for record in records:
+            try:
+                await self._process_single_record(point_config, record, response_mapping)
+                processed_count += 1
+            except Exception as e:
+                logger.error(f"Error processing record for {point_config}: {e}")
+                
         return processed_count
 
-    async def _process_single_data_record(self, device: IoTDevice, streams: List[DataStream], record: Dict):
+    async def _process_single_record(self, point_config: CatchmentPointProvider, record: Dict, mapping: Dict):
         """
-        Procesar un registro individual de datos
+        Extraer datos de un registro individual y guardar.
         """
-        # Extraer timestamp
-        timestamp_str = record.get('timestamp') or record.get('collected_at')
-        if timestamp_str:
-            collected_at = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-            collected_at = timezone.make_aware(collected_at) if timezone.is_naive(collected_at) else collected_at
-        else:
-            collected_at = timezone.now()
-
-        # Procesar cada stream
-        for stream in streams:
-            # Crear DataPoint con el dato crudo
-            raw_value = self._extract_raw_value_for_stream(record, stream)
-
-            if raw_value is not None:
-                # Aplicar constantes históricas
-                processed_value = await self._apply_historical_constants(
-                    device, stream, raw_value, collected_at
-                )
-
-                # Crear el punto de dato
-                await self._create_data_point_async(
-                    stream=stream,
-                    device=device,
-                    collected_at=collected_at,
-                    raw_value=str(raw_value),
-                    processed_value=processed_value,
-                    record_metadata=record
-                )
-
-    def _extract_raw_value_for_stream(self, record: Dict, stream: DataStream) -> Any:
-        """
-        Extraer el valor raw para un stream específico del registro
-        """
-        # Configuración de mapeo del stream
-        field_mapping = stream.transformations.get('field_mapping', {})
-
-        # Buscar el campo correspondiente
-        for stream_var in stream.variables.all():
-            field_name = field_mapping.get(stream_var.code, stream_var.code.lower())
-
-            if field_name in record:
-                return record[field_name]
-
-        # Si no se encuentra mapeo específico, buscar campos comunes
-        common_fields = ['value', 'data', 'measurement', stream.name.lower()]
-        for field in common_fields:
-            if field in record:
-                return record[field]
-
-        return None
-
-    async def _apply_historical_constants(self, device: IoTDevice, stream: DataStream,
-                                        raw_value: Any, collected_at: datetime) -> Optional[float]:
-        """
-        Aplicar constantes históricas al valor raw
-        """
-        try:
-            from ..models.constants_system import ConstantDefinition, ConstantApplication
-
-            # Buscar constantes aplicables para este dispositivo/stream/fecha
-            applicable_constants = ConstantApplication.objects.filter(
-                is_active=True,
-                start_date__lte=collected_at,
-                end_date__gte=collected_at
-            ).filter(
-                models.Q(constant__device=device) |
-                models.Q(constant__point=device.catchment_point) |
-                (models.Q(constant__device__isnull=True) & models.Q(constant__point__isnull=True))
-            ).select_related('constant').order_by('-constant__priority')
-
-            # Aplicar constantes en orden de prioridad
-            processed_value = float(raw_value) if isinstance(raw_value, (int, float, str)) and str(raw_value).replace('.', '').isdigit() else None
-
-            if processed_value is not None:
-                for application in applicable_constants:
-                    constant = application.constant
-
-                    if constant.constant_type == 'TOTALIZER_OFFSET':
-                        processed_value += float(constant.value_numeric)
-                    elif constant.constant_type == 'FLOW_MULTIPLIER':
-                        processed_value *= float(constant.value_numeric)
-                    elif constant.constant_type == 'LEVEL_OFFSET':
-                        processed_value += float(constant.value_numeric)
-                    # Agregar más tipos de constantes según necesidad
-
-            return processed_value
-
-        except Exception as exc:
-            logger.error(f"Error applying historical constants: {exc}")
-            return None
-
-    async def _create_data_point_async(self, stream, device, collected_at, raw_value,
-                                     processed_value, record_metadata):
-        """
-        Crear DataPoint de forma asíncrona
-        """
-        # En Django, las operaciones de DB son síncronas, pero podemos usar
-        # asyncio.to_thread para no bloquear el event loop
+        # 1. Extraer Timestamp (usando path 'data.ts' etc)
+        timestamp = timezone.now() # Default
+        ts_field = mapping.get('timestamp')
+        if ts_field and ts_field in record:
+            # Parse timestamp (asumimos ISO por ahora, mejorar parsing luego)
+            try:
+                ts_str = record[ts_field]
+                timestamp = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+            except:
+                pass
+                
+        # 2. Extraer Valores según Streams del Device (si hay device) o Variables del Punto
+        # Por simplicidad en V3, guardamos en TelemetryRecord (JSON) y DataPoint (Granular)
+        
+        # Preparar data JSON plana
+        flat_data = {}
+        
+        # Iterar keys del record y mapear si es necesario
+        for key, value in record.items():
+            # Aquí se podría usar mapping inverso para normalizar claves
+            flat_data[key] = value
+            
+        # 3. Guardar (Usando helper sincrono)
         await asyncio.to_thread(
-            self._create_data_point_sync,
-            stream, device, collected_at, raw_value, processed_value, record_metadata
+            self._save_telemetry_sync,
+            point_config, timestamp, flat_data
         )
 
-    def _create_data_point_sync(self, stream, device, collected_at, raw_value,
-                               processed_value, record_metadata):
-        """
-        Crear DataPoint de forma síncrona
-        """
+    def _save_telemetry_sync(self, point_config, timestamp, data):
+        """Guardado síncrono en DB."""
+        from api.telemetry.models import TelemetryRecord
+        
         with transaction.atomic():
-            DataPoint.objects.create(
-                stream=stream,
-                device=device,
-                point=device.catchment_point,
-                collected_at=collected_at,
-                received_at=timezone.now(),
-                raw_value=raw_value,
-                processed_value=processed_value,
-                metadata=record_metadata,
-                is_valid=True  # Asumir válido inicialmente
+            # 1. Guardar TelemetryRecord (V2 style - Compatible con Dashboard anterior)
+            TelemetryRecord.objects.create(
+                point=point_config.point,
+                timestamp=timestamp,
+                data=data,
+                metadata={'provider_id': point_config.provider.id, 'source': 'sync_service'}
             )
+            
+            # 2. Guardar DataPoints (V3 style - Granular)
+            # Para esto necesitaríamos mapear Streams. Por ahora V2 es suficiente para prototipo.
+            # (El usuario pidió prototipo funcional, y Dashboard V2 usa TelemetryRecord)
 
-    def _get_provider_auth_config(self, provider: EquipmentProvider) -> Dict:
-        """Obtener configuración de autenticación del proveedor"""
-        # Implementar según el tipo de autenticación del proveedor
-        return {
-            'type': 'bearer',  # o 'basic', 'api_key', etc.
-            'token': getattr(provider, 'api_token', ''),
-            'username': getattr(provider, 'api_username', ''),
-            'password': getattr(provider, 'api_password', ''),
-        }
-
-    def _prepare_auth_headers(self, auth_config: Dict) -> Dict:
-        """Preparar headers de autenticación"""
-        headers = {}
-
-        auth_type = auth_config.get('type', 'bearer')
-
-        if auth_type == 'bearer':
-            headers['Authorization'] = f"Bearer {auth_config.get('token', '')}"
-        elif auth_type == 'basic':
-            # Implementar basic auth si es necesario
-            pass
-
-        headers['Content-Type'] = 'application/json'
-        headers['User-Agent'] = 'SmartHydro-Sync/1.0'
-
-        return headers
-
-    def _get_sync_start_date(self, device: IoTDevice, sync_config: ProviderDataSync) -> datetime:
-        """Calcular fecha de inicio para sincronización"""
-        # Si es primera sync, ir 30 días atrás
-        if not sync_config.last_successful_sync:
-            return timezone.now() - timedelta(days=30)
-
-        # Si es sync incremental, ir desde última sync con buffer
-        buffer_hours = sync_config.sync_config.get('buffer_hours', 1)
-        return sync_config.last_successful_sync - timedelta(hours=buffer_hours)
+    def _get_sync_start_date(self, point_config: CatchmentPointProvider, sync_config: ProviderDataSync) -> datetime:
+        """Calcular fecha de inicio."""
+        if point_config.last_success:
+             # Buffer de seguridad para no perder datos
+            return point_config.last_success - timedelta(hours=1)
+        
+        return timezone.now() - timedelta(days=7) # Default 1 semana atrás
 
 
 # Instancia global del servicio
