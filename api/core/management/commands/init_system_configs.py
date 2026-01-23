@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from api.telemetry.models.management_super import SystemConfiguration
-from api.telemetry.providers.compliance_models import ComplianceProvider
+from api.compliance.models import ComplianceProvider
 
 class Command(BaseCommand):
     help = 'Initialize system configurations'

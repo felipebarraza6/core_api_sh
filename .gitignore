@@ -147,6 +147,7 @@ maintenance/*.log
 
 # Archivos de backup
 *.sql
+!backups/portable_db_data.sql
 *.dump
 *.backup
 

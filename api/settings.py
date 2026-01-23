@@ -63,6 +63,7 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     "api.core.apps.CoreAppConfig",
+    "api.presentation.apps.PresentationConfig",  # 🆕 Technical Presentation Layer
     "api.chatbot.apps.ChatbotConfig",
     "api.telemetry.apps.TelemetryConfig",
     "api.telemetry.providers.apps.ProvidersConfig",  # Sistema dinámico de proveedores (legacy - migrar a api.providers)
@@ -545,3 +546,12 @@ CELERY_TIMEZONE = TIME_ZONE
 # Use DatabaseScheduler to manage tasks from Django Admin (optional override)
 # Default Beat schedule is defined in api/celery_app.py
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+
+# ========================================
+# MQTT BROKER CONFIGURATION
+# ========================================
+MQTT_BROKER_HOST = os.environ.get("MQTT_BROKER_HOST", "mqtt_broker" if IS_DOCKER else "localhost")
+MQTT_BROKER_PORT = int(os.environ.get("MQTT_BROKER_PORT", 1883))
+MQTT_BROKER_USERNAME = os.environ.get("MQTT_BROKER_USERNAME", "smarthydro")
+MQTT_BROKER_PASSWORD = os.environ.get("MQTT_BROKER_PASSWORD", "dev_mqtt_password")
+

@@ -206,19 +206,12 @@ class CoreVariable(ModelApi):
     unit = models.CharField(max_length=50, verbose_name="Unidad", blank=True, null=True)
 
     # Variable key/identifier as used by the external provider
-    type_variable = models.CharField(
-        max_length=100,
-        verbose_name="Clave/ID de Variable",
-        help_text="Identificador de la variable en el proveedor externo (ej: '5000', 'descarga', 'pc')"
-    )
-
+    # REMOVED: Moved to CatchmentPointProvider.provider_variable_key for multi-provider support
+    # type_variable = ... (Legacy)
+    
     # Configuration for ingestion
-    provider_key = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        verbose_name="Key en JSON del proveedor",
-    )
+    # REMOVED: Moved to CatchmentPointProvider for multi-provider support
+    # provider_key = ... (Legacy)
     scale_factor = models.FloatField(default=1.0, verbose_name="Factor de escala")
     offset = models.FloatField(default=0.0, verbose_name="Offset / Calibración")
 

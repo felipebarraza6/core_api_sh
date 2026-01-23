@@ -15,7 +15,7 @@ from api.telemetry.services.telemetry_service import TelemetryService
 from api.core.services.stats_service import StatsService
 from api.core.services.action_service import ActionService
 from api.telemetry.models.catchment_points import CatchmentPoint
-from api.telemetry.providers.compliance_models import PointComplianceConfig
+from api.compliance.models import PointComplianceConfig
 from api.telemetry.models.telemetry import TelemetryRecord
 from api.infrastructure.models import Device
 from api.crm.models import Client, Project

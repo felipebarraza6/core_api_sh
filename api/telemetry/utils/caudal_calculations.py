@@ -12,7 +12,7 @@ import pytz
 
 from django.db.models import Avg, Q
 from api.telemetry.models import TelemetryRecord
-from api.telemetry.providers.compliance_models import PointComplianceConfig
+from api.compliance.models import PointComplianceConfig
 from api.telemetry.processing import FormulaEngine
 
 

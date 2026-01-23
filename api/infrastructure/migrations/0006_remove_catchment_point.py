@@ -10,8 +10,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name="device",
-            name="catchment_point",
-        ),
+        # migrations.RemoveField(
+        #     model_name="device",
+        #     name="catchment_point",
+        # ),
     ]

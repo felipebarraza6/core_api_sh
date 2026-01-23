@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.db.models import Q
 import logging
 
-from api.telemetry.providers.compliance_models import (
+from api.compliance.models import (
     ComplianceProvider,
     PointComplianceConfig,
     ManualComplianceRecord

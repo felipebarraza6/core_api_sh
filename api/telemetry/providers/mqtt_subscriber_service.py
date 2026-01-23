@@ -45,8 +45,16 @@ class MQTTSubscriberService:
         # Obtener config de MQTT si hay provider
         mqtt_config = getattr(provider, 'mqtt_config', None) if provider else None
         
-        self.broker_host = broker_host or (mqtt_config.broker_host if mqtt_config else 'localhost')
-        self.broker_port = broker_port or (mqtt_config.broker_port if mqtt_config else 1883)
+        # Intentar obtener de SystemConfiguration (Pilar Zero Hardcoding)
+        try:
+            from api.telemetry.models.management_super import SystemConfiguration
+            sys_conf = SystemConfiguration.objects.filter(category='MQTT', key='BROKER_CONFIG').first()
+            sys_vals = sys_conf.value if sys_conf else {}
+        except Exception:
+            sys_vals = {}
+        
+        self.broker_host = broker_host or sys_vals.get('host') or (mqtt_config.broker_host if mqtt_config else 'mqtt_broker')
+        self.broker_port = broker_port or sys_vals.get('port') or (mqtt_config.broker_port if mqtt_config else 1883)
         self.client = None
         self.is_running = False
 
@@ -211,7 +219,6 @@ class MQTTSubscriberService:
                     break
 
             if not applicable_mqtt_point:
-                logger.debug(f"Topic {topic} no corresponde a ningún punto configurado")
                 return
 
             # 2. Parsear usando el motor dinámico
@@ -260,6 +267,7 @@ class MQTTSubscriberService:
         return None
 
     def _save_telemetry(self, mqtt_point: CatchmentPointMQTT, parsed_data: dict):
+        point = mqtt_point.point
         """
         Guardar datos de telemetría procesados.
 
@@ -267,12 +275,13 @@ class MQTTSubscriberService:
             mqtt_point: Configuración del punto MQTT
             parsed_data: Datos parseados del mensaje
         """
-        point = mqtt_point.point
 
         # Crear registro base
         created_register = {
             'point_id': point.id,
+            'date_time_medition': parsed_data.get('timestamp') or timezone.now().isoformat(),
             'metadata': {
+                **parsed_data.get('metadata', {}),
                 'source': 'mqtt',
                 'provider': mqtt_point.provider.name,
                 'device_id': mqtt_point.get_effective_device_id(),
@@ -281,45 +290,42 @@ class MQTTSubscriberService:
         }
 
         # Obtener configuraciones de proveedor para este punto y proveedor MQTT
-        # Cada CatchmentPointProvider mapea una variable del punto a datos del proveedor
+        # Cada CatchmentPointProvider        # Obtener variables configuradas para este punto
         point_providers = CatchmentPointProvider.objects.filter(
             point=point,
-            provider=mqtt_point.provider,
             is_active=True
-        ).select_related('variable')
+        ).select_related('variable', 'variable__type_definition')
 
-        # Procesar cada variable configurada
+
+        point_dict = {
+            'id': point.id,
+            'point_code': point.point_code,
+        }
+
         for pp in point_providers:
-            variable = pp.variable  # CoreVariable
+            variable = pp.variable
+            provider_key = pp.provider_variable_key or variable.internal_code
+            
 
-            # El provider_device_id indica qué campo del payload mapea a esta variable
-            # Si no está configurado, usar el internal_code de la variable
-            provider_key = pp.provider_device_id or variable.internal_code
-
-            # Verificar si el dato parseado contiene esta variable
-            if provider_key in parsed_data:
-                raw_value = parsed_data[provider_key]
-
-                # Procesar variable usando sistema unificado
+            # Buscar en metadata (donde el parser pone los campos extra)
+            metadata = parsed_data.get('metadata', {})
+            if provider_key in metadata:
+                raw_value = metadata[provider_key]
+                
                 try:
                     variable_dict = {
                         'id': variable.id,
-                        'variable_code': variable.internal_code,
-                        'type_variable': variable.type_variable,
-                        'min_val': variable.min_value,
-                        'max_val': variable.max_value,
+                        'internal_code': variable.internal_code,
+                        'type_variable': variable.type_definition.code if variable.type_definition else 'unknown',
+                        'min_value': variable.min_value,
+                        'max_value': variable.max_value,
                         'scale_factor': variable.scale_factor,
                         'offset': variable.offset,
                     }
 
-                    point_dict = {
-                        'id': point.id,
-                        'point_code': point.point_code,
-                    }
-
                     data_dict = {
                         'value': raw_value,
-                        'timestamp': parsed_data.get('timestamp', timezone.now().isoformat())
+                        'date_time': created_register.get('date_time_medition')
                     }
 
                     # Procesar con sistema unificado
@@ -332,6 +338,7 @@ class MQTTSubscriberService:
 
                 except Exception as e:
                     logger.error(f"Error procesando variable {variable.internal_code}: {e}")
+            else:
 
         # Guardar registro final
         try:
@@ -364,7 +371,7 @@ def start_mqtt_subscriber():
         broker_host = settings.MQTT_BROKER_HOST if hasattr(settings, 'MQTT_BROKER_HOST') else 'localhost'
         broker_port = settings.MQTT_BROKER_PORT if hasattr(settings, 'MQTT_BROKER_PORT') else 1883
 
-        mqtt_subscriber = MQTTSubscriberService(broker_host, broker_port)
+        mqtt_subscriber = MQTTSubscriberService(broker_host=broker_host, broker_port=broker_port)
         mqtt_subscriber.start()
 
     return mqtt_subscriber

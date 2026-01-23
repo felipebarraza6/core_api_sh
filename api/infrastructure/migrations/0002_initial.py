@@ -14,11 +14,11 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='device',
-            name='catchment_point',
-            field=models.ForeignKey(help_text='Punto de captación al que pertenece', on_delete=django.db.models.deletion.CASCADE, related_name='devices', to='telemetry.catchmentpoint'),
-        ),
+        # migrations.AddField(
+        #     model_name='device',
+        #     name='catchment_point',
+        #     field=models.ForeignKey(help_text='Punto de captación al que pertenece', on_delete=django.db.models.deletion.CASCADE, related_name='devices', to='telemetry.catchmentpoint'),
+        # ),
         migrations.AddField(
             model_name='device',
             name='device_model',

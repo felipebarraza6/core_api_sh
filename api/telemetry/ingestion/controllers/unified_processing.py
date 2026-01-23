@@ -52,32 +52,52 @@ def save_telemetry_data(
         dt_medition = created_register.get("date_time_medition")
         if isinstance(dt_medition, str):
             try:
-                dt_medition = datetime.strptime(dt_medition, "%Y-%m-%dT%H:%M:%S")
-            except ValueError:
+                # Intentar obtener formatos de fecha de SystemConfiguration
+                from api.telemetry.models.management_super import SystemConfiguration
+                fmt_conf = SystemConfiguration.objects.filter(category='TELEMETRY', key='DATE_FORMATS').first()
+                formats = fmt_conf.value.get('formats', []) if fmt_conf else ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"]
+                
+                # Iterar sobre formatos configurados
+                parsed = False
+                for fmt in formats:
+                    try:
+                        dt_medition = datetime.strptime(dt_medition, fmt)
+                        parsed = True
+                        break
+                    except ValueError:
+                        continue
+                
+                if not parsed:
+                    # Fallback final a ISO
+                    dt_medition = datetime.fromisoformat(dt_medition)
+            except (ValueError, ImportError, Exception):
                 dt_medition = datetime.now()
 
         # 2. Mapear datos al JSON
         v3_data = {}
 
-        # Si tenemos las variables procesadas (incluye esquema + punto), usarlas
-        if processed_variables:
-            for var in processed_variables:
-                internal_code = var.get("internal_code")
-                provider_key = var.get("str_variable") or var.get("provider_key")
-                val = created_register.get(internal_code) or created_register.get(
-                    provider_key
-                )
-                if val is not None and internal_code:
-                    v3_data[internal_code] = val
-        else:
-            # Fallback: solo CoreVariables del punto (comportamiento legacy)
-            active_vars = CoreVariable.objects.filter(point_id=point_id, is_active=True)
-            for var in active_vars:
-                val = created_register.get(var.internal_code) or created_register.get(
-                    var.provider_key
-                )
-                if val is not None:
-                    v3_data[var.internal_code] = val
+        # 2. Mapear datos al JSON usando el nuevo sistema de mapeo por proveedor
+        v3_data = {}
+        from api.telemetry.providers.models import CatchmentPointProvider
+
+        # Obtener todas las configuraciones de este punto con proveedores externos
+        point_providers = CatchmentPointProvider.objects.filter(
+            point_id=point_id, 
+            is_active=True
+        ).select_related('variable')
+
+
+        for pp in point_providers:
+            # Siempre usamos el internal_code para buscar en created_register
+            # porque process_variable_safely ya mapeó la key del proveedor al código interno
+            search_key = pp.variable.internal_code
+            
+            val = created_register.get(search_key)
+            
+            if val is not None:
+                v3_data[search_key] = val
+
+
 
         # Siempre incluir campos calculados por el sistema si existen
         system_calculated_fields = [
@@ -540,9 +560,6 @@ def process_variable_safely(
     if operation == "FORMULA":
         formula = variable.get("formula")
         current_val = evaluate_dynamic_formula(formula, created_register)
-        telemetry_logger.info(
-            f"Punto {point_catchment['id']} - Fórmula '{formula}' evaluada: {current_val}"
-        )
     else:
         try:
             current_val = float(data.get("value", 0))
@@ -807,7 +824,7 @@ def should_submit_compliance(
         False  # Si no está configurado o no corresponde enviar
     """
     try:
-        from api.telemetry.providers.compliance_models import PointComplianceConfig
+        from api.compliance.models import PointComplianceConfig
         from api.telemetry.services.compliance_service import get_compliance_service
 
         # 1. Buscar configuración activa para este punto + proveedor
@@ -861,7 +878,7 @@ def get_compliance_configs_for_record(
         >>>     send_compliance_data.delay(record_id, config.id)
     """
     try:
-        from api.telemetry.providers.compliance_models import PointComplianceConfig
+        from api.compliance.models import PointComplianceConfig
 
         # Obtener todas las configs activas con envío habilitado
         all_configs = PointComplianceConfig.objects.filter(

@@ -3,7 +3,7 @@ from datetime import datetime
 from functools import lru_cache
 
 from api.telemetry.models.telemetry import CoreVariable
-from api.telemetry.providers.compliance_models import PointComplianceConfig
+from api.compliance.models import PointComplianceConfig
 from api.telemetry.processing import FormulaEngine
 
 logger = logging.getLogger(__name__)

@@ -7,7 +7,7 @@ from django.db.models import Count
 from api.telemetry.models import (
     CatchmentPoint,
 )
-from api.telemetry.providers.compliance_models import PointComplianceConfig
+from api.compliance.models import PointComplianceConfig
 from api.telemetry.models.telemetry import TelemetryRecord
 from api.notifications.models import Notification
 from datetime import datetime, timedelta

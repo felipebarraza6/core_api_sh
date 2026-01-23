@@ -24,24 +24,13 @@ from .models.management_super import SystemConfiguration
 from .admin_configuration import PointConfigurationValueInline
 
 # Importar inline de compliance
-from .providers.compliance_models import PointComplianceConfig
-
+from api.compliance.models import PointComplianceConfig
+from api.compliance.admin import PointComplianceConfigInline
 
 # =============================================================================
-# INLINE PARA COMPLIANCE CONFIG
+# INLINE PARA COMPLIANCE CONFIG (USANDO EL DE COMPLIANCE APP)
 # =============================================================================
-
-class ComplianceConfigInline(admin.TabularInline):
-    """Inline para configuración de compliance en CatchmentPoint."""
-    model = PointComplianceConfig
-    extra = 0
-    fields = ('provider', 'is_active', 'send_compliance', 'data_source')
-    readonly_fields = ('provider',)
-    can_delete = False
-
-    def has_add_permission(self, request, obj=None):
-        """Permitir agregar desde el punto."""
-        return True
+# Se usa directamente de api.compliance.admin para mantener coherencia
 
 
 # =============================================================================
@@ -112,7 +101,7 @@ class CatchmentPointAdmin(admin.ModelAdmin):
 
     inlines = [
         PointConfigurationValueInline,
-        ComplianceConfigInline,
+        PointComplianceConfigInline,
         TelemetryRecordInline,
     ]
 
@@ -160,7 +149,7 @@ class CatchmentPointAdmin(admin.ModelAdmin):
 
     def compliance_providers_display(self, obj):
         """Mostrar proveedores de compliance activos."""
-        from .providers.compliance_models import PointComplianceConfig
+        from api.compliance.models import PointComplianceConfig
 
         configs = PointComplianceConfig.objects.filter(
             point=obj,
@@ -399,7 +388,7 @@ class TelemetryRecordAdmin(admin.ModelAdmin):
 
     def compliance_status(self, obj):
         """Estado de envío a compliance."""
-        from .providers.compliance_models import ComplianceSubmissionLog
+        from api.compliance.models import ComplianceSubmissionLog
 
         submissions = ComplianceSubmissionLog.objects.filter(
             telemetry_record=obj

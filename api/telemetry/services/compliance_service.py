@@ -14,7 +14,7 @@ from typing import Optional, Dict, Any, Tuple, Union
 import requests
 from django.utils import timezone
 
-from api.telemetry.providers.compliance_models import (
+from api.compliance.models import (
     ComplianceProvider,
     PointComplianceConfig,
     ManualComplianceRecord,

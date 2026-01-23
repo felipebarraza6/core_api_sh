@@ -26,8 +26,6 @@ app.conf.update(
     # Task routing
     task_routes={
         'api.core.tasks.telemetry.*': {'queue': 'telemetry'},
-        'api.core.tasks.dga.*': {'queue': 'dga'},
-        'api.core.tasks.compliance.*': {'queue': 'compliance'},  # ✅ Nueva cola unificada
         'api.core.tasks.compliance_unified.*': {'queue': 'compliance'},  # ✅ Sistema dinámico V3
         'api.core.tasks.alerts.*': {'queue': 'alerts'},
         'api.core.tasks.reports.*': {'queue': 'reports'},

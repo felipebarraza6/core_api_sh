@@ -479,7 +479,7 @@ def get_dga_compliance(client_name):
     from datetime import datetime, timedelta
 
     from api.telemetry.models.catchment_points import CatchmentPoint, Client
-    from api.telemetry.providers.compliance_models import PointComplianceConfig
+    from api.compliance.models import PointComplianceConfig
 
     clients = Client.objects.filter(name__icontains=client_name)
     if not clients.exists():
@@ -656,7 +656,7 @@ def get_point_config(point_name, context_client=None):
         CatchmentPoint,
         ProfileDataConfigCatchment,
     )
-    from api.telemetry.providers.compliance_models import PointComplianceConfig
+    from api.compliance.models import PointComplianceConfig
     from api.core.models import CoreVariable
 
     # Usar search_points para desambiguar con contexto

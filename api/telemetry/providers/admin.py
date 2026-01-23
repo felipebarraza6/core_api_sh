@@ -6,12 +6,6 @@ from django.shortcuts import redirect
 import json
 
 from .models import TelemetryProvider, CatchmentPointProvider
-from .compliance_models import (
-    ComplianceProvider,
-    PointComplianceConfig,
-    ManualComplianceRecord,
-    ComplianceStandard,
-)
 from .forms import TelemetryProviderForm
 # Import Manager/Handler for testing connection
 from .handlers import DynamicAPIHandler
@@ -19,8 +13,8 @@ from .handlers import DynamicAPIHandler
 class CatchmentPointProviderInline(admin.TabularInline):
     model = CatchmentPointProvider
     extra = 0
-    fields = ('point', 'provider_device_id', 'device', 'priority', 'is_active')
-    autocomplete_fields = ('point', 'device')
+    fields = ('point', 'provider_device_id', 'priority', 'is_active')
+    autocomplete_fields = ('point',)
     show_change_link = True
 
 @admin.register(TelemetryProvider)
@@ -130,23 +124,19 @@ class TelemetryProviderAdmin(admin.ModelAdmin):
 
 @admin.register(CatchmentPointProvider)
 class CatchmentPointProviderAdmin(admin.ModelAdmin):
-    list_display = ('point_title', 'provider_name', 'device_serial', 'provider_device_id', 'priority', 'is_active', 'created')
+    list_display = ('point_title', 'provider_name', 'variable', 'provider_variable_key', 'provider_device_id', 'priority', 'is_active', 'created')
     list_filter = ('provider__name', 'is_active', 'provider__provider_type')
-    search_fields = ('point__title', 'provider_device_id', 'provider__name', 'device__imei', 'device__device_id')
-    autocomplete_fields = ('point', 'provider', 'device')
+    search_fields = ('point__title', 'provider_device_id', 'provider_variable_key', 'provider__name')
+    autocomplete_fields = ('point', 'provider', 'variable')
 
     fieldsets = (
         ('Configuración de Conexión', {
-            'fields': ('point', 'provider', 'priority', 'is_active'),
-            'description': 'Selecciona el punto y el proveedor a conectar. Priority define el orden de failover (mayor = preferido).'
+            'fields': ('point', 'provider', 'variable', 'priority', 'is_active'),
+            'description': 'Selecciona el punto, variable y el proveedor a conectar. Priority define el orden de failover (mayor = preferido).'
         }),
-        ('Dispositivo Físico', {
-            'fields': ('device',),
-            'description': 'Dispositivo físico que genera los datos (opcional, para trazabilidad e inventario).'
-        }),
-        ('ID en el Proveedor', {
-            'fields': ('provider_device_id',),
-            'description': '⚠️ ID del dispositivo en el sistema del PROVEEDOR (ej: Nettra "station_123", TTN "eui-abc", MQTT "NXP-001")'
+        ('Identificadores Externos', {
+            'fields': ('provider_device_id', 'provider_variable_key'),
+            'description': '⚠️ IDs en el sistema del PROVEEDOR:\n- Device ID: Identificador del equipo (ej: "logger_05")\n- Variable Key: Identificador de esta variable específica (ej: "flow_rate")'
         }),
         ('Configuración del Dispositivo', {
             'fields': ('device_config',),
@@ -171,9 +161,10 @@ class CatchmentPointProviderAdmin(admin.ModelAdmin):
     provider_name.admin_order_field = 'provider__display_name'
 
     def device_serial(self, obj):
-        return obj.device.imei if obj.device else '-'
+        # device field removed, preserving method signature for admin consistency or removal if not used
+        return '-'
     device_serial.short_description = 'IMEI Dispositivo'
-    device_serial.admin_order_field = 'device__imei'
+    # device_serial.admin_order_field = 'device__imei'
 
 
 # IMPORTS for MQTT are maintained at the end to register those admins

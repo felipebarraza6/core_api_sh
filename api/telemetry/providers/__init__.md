@@ -104,16 +104,29 @@ TelemetryProvider(
 
 ---
 
+## ⚙️ Dynamic Parsing Engine
+
+El sistema usa un motor de parsing desacoplado para procesar payloads de diferentes proveedores sin tocar el código del servicio.
+
+**Clase:** `MQTTPayloadParser` (`api.telemetry.providers.mqtt_parser`)
+**Regla:** `PayloadParsingRule` (`api.telemetry.providers.mqtt_models`)
+
+### Métodos de Parsing Soportados:
+1.  **JMESPath (Recomendado)**: Extrae valores usando sintaxis JSON avanzada.
+2.  **Template**: Mapeo directo de campos de texto.
+3.  **Python Script**: Para transformaciones complejas (usar con precaución).
+
+---
+
 ## 🧠 AI Specialist Skills
 
-| Skill | Description |
-| :--- | :--- |
-| **MQTT Mode** | Diferencia `mode='client'` (conectar A) vs `mode='server'` (escuchar EN). |
-| **Service Identifier** | Usa siempre `service_identifier` para agrupar tópicos MQTT. |
-| **Parsing Rules** | Prefiere `jsonpath` sobre scripts Python por seguridad. |
-| **Failover** | Configura `priority` en `CatchmentPointProvider` para redundancia. |
-| **Device Traceability** | Asocia `device` (FK) para saber qué hardware generó el dato. |
-
+| Skill                  | Description                                                                         |
+| :--------------------- | :---------------------------------------------------------------------------------- |
+| **MQTT Mode**          | Diferencia `mode='client'` (conectar A) vs `mode='server'` (escuchar EN).           |
+| **Parsing Rules**      | Prefiere `jsonpath` (JMESPath) sobre scripts Python por seguridad y mantenibilidad. |
+| **Service Identifier** | Usa siempre `service_identifier` para agrupar tópicos MQTT de un mismo origen.      |
+| **Failover**           | Configura `priority` en `CatchmentPointProvider` para redundancia de datos.         |
+| **Device Mapping**     | Asegura que `provider_variable_key` coincida con la salida de `PayloadParsingRule`. |
 ---
 
 ## 🛠️ Workflow: Agregar Nuevo Proveedor
@@ -200,15 +213,15 @@ CatchmentPointProvider.objects.create(
 
 ## 📋 Campos Clave en CatchmentPointProvider
 
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `point` | FK → CatchmentPoint | Punto lógico de captación |
-| `provider` | FK → TelemetryProvider | Proveedor/canal de datos |
-| `device` | FK → Device | Dispositivo físico (opcional) |
-| `provider_device_id` | CharField | ID del dispositivo en el sistema del PROVEEDOR |
-| `priority` | Integer | Orden de failover (mayor = preferido) |
-| `device_config` | JSON | Config del dispositivo (calibración, offset) |
-| `config_override` | JSON | Override de config del proveedor |
+| Campo                | Tipo                   | Descripción                                    |
+| -------------------- | ---------------------- | ---------------------------------------------- |
+| `point`              | FK → CatchmentPoint    | Punto lógico de captación                      |
+| `provider`           | FK → TelemetryProvider | Proveedor/canal de datos                       |
+| `device`             | FK → Device            | Dispositivo físico (opcional)                  |
+| `provider_device_id` | CharField              | ID del dispositivo en el sistema del PROVEEDOR |
+| `priority`           | Integer                | Orden de failover (mayor = preferido)          |
+| `device_config`      | JSON                   | Config del dispositivo (calibración, offset)   |
+| `config_override`    | JSON                   | Override de config del proveedor               |
 
 ---
 

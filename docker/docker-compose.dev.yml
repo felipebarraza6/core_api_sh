@@ -55,7 +55,7 @@ services:
       - EMAIL_HOST_USER=
       - EMAIL_HOST_PASSWORD=
       - GEMINI_API_KEY=dev-api-key-placeholder
-      - MQTT_BROKER_HOST=localhost
+      - MQTT_BROKER_HOST=mqtt_broker
       - MQTT_BROKER_USERNAME=smarthydro
       - MQTT_BROKER_PASSWORD=dev_mqtt_password
 

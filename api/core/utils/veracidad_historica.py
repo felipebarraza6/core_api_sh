@@ -93,7 +93,7 @@ def calculate_historical_veracidad(
         
         if all_excesos_records:
             points_flow_above_probable_count += 1
-            from api.telemetry.providers.compliance_models import PointComplianceConfig
+            from api.compliance.models import PointComplianceConfig
             compliance_config = PointComplianceConfig.objects.filter(
                 point=point, provider__name="dga", is_active=True
             ).first()

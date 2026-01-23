@@ -44,6 +44,31 @@ class MQTTPayloadParser:
         ).order_by('-priority')
 
         return list(rules)
+    def extract_device_id_from_topic(self, topic: str) -> Optional[str]:
+        """
+        Extraer device_id del topic usando el template del proveedor.
+        
+        Ejemplo: template "telemetry/{provider}/{device_id}/data"
+        y topic "telemetry/nettra/station_1/data" -> station_1
+        """
+        template = self.mqtt_config.subscribe_topic_template
+        
+        # Convertir template a regex
+        # Reemplazar variables {var} por grupos de captura
+        import re
+        pattern = template.replace('{provider}', '[^/]+')
+        pattern = pattern.replace('{point_code}', '[^/]+')
+        pattern = pattern.replace('{device_id}', '(?P<device_id>[^/]+)')
+        pattern = f"^{pattern}$"
+        
+        try:
+            match = re.match(pattern, topic)
+            if match:
+                return match.group('device_id')
+        except Exception as e:
+            logger.debug(f"Error extracting device_id from topic {topic}: {e}")
+            
+        return None
 
     def parse(self, topic: str, payload: bytes, device_id: str) -> Dict[str, Any]:
         """

@@ -23,6 +23,8 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     # API REST - Django REST Framework Router
     path("api/", include(("api.core.router", "api"), namespace="api")),
+    # Presentation Layer (Technical Landing)
+    path("presentation/", include("api.presentation.urls")),
     # API V2 - Batch endpoints optimizados
     path("api/v2/", include(("api.core.urls_v2", "api_v2"), namespace="api_v2")),
     re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}),
@@ -36,6 +38,8 @@ urlpatterns = [
     path("api/chat-bot/", include("api.chatbot.urls")),
     # Providers - Sistema dinámico de proveedores de telemetría
     path("api/providers/", include(("api.telemetry.providers.urls", "providers"), namespace="providers")),
+    # Telemetry Unified - Nueva API centralizada (V2.1)
+    path("api/telemetry/", include("api.telemetry.urls")),
     # Prometheus Metrics
     path("metrics/", prometheus_metrics, name="prometheus-metrics"),
     # Health Check

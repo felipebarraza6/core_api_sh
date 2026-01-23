@@ -45,7 +45,7 @@ class MQTTProviderConfig(models.Model):
         ('server', 'Servidor MQTT (escuchar broker local)'),
         ('client', 'Cliente MQTT (conectar a broker externo)'),
     ]
-    mode = models.CharField(
+    mqtt_mode = models.CharField(
         max_length=10,
         choices=MQTT_MODES,
         default='server',

@@ -41,7 +41,6 @@ class TelemetryProvider(ModelApi):
         ('api', 'REST API'),
         ('mqtt_server', 'MQTT Server (broker local - equipos publican hacia SmartHydro)'),
         ('mqtt_client', 'MQTT Client (broker externo - SmartHydro consume de terceros)'),
-        ('mqtt', 'MQTT (legacy - usar mqtt_server o mqtt_client)'),
         ('modbus', 'ModBus TCP'),
         ('http', 'HTTP Endpoint'),
         ('websocket', 'WebSocket'),
@@ -237,16 +236,8 @@ class CatchmentPointProvider(ModelApi):
         verbose_name="Proveedor"
     )
 
-    # Device físico (opcional, para trazabilidad - el Device principal está en CatchmentPoint)
-    device = models.ForeignKey(
-        'infrastructure.Device',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='provider_configs',
-        verbose_name="Dispositivo Físico",
-        help_text="Dispositivo físico que genera los datos (opcional, para trazabilidad)"
-    )
+    # Device físico eliminado por redundancia con CatchmentPoint.device
+    # Se utiliza provider_device_id para la identificación en la nube
 
     # Variable que esta configuración de proveedor alimenta
     variable = models.ForeignKey(
@@ -255,6 +246,14 @@ class CatchmentPointProvider(ModelApi):
         related_name='provider_configs',
         verbose_name="Variable",
         help_text="Variable del punto que recibe datos de este proveedor"
+    )
+
+    # Key específica para este proveedor (ej: "var_01" en MQTT, "flow" en API)
+    provider_variable_key = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Key/ID de Variable en Proveedor",
+        help_text="Identificador de la variable en este sistema externo específico (ej: '4001', 'v_caudal')."
     )
 
     # Configuration Override
@@ -461,15 +460,7 @@ class ProviderDataSync(ModelApi):
         self.save()
 
 
-# Import compliance models to make them available in this module
-# This allows Django to auto-discover them during migrations
-from .compliance_models import (
-    ComplianceProvider,
-    PointComplianceConfig,
-    ManualComplianceRecord,
-)
 
-from .compliance_standard import ComplianceStandard
 
 # Import MQTT models to make them available in this module
 # This allows Django to auto-discover them during migrations
