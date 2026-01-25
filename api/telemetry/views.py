@@ -60,3 +60,20 @@ class TelemetryViewSet(viewsets.ReadOnlyModelViewSet):
             "last_updated": timezone.now().isoformat(),
             "status": "ready"
         })
+
+
+class CoreVariableViewSet(viewsets.ModelViewSet):
+    """
+    CRUD de Variables (Nivel, Caudal, etc.)
+    """
+    from .models import CoreVariable
+    queryset = CoreVariable.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        from rest_framework import serializers
+        class VariableSerializer(serializers.ModelSerializer):
+            class Meta:
+                model = self.queryset.model
+                fields = '__all__'
+        return VariableSerializer

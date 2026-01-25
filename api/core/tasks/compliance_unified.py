@@ -27,18 +27,20 @@ logger = logging.getLogger(__name__)
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_compliance_data(self, record_id: int, compliance_config_id: int):
     """
-    Enviar datos de cumplimiento de forma dinámica.
+    Enviar datos de cumplimiento de forma dinámica (V2 con Vouchers).
 
-    Esta tarea REEMPLAZA send_data_to_dga_task con una versión genérica
-    que funciona con CUALQUIER proveedor de compliance.
-
-    Args:
-        record_id: ID del TelemetryRecord a enviar
-        compliance_config_id: ID del PointComplianceConfig
-
-    Returns:
-        Dict con resultado del envío
+    Flujo:
+    1. Verificar Reglas de Cumplimiento (CompliancePeriod/ComplianceRule).
+    2. Generar ComplianceVoucher (PENDING/IGNORED).
+    3. Si es válido, enviar vía ComplianceService.
+    4. Actualizar Voucher (SENT/ERROR).
     """
+    from api.compliance.models import (
+        CompliancePeriod, 
+        ComplianceVoucher,
+        ComplianceRule
+    )
+    
     try:
         # Cargar datos
         config = PointComplianceConfig.objects.select_related(
@@ -51,96 +53,152 @@ def send_compliance_data(self, record_id: int, compliance_config_id: int):
         point_code = config.point.point_code
 
         logger.info(
-            f"📤 Enviando compliance: {point_code} → {provider_name} "
+            f"� Procesando compliance V2: {point_code} → {provider_name} "
             f"(record: {record_id})"
         )
 
-        # Verificar que configuración está activa
-        if not config.is_active or not config.send_compliance:
-            logger.warning(
-                f"⚠️  Compliance deshabilitado para {point_code} → {provider_name}"
-            )
+        # -----------------------------------------------------------------
+        # 1. Verificar Reglas de Negocio (Periods & Rules)
+        # -----------------------------------------------------------------
+        # Buscar periodo activo
+        active_period = CompliancePeriod.objects.filter(
+            point=config.point,
+            valid_from__lte=record.timestamp,
+            valid_to__gte=record.timestamp,
+            is_active=True
+        ).prefetch_related('rules').first()
+        
+        rule_action = None
+        blocking_rule = None
+
+        if active_period:
+            for rule in active_period.rules.all():
+                is_triggered = evaluate_rule(rule, record)
+                if is_triggered:
+                    logic = rule.logic
+                    action = logic.get("action", "IGNORE")
+                    if action in ["IGNORE", "REJECT"]:
+                        rule_action = action
+                        blocking_rule = rule
+                        break # Prioridad al bloqueo
+        
+        # -----------------------------------------------------------------
+        # 2. Generar Voucher
+        # -----------------------------------------------------------------
+        voucher_status = 'PENDING'
+        if rule_action == 'IGNORE':
+            voucher_status = 'IGNORED'
+        elif not config.is_active or not config.send_compliance:
+            voucher_status = 'IGNORED' # Config deshabilitada
+
+        voucher, created = ComplianceVoucher.objects.get_or_create(
+            point=config.point,
+            telemetry_record=record,
+            provider=config.provider,
+            defaults={
+                'data_timestamp': record.timestamp,
+                'voucher_status': voucher_status,
+                'data_snapshot': record.data,
+                'error_message': f"Bloqueado por regla: {blocking_rule.name}" if blocking_rule else ""
+            }
+        )
+        
+        if voucher_status == 'IGNORED':
+            logger.info(f"🚫 Compliance ignorado por regla/config: {point_code} → {provider_name}")
             return {
                 'success': False,
-                'message': 'Configuración deshabilitada',
-                'skipped': True
+                'status': 'IGNORED',
+                'voucher_id': voucher.id
             }
 
-        # Usar servicio de compliance
+        # -----------------------------------------------------------------
+        # 3. Enviar Datos
+        # -----------------------------------------------------------------
         service = ComplianceService()
 
-        success, message, voucher = service.submit_telemetry_record(
+        # Usamos el voucher para el envío (el servicio debería actualizarse idealmente, 
+        # pero por ahora pasamos record y config, y actualizamos voucher después)
+        success, message, auth_voucher_code = service.submit_telemetry_record(
             record=record,
             config=config
         )
-
+        
+        # Update voucher with request/response if service exposes them (service update pending)
+        # Por ahora guardamos lo que tenemos
+        
         if success:
-            # Registrar éxito
+            voucher.voucher_status = 'SENT'
+            voucher.voucher_code = auth_voucher_code
+            voucher.error_message = ""
+            voucher.save()
+            
+            # Legacy sync (para no romper frontend viejo aún)
             config.record_success()
-
-            # Actualizar registro de telemetría
-            if not hasattr(record, 'compliance_status'):
-                record.compliance_status = {}
-
-            record.compliance_status[config.provider.name] = {
-                'sent': True,
-                'voucher': voucher,
-                'sent_at': timezone.now().isoformat(),
-                'message': message
-            }
-            record.save(update_fields=['compliance_status'])
-
-            logger.info(
-                f"✅ Compliance exitoso: {point_code} → {provider_name} "
-                f"(voucher: {voucher})"
-            )
-
+            logger.info(f"✅ Compliance enviado: {point_code} -> {provider_name} (Voucher: {voucher.id})")
+            
             return {
                 'success': True,
-                'message': message,
-                'voucher': voucher,
-                'provider': provider_name,
-                'point': point_code
+                'voucher_id': voucher.id,
+                'auth_code': auth_voucher_code
             }
-
         else:
-            # Registrar error
+            voucher.voucher_status = 'ERROR'
+            voucher.error_message = message
+            voucher.save()
+            
             config.record_error(message)
-
-            logger.error(
-                f"❌ Error compliance: {point_code} → {provider_name}: {message}"
-            )
-
-            # Retry con backoff exponencial
+            logger.error(f"❌ Error enviando compliance: {message}")
+            
+            # Retry logic
             retry_delay = config.provider.retry_delay_seconds * (2 ** self.request.retries)
-
             raise self.retry(
                 exc=Exception(message),
                 countdown=retry_delay,
                 max_retries=config.provider.max_retries
             )
 
-    except PointComplianceConfig.DoesNotExist:
-        error_msg = f"PointComplianceConfig {compliance_config_id} no encontrado"
-        logger.error(f"❌ {error_msg}")
-        return {'success': False, 'message': error_msg}
-
-    except TelemetryRecord.DoesNotExist:
-        error_msg = f"TelemetryRecord {record_id} no encontrado"
-        logger.error(f"❌ {error_msg}")
-        return {'success': False, 'message': error_msg}
+    except (PointComplianceConfig.DoesNotExist, TelemetryRecord.DoesNotExist) as e:
+        logger.error(f"❌ Error de referencia DB: {e}")
+        return {'success': False, 'error': str(e)}
 
     except Exception as exc:
-        logger.error(
-            f"❌ Error inesperado en compliance task: {exc}",
-            exc_info=True
-        )
-
-        # Si ya agotó reintentos, registrar error final
-        if self.request.retries >= config.provider.max_retries:
-            config.record_error(str(exc))
-
+        logger.error(f"❌ Error inesperado task compliance: {exc}", exc_info=True)
+        # Actualizar voucher a error si existe
         raise
+
+
+def evaluate_rule(rule, record):
+    """
+    Evalúa una regla JSON simple contra el registro.
+    Logic schema: {'field': 'flow', 'operator': '<', 'value': 0.5}
+    """
+    try:
+        logic = rule.logic
+        field = logic.get("field")
+        operator = logic.get("operator")
+        threshold = logic.get("value")
+        
+        if not field or not operator or threshold is None:
+            return False
+            
+        # Obtener valor del record
+        # Soportamos 'flow', 'nivel', 'total', etc.
+        data_val = record.data.get(field)
+        if data_val is None:
+            return False 
+            
+        val = float(data_val)
+        limit = float(threshold)
+        
+        if operator == '<': return val < limit
+        if operator == '>': return val > limit
+        if operator == '<=': return val <= limit
+        if operator == '>=': return val >= limit
+        if operator == '==': return val == limit
+        
+        return False
+    except Exception:
+        return False
 
 
 @shared_task(bind=True)
@@ -360,49 +418,6 @@ def generate_compliance_report(provider_name: str = None, days: int = 7):
     return stats
 
 
-# ==========================================
-# LEGACY COMPATIBILITY
-# ==========================================
-# Mantener nombres legacy para no romper código existente durante transición
+# LEGACY COMPATIBILITY REMOVED
+# send_data_to_dga_task was removed as per strict new system requirements.
 
-@shared_task(bind=True, max_retries=3)
-def send_data_to_dga_task(self, record_id: int, point_id: int):
-    """
-    LEGACY: Mantener por compatibilidad.
-    DEPRECATED: Usar send_compliance_data en su lugar.
-
-    Esta función busca la configuración DGA del punto y delega
-    a send_compliance_data.
-    """
-    import warnings
-    warnings.warn(
-        "send_data_to_dga_task está deprecado. "
-        "Usar send_compliance_data con compliance_config_id.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-
-    try:
-        # Buscar configuración DGA del punto
-        config = PointComplianceConfig.objects.filter(
-            point_id=point_id,
-            provider__name='dga',
-            is_active=True
-        ).first()
-
-        if not config:
-            logger.warning(
-                f"⚠️  No hay configuración DGA para point {point_id}. "
-                f"Crear PointComplianceConfig en Admin."
-            )
-            return {'success': False, 'message': 'No DGA config found'}
-
-        # Delegar a tarea nueva
-        return send_compliance_data.apply_async(
-            args=[record_id, config.id],
-            task_id=self.request.id
-        )
-
-    except Exception as exc:
-        logger.error(f"❌ Error en send_data_to_dga_task legacy: {exc}")
-        raise

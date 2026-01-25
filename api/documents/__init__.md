@@ -1,29 +1,21 @@
-# documents: __init__ & AI SKILLS
+# 📄 Documents App (Smart Files & Reports)
 
-Este es un resumen estructural de la aplicación `documents`. Úsalo para gestionar archivos, PDFs y almacenamiento.
+**Responsabilidad**: Gestión de archivos y Generación Automática de Reportes.
+**Estado**: ✅ ACTIVO (Mejorado con DocGen)
 
-## 🎯 Purpose & Scope
-Gestión centralizada de documentos del sistema (Planos, Manuales, Certificados, Reportes Generados). Maneja el almacenamiento físico y los metadatos de archivos.
+## 🧠 Propósito
+No solo guardar PDFs, sino **crearlos**. Permite a los usuarios diseñar sus propios reportes (Word/Excel/HTML) y programar su envío.
 
-## 🧠 AI Specialist Skills (Mini-Agent Instructions)
+## 📦 Componentes Clave
 
-Agente, al trabajar en esta carpeta, asume el rol de **Document Control Officer**. Debes seguir estas reglas:
+1.  **Almacenamiento**:
+    *   `Document`: Archivo subido (PDF, validaciones, planos).
+    *   Asociado a Cliente, Proyecto o Punto.
 
-| Skill | Description |
-| :--- | :--- |
-| **Logic Pattern** | Los documentos generados deben guardarse en `media/reports` con hash único. |
-| **Restriction** | No permitas acceso público a archivos sin token de sesión. |
-| **Tooling** | Usa `reportlab` o `xhtml2pdf` para la generación dinámica de archivos. |
+2.  **Motor DocGen (`engine/generator.py`)**:
+    *   Toma una plantilla (`.docx`, `.xlsx` o HTML).
+    *   Inyecta contexto JSON (`{{ caudal }}`).
+    *   Produce un archivo final reportable.
 
-### 🛠️ Standard Workflows
-1. **Generating Report**: Recolectar datos -> Renderizar template HTML -> Convertir a PDF -> Guardar y notificar.
-2. **Cleanup**: Archivar documentos antiguos de más de 2 años a almacenamiento frío.
-
-## 🏗️ Core Architecture Components
-
-### Models (Primary Tables)
-- **`Document`**: Metadatos de un archivo vinculado a un proyecto o cliente.
-- **`DocumentTemplate`**: Plantillas para generación dinámica de documentos.
-
----
-*Referencia global: [ROOT_MAP.md](file:///Users/felipebarraza/projects/core_api_sh/api/ROOT_MAP.md)*
+3.  **Scheduler (`ScheduledGeneration`)**:
+    *   Cronjob (Celery Beat) que ejecuta reportes cada X tiempo y los envía por correo.

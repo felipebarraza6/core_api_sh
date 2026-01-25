@@ -593,5 +593,194 @@ class ManualComplianceRecord(ModelApi):
             models.Index(fields=['status']),
         ]
 
+
+class ComplianceRule(ModelApi):
+    """
+    Regla Condicional de Cumplimiento.
+    Define condiciones lógicas para el envío de datos.
+    
+    Ejemplo:
+    - Name: 'No enviar si caudal bajo mínimo'
+    - Logic: {"min_value": 0.5, "action": "IGNORE"}
+    """
+    name = models.CharField(max_length=200, verbose_name="Nombre")
+    code = models.SlugField(max_length=100, unique=True, verbose_name="Código Único")
+    
+    description = models.TextField(blank=True, verbose_name="Descripción")
+    
+    logic = models.JSONField(
+        default=dict,
+        verbose_name="Lógica de Regla",
+        help_text="Definición JSON de la condición (ej: {'field': 'flow', 'operator': '<', 'value': 0.5})"
+    )
+    
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        verbose_name = "Regla de Cumplimiento"
+        verbose_name_plural = "Reglas de Cumplimiento"
+        ordering = ['name']
+
     def __str__(self):
-        return f"{self.config.point_id} - {self.measurement_timestamp.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.name} ({self.code})"
+
+
+class CompliancePeriod(ModelApi):
+    """
+    Periodo de Control de Cumplimiento (Lote).
+    Agrupa reglas para un punto en un rango de fechas específico.
+    """
+    point = models.ForeignKey(
+        'telemetry.CatchmentPoint',
+        on_delete=models.CASCADE,
+        related_name='compliance_periods',
+        verbose_name="Punto de Captación"
+    )
+    
+    name = models.CharField(
+        max_length=200, 
+        verbose_name="Nombre del Periodo",
+        help_text="Ej: Temporada de Riego 2024"
+    )
+    
+    valid_from = models.DateTimeField(verbose_name="Válido Desde")
+    valid_to = models.DateTimeField(verbose_name="Válido Hasta")
+    
+    rules = models.ManyToManyField(
+        ComplianceRule,
+        related_name='periods',
+        verbose_name="Reglas Aplicables",
+        blank=True
+    )
+    
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Activo",
+        help_text="Si este periodo está habilitado para validación"
+    )
+    
+    class Meta:
+        verbose_name = "Periodo de Cumplimiento"
+        verbose_name_plural = "Periodos de Cumplimiento"
+        ordering = ['-valid_from']
+        indexes = [
+            models.Index(fields=['point', 'valid_from', 'valid_to']),
+        ]
+
+    def __str__(self):
+        return f"{self.point} - {self.name}"
+        
+    def clean(self):
+        if self.valid_from and self.valid_to and self.valid_from >= self.valid_to:
+            raise ValidationError("La fecha de inicio debe ser anterior a la de fin.")
+
+
+class ComplianceVoucher(ModelApi):
+    """
+    Voucher de Transacción de Cumplimiento.
+    Registro inmutable y desacoplado del envío a la autoridad.
+    """
+    point = models.ForeignKey(
+        'telemetry.CatchmentPoint',
+        on_delete=models.CASCADE,
+        related_name='compliance_vouchers',
+        verbose_name="Punto de Captación"
+    )
+    
+    variable = models.ForeignKey(
+        'telemetry.CoreVariable',
+        on_delete=models.SET_NULL,
+        null=True, 
+        blank=True,
+        related_name='compliance_vouchers',
+        verbose_name="Variable (Opcional)"
+    )
+    
+    telemetry_record = models.ForeignKey(
+        'telemetry.TelemetryRecord',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='compliance_vouchers',
+        verbose_name="Registro Origen (Evidence)",
+        help_text="Referencia al registro crudo original si existe"
+    )
+    
+    provider = models.ForeignKey(
+        ComplianceProvider,
+        on_delete=models.PROTECT,
+        related_name='vouchers',
+        verbose_name="Proveedor"
+    )
+    
+    # Datos Inmutables del Envío
+    data_timestamp = models.DateTimeField(
+        verbose_name="Fecha del Dato",
+        help_text="Fecha y hora REAL que declara el dato (puede diferir de la creación)"
+    )
+    
+    data_snapshot = models.JSONField(
+        default=dict,
+        verbose_name="Snapshot de Datos",
+        help_text="Copia inmutable de los datos enviados (JSON)"
+    )
+    
+    # Estado de la Transacción
+    STATUS_CHOICES = [
+        ('PENDING', 'Pendiente de Envío'),
+        ('SENT', 'Enviado Exitosamente'),
+        ('ERROR', 'Error en Envío'),
+        ('IGNORED', 'Ignorado por Regla'),
+        ('REJECTED', 'Rechazado por Autoridad'),
+    ]
+    voucher_status = models.CharField(
+        max_length=50,
+        choices=STATUS_CHOICES,
+        default='PENDING',
+        verbose_name="Estado del Voucher"
+    )
+    
+    voucher_code = models.CharField(
+        max_length=200,
+        blank=True, 
+        null=True,
+        verbose_name="Código/Voucher Autoridad",
+        help_text="ID retornado por la DGA/SMA"
+    )
+    
+    # Auditoría Completa
+    request_payload = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Payload Enviado"
+    )
+    
+    response_payload = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Respuesta Recibida"
+    )
+    
+    error_message = models.TextField(
+        blank=True,
+        verbose_name="Mensaje de Error"
+    )
+    
+    generated_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Generado El"
+    )
+    
+    class Meta:
+        verbose_name = "Comprobante de Cumplimiento (Voucher)"
+        verbose_name_plural = "Comprobantes de Cumplimiento"
+        ordering = ['-data_timestamp']
+        indexes = [
+            models.Index(fields=['point', 'data_timestamp']),
+            models.Index(fields=['voucher_status']),
+            models.Index(fields=['voucher_code']),
+        ]
+
+    def __str__(self):
+        return f"Voucher {self.point} - {self.data_timestamp}"
+

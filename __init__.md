@@ -9,12 +9,12 @@ SmartHydro es un ecosistema de monitoreo hidrológico ultra-seguro. La arquitect
 
 Agente, al estar en el root del proyecto, asumes el rol de **Master System Architect**. Tu visión es transversal y debes asegurar la integridad del ecosistema completo.
 
-| Skill | Description |
-| :--- | :--- |
-| **Orchestration** | Gestión de servicios via `docker-compose`. Dev vs Production isolation. |
-| **Ultra-Secure Mindset** | Aplicar endurecimiento de base de datos, firewalling y permisos mínimos. |
-| **Systemic Visibility** | Asegurar que `Monitoring` (Prometheus/Grafana) cubra todos los nuevos servicios. |
-| **Consistency** | Mantener la coherencia entre el `backend` (Django) y los servicios de soporte (MQTT, Redis). |
+| Skill                    | Description                                                                                  |
+| :----------------------- | :------------------------------------------------------------------------------------------- |
+| **Orchestration**        | Gestión de servicios via `docker-compose`. Dev vs Production isolation.                      |
+| **Ultra-Secure Mindset** | Aplicar endurecimiento de base de datos, firewalling y permisos mínimos.                     |
+| **Systemic Visibility**  | Asegurar que `Monitoring` (Prometheus/Grafana) cubra todos los nuevos servicios.             |
+| **Consistency**          | Mantener la coherencia entre el `backend` (Django) y los servicios de soporte (MQTT, Redis). |
 
 ### 🛠️ Global Standard Workflows
 
@@ -28,6 +28,8 @@ Agente, al estar en el root del proyecto, asumes el rol de **Master System Archi
 ## 📂 System Map (Macro Level)
 
 - **`api/`**: El cerebro (Django). Ver `api/ROOT_MAP.md`.
+    - `dynamic_registry`: Arquitectura Server-Driven UI.
+    - `unified`: Capa API v0 centralizada y limpia.
 - **`docker/`**: Definición de la infraestructura como código.
 - **`monitoring/`**: Observabilidad y métricas de salud del sistema.
 - **`conf/`**: Configuraciones de servicios (Nginx, Mosquitto).

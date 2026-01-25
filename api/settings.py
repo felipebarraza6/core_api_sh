@@ -66,6 +66,7 @@ LOCAL_APPS = [
     "api.presentation.apps.PresentationConfig",  # 🆕 Technical Presentation Layer
     "api.chatbot.apps.ChatbotConfig",
     "api.telemetry.apps.TelemetryConfig",
+    "api.ingestion.apps.IngestionConfig",  # 🆕 Gestor de Ingesta y Protocolos (ex-telemetry providers)
     "api.telemetry.providers.apps.ProvidersConfig",  # Sistema dinámico de proveedores (legacy - migrar a api.providers)
     "api.crm.apps.CrmConfig",  # 🆕 Gestión de Clientes y Proyectos
     "api.subscriptions.apps.SubscriptionsConfig",  # 🆕 Módulos y Suscripciones Ikolu
@@ -75,6 +76,8 @@ LOCAL_APPS = [
     "api.documents.apps.DocumentsConfig",  # 🆕 Gestión Documental
     "api.infrastructure.apps.InfrastructureConfig",  # 🆕 Infraestructura IoT
     "api.support.apps.SupportConfig",
+    "api.dynamic_registry.apps.DynamicRegistryConfig",  # 🆕 Server-Driven UI Registry
+    "api.unified.apps.UnifiedConfig",  # 🆕 API Unificada v4 (consolida V1, V2, V3)
     "django_celery_beat",
     "import_export",
 ]

@@ -1,6 +1,7 @@
 """
 Documents Models
 Generalizado para soportar Clientes, Proyectos y Puntos.
+Incorpora Generación de Documentos (Templates).
 """
 
 from django.db import models
@@ -21,6 +22,66 @@ class DocumentType(ModelApi):
 
     def __str__(self):
         return f"{self.name}"
+
+
+class DocumentTemplate(ModelApi):
+    """
+    Template for generating dynamic documents.
+    Supported: .docx (Word), .xlsx (Excel).
+    """
+    code = models.CharField(max_length=50, unique=True, verbose_name="Código Único", help_text="Ej: CERT_CAUDAL_V1")
+    name = models.CharField(max_length=200, verbose_name="Nombre Template")
+    file = models.FileField(upload_to="templates/", verbose_name="Archivo Plantilla (.docx/.xlsx)")
+    description = models.TextField(blank=True, null=True, verbose_name="Descripción")
+    
+    # Metadata for the engine
+    engine_type = models.CharField(
+        max_length=20, 
+        choices=[('docx', 'Word (Jinja2)'), ('xlsx', 'Excel (OpenPyXL)'), ('pdf', 'PDF (HTML Template)')],
+        default='docx'
+    )
+    html_content = models.TextField(
+        blank=True, 
+        null=True, 
+        verbose_name="Contenido HTML",
+        help_text="Solo para motor PDF. Puede usar variables {{ variable }} de Django Templates."
+    )
+    required_context = models.JSONField(
+        default=dict, 
+        help_text="Esquema JSON de variables requeridas. Ej: ['cliente', 'caudal']",
+        blank=True
+    )
+
+    class Meta:
+        verbose_name = "Plantilla de Documento"
+        verbose_name_plural = "Plantillas de Documentos"
+
+    def __str__(self):
+        return f"[{self.code}] {self.name}"
+
+
+class ScheduledGeneration(ModelApi):
+    """
+    Configuration for auto-generating documents.
+    """
+    template = models.ForeignKey(DocumentTemplate, on_delete=models.CASCADE, verbose_name="Plantilla")
+    name = models.CharField(max_length=200, verbose_name="Nombre Tarea")
+    
+    # Scheduling
+    cron_expression = models.CharField(max_length=100, help_text="Formato Cron (Ej: 0 8 * * 1 para Lunes 8am)")
+    is_active = models.BooleanField(default=True, verbose_name="Activo")
+    last_run = models.DateTimeField(null=True, blank=True)
+    next_run = models.DateTimeField(null=True, blank=True)
+    
+    # Context & Delivery
+    static_context = models.JSONField(default=dict, blank=True, help_text="Datos fijos para el reporte")
+    recipients = models.TextField(help_text="Emails separados por coma")
+    
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+
+    class Meta:
+        verbose_name = "Generación Programada"
+        verbose_name_plural = "Generaciones Programadas"
 
 
 class Document(ModelApi):
@@ -112,7 +173,15 @@ class Document(ModelApi):
         blank=True,
         help_text="Documentos del dispositivo (calibraciones, informes)"
     )
-
+    
+    # Link to Generator
+    generated_from = models.ForeignKey(
+        DocumentTemplate, 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True,
+        related_name="generated_documents",
+        help_text="Si se creó automáticamente desde un template"
+    )
 
     # Professional Metadata
     valid_until = models.DateField(
@@ -140,7 +209,6 @@ class Document(ModelApi):
         verbose_name="Subido por",
         related_name="uploaded_documents"
     )
-
 
     class Meta:
         db_table = "core_filecatchment"

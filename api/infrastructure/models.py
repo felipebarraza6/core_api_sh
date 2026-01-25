@@ -75,7 +75,7 @@ class DeviceModel(ModelApi):
 
 
 class Device(ModelApi):
-    """IoT Device (renamed from IoTDevice)."""
+    """IoT Device con campos dinámicos (igual que CatchmentPoint)."""
 
     device_id = models.UUIDField(
         default=uuid.uuid4,
@@ -127,6 +127,17 @@ class Device(ModelApi):
         help_text="Token para autenticación. Auto-generado si usa MQTT interno, manual si es proveedor externo."
     )
 
+    # NUEVO: Campos dinámicos (igual que CatchmentPoint)
+    configuration_scheme = models.ForeignKey(
+        "telemetry.ConfigurationScheme",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="devices",
+        verbose_name="Esquema de Configuración",
+        help_text="Plantilla de configuración dinámica para este dispositivo"
+    )
+
     class Meta:
         db_table = 'core_iotdevice'
         verbose_name = "Dispositivo IoT"
@@ -150,6 +161,51 @@ class Device(ModelApi):
 
     def __str__(self):
         return f"{self.name} ({self.device_id})"
+
+    def get_config_dict(self) -> dict:
+        """
+        Obtiene todas las configuraciones del dispositivo como diccionario.
+        Igual que CatchmentPoint.get_config_dict() para consistencia.
+
+        Returns:
+            Dict con formato {field_code: value}
+        """
+        return {
+            cv.field.code: cv.value
+            for cv in self.configuration_values.select_related('field')
+        }
+
+
+class DeviceConfigurationValue(ModelApi):
+    """
+    Valor de configuración para un dispositivo específico.
+    Espejo de PointConfigurationValue pero para Device.
+    """
+
+    device = models.ForeignKey(
+        Device,
+        related_name='configuration_values',
+        on_delete=models.CASCADE,
+        verbose_name="Dispositivo"
+    )
+    field = models.ForeignKey(
+        "telemetry.ConfigurationSchemeField",
+        on_delete=models.CASCADE,
+        verbose_name="Campo de Configuración"
+    )
+    value = models.JSONField(
+        verbose_name="Valor",
+        help_text="Valor de la configuración según el tipo de dato del campo"
+    )
+
+    class Meta:
+        db_table = "infrastructure_deviceconfigurationvalue"
+        verbose_name = "Valor de Configuración de Dispositivo"
+        verbose_name_plural = "Valores de Configuración de Dispositivo"
+        unique_together = ('device', 'field')
+
+    def __str__(self):
+        return f"{self.device.name} - {self.field.code}: {self.value}"
 
 
 

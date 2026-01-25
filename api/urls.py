@@ -21,25 +21,46 @@ admin.site.index_title = "Panel de Administración"
 urlpatterns = [
     # Admin de Django
     path("admin/", admin.site.urls),
-    # API REST - Django REST Framework Router
-    path("api/", include(("api.core.router", "api"), namespace="api")),
+
+    # ========================================
+    # API UNIFICADA (Principal)
+    # ========================================
+    # Endpoints: /api/points/, /api/devices/, /api/dashboard/
+    path("api/", include(("api.unified.urls", "unified"), namespace="unified")),
+
+    # API Console (Moved to Unified/Dashboard)
+    # path("api/console/", include(("api.core.urls_dashboard", "api_dashboard"), namespace="api_dashboard")),
+    
+    # API Dynamic (Dynamic Engine)
+    path("api/dynamic/", include(("api.core.urls_dynamic", "api_dynamic"), namespace="api_dynamic")),
+
+    # ========================================
+    # MÓDULOS ESPECIALIZADOS
+    # ========================================
+    # CRM - Gestión de Clientes, Proyectos y Tareas
+    path("api/crm/", include("api.crm.urls")),
+    # Compliance
+    path('api/compliance/', include('api.compliance.urls')),
+    # Chatbot Integration
+    path("api/chat-bot/", include("api.chatbot.urls")),
+    # Providers - Sistema dinámico de proveedores de telemetría
+    path("api/providers/", include(("api.telemetry.providers.urls", "providers"), namespace="providers")),
+    # Server-Driven UI Registry
+    path("api/registry/", include("api.dynamic_registry.urls")),
+    # Document Generation Engine
+    path("api/documents/", include("api.documents.urls")),
+
+    # ========================================
+    # OTROS
+    # ========================================
     # Presentation Layer (Technical Landing)
     path("presentation/", include("api.presentation.urls")),
-    # API V2 - Batch endpoints optimizados
-    path("api/v2/", include(("api.core.urls_v2", "api_v2"), namespace="api_v2")),
+    # Password Reset
     re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}),
     path(
         "api/password_reset/",
         include("django_rest_passwordreset.urls", namespace="password_reset"),
     ),
-    # CRM - Gestión de Clientes, Proyectos y Tareas
-    path("api/crm/", include("api.crm.urls")),
-    # Chatbot Integration
-    path("api/chat-bot/", include("api.chatbot.urls")),
-    # Providers - Sistema dinámico de proveedores de telemetría
-    path("api/providers/", include(("api.telemetry.providers.urls", "providers"), namespace="providers")),
-    # Telemetry Unified - Nueva API centralizada (V2.1)
-    path("api/telemetry/", include("api.telemetry.urls")),
     # Prometheus Metrics
     path("metrics/", prometheus_metrics, name="prometheus-metrics"),
     # Health Check

@@ -1,35 +1,23 @@
-# telemetry: __init__ & AI SKILLS
+# 💧 Telemetry App (Data Core)
 
-La aplicación más crítica. Maneja la ingesta, procesamiento y almacenamiento de datos de sensores.
+**Responsabilidad**: Almacenamiento histórico, Definición de Activos y Cálculo Matemático.
+**Estado**: ✅ ACTIVO (Refactorizado)
 
-## 🎯 Purpose & Scope
-Gestión del flujo de datos IoT: Recepción MQTT/HTTP, Motor de Fórmulas dinámicas, Almacenamiento histórico y Alertas preventivas.
+## 🧠 Propósito
+Ser la fuente de verdad de los datos hidrológicos. Ya NO maneja la conexión con módems (eso es `api.ingestion`), sino que recibe datos limpios y los guarda.
 
-## 🧠 AI Specialist Skills (Mini-Agent Instructions)
+## 📦 Componentes Clave
 
-Agente, al trabajar aquí, asume el rol de **Telemetry & IoT Expert**. Debes seguir estas reglas:
+1.  **Modelos de Activos**:
+    *   `CatchmentPoint`: El pozo/estanque físico.
+    *   `CoreVariable`: Qué se mide (Caudal, Nivel).
+    
+2.  **Motor de Cálculo (`FormulaEngine`)**:
+    *   Aplica fórmulas matemáticas (`{pulsos} * factor`) a los datos crudos.
+    *   Calcula derivadas (Caudal Promedio, Acumulados).
 
-| Skill | Description |
-| :--- | :--- |
-| **Logic Pattern** | **Prohibido hardcodear fórmulas**. Usa `FormulaEngine` y `TelemetryScheme`. |
-| **Source vs Endpoint** | Diferencia entre `TelemetryProvider` (Source) y `ComplianceProvider` (Endpoint). |
-| **Tooling** | El `FormulaEngine` es la única fuente de verdad para cálculos de variables. |
+3.  **Histo-Storage**:
+    *   `TelemetryRecord`: Tabla particionada (idealmente) con millones de registros.
 
-### 🛠️ Standard Workflows
-1. **New Sensor Ingestion**: Definir `CatchmentPoint` -> Crear `TelemetryScheme` con fórmulas -> Validar entrada MQTT.
-2. **Formula Debug**: Probar expresiones en el motor antes de aplicarlas a datos reales.
-3. **Dynamic MQTT Service**: Crear `TelemetryProvider` -> Configurar `MQTTProviderConfig` con su `service_identifier` (ej: netra) -> Añadir `PayloadParsingRule`.
-
-## 🏗️ Core Architecture Components
-
-### Models (Primary Tables)
-- **`CatchmentPoint`**: Gemelo digital del pozo o punto físico.
-- **`TelemetryRecord`**: Datos procesados y finales.
-- **`FormulaEngine`**: Motor lógico de procesamiento matemático.
-
-### Key Logic Paths
-- `telemetry/ingestion/`: Controladores de entrada de datos.
-- `telemetry/processing/`: Lógica de cálculo y validación.
-
----
-*Referencia global: [ROOT_MAP.md](file:///Users/felipebarraza/projects/core_api_sh/api/ROOT_MAP.md)*
+## 🔗 Relación con Ingestion
+`Ingestion` (Conectividad) -> Empuja Datos -> `Telemetry` (Procesa y Guarda).

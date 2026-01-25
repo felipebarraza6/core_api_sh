@@ -131,37 +131,11 @@ class VirtualVariable(ModelApi):
     internal_code = models.CharField(max_length=100, verbose_name="Código Interno")
     unit = models.CharField(max_length=50, blank=True, null=True, verbose_name="Unidad")
 
-    OPERATIONS = [
-        ("SUM", "Suma"),
-        ("DIFF", "Resta (A - B)"),
-        ("MUL", "Multiplicación"),
-        ("AVG", "Promedio"),
-        ("FORMULA", "Fórmula Personalizada"),
-    ]
-    operation = models.CharField(
-        max_length=20, choices=OPERATIONS, verbose_name="Operación"
-    )
-
-    formula = models.CharField(
-        max_length=500,
-        blank=True,
-        null=True,
-        verbose_name="Fórmula",
-        help_text="Ej: ({var1} + {var2}) * 0.5. Use los códigos entre llaves.",
-    )
-
-    sources = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="Lista de internal_codes de origen",
-        verbose_name="Variables de Origen",
-    )
-
-    priority = models.IntegerField(
-        default=0,
-        verbose_name="Prioridad de Cálculo",
-        help_text="Menor valor se calcula antes.",
-    )
+    internal_code = models.CharField(max_length=100, verbose_name="Código Interno")
+    unit = models.CharField(max_length=50, blank=True, null=True, verbose_name="Unidad")
+    
+    # Deprecated legacy fields (operation, formula, sources, priority) REMOVED.
+    # Virtual variables logic should now be handled by FormulaEngine / Dynamic Assignments.
 
     is_active = models.BooleanField(default=True, verbose_name="Activo")
 
@@ -212,50 +186,13 @@ class CoreVariable(ModelApi):
     # Configuration for ingestion
     # REMOVED: Moved to CatchmentPointProvider for multi-provider support
     # provider_key = ... (Legacy)
+    # Dynamic Processing & Virtual Features
+    # REFACTORED: Now using FormulaAssignment and RuleAssignment
+    # Deprecated fields (operation, formula, sources, priority) REMOVED by user request.
+    
     scale_factor = models.FloatField(default=1.0, verbose_name="Factor de escala")
     offset = models.FloatField(default=0.0, verbose_name="Offset / Calibración")
 
-    # Dynamic Processing & Virtual Features
-    OPERATIONS = [
-        ("PHYSICAL", "Dato Físico (Sensor)"),
-        ("SUM", "Suma"),
-        ("DIFF", "Resta (A - B)"),
-        ("MUL", "Multiplicación"),
-        ("AVG", "Promedio"),
-        ("FORMULA", "Fórmula Personalizada"),
-    ]
-    operation = models.CharField(
-        max_length=20,
-        choices=OPERATIONS,
-        default="PHYSICAL",
-        verbose_name="Tipo de Operación",
-    )
-    formula = models.CharField(
-        max_length=1000,
-        blank=True,
-        null=True,
-        verbose_name="Fórmula",
-        help_text="""
-Sintaxis de fórmulas:
-- {var_code}: Valor de otra variable del punto
-- {config.codigo}: Valor de configuración del punto
-- {system.key}: Valor de SystemConfiguration
-- {prev.var_code}: Valor anterior de una variable
-- {time.diff_seconds}: Diferencia de tiempo en segundos
-Ejemplo: ({pulses} * {config.pulses_factor}) / 1000 + {config.addition}
-        """.strip(),
-    )
-    sources = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="Lista de internal_codes de origen",
-        verbose_name="Variables de Origen",
-    )
-    priority = models.IntegerField(
-        default=0,
-        verbose_name="Prioridad de Cálculo",
-        help_text="Menor valor se calcula antes.",
-    )
     is_virtual = models.BooleanField(
         default=False,
         verbose_name="Es Virtual",
@@ -292,43 +229,58 @@ Ejemplo: ({pulses} * {config.pulses_factor}) / 1000 + {config.addition}
         unique_together = ("point", "internal_code")
 
     def clean(self):
-        import re
-
-        from django.core.exceptions import ValidationError
-
         super().clean()
-
-        if self.operation == "FORMULA":
-            if not self.formula:
-                raise ValidationError(
-                    {"formula": "La fórmula es requerida para esta operación."}
-                )
-
-            # Reemplazar tokens {var} por un número seguro para validar sintaxis
-            processed = re.sub(r"\{[a-zA-Z0-9_]+\}", "1", self.formula)
-
-            # Validar whitelist de caracteres
-            if not re.match(r"^[0-9\.\+\-\*\/\(\)\s]+$", processed):
-                raise ValidationError(
-                    {
-                        "formula": (
-                            "La fórmula contiene caracteres no permitidos. "
-                            "Solo se permiten números, operadores y {variables}."
-                        )
-                    }
-                )
-
-            # Validar sintaxis (balance de paréntesis, etc.)
-            try:
-                eval(processed, {"__builtins__": {}})
-            except SyntaxError:
-                raise ValidationError({"formula": "Error de sintaxis en la fórmula."})
-            except Exception:
-                # Otros errores runtime (ej. division por zero) no invalidan la sintaxis
-                pass
+        # Legacy validation skipped for now to allow migration
 
     def __str__(self):
         return f"{self.point.title} - {self.name}"
+
+    def get_effective_formula(self, timestamp=None):
+        """
+        Obtiene la definición de fórmula aplicable para este timestamp.
+        Resolución:
+        1. Assignment válido para el timestamp
+        2. Fórmula por defecto del VariableType
+        3. None
+        """
+        from django.utils import timezone
+        target_time = timestamp or timezone.now()
+        
+        # 1. Buscar asignación específica temporal
+        assignment = self.formula_assignments.filter(
+            valid_from__lte=target_time
+        ).filter(
+            models.Q(valid_to__isnull=True) | models.Q(valid_to__gte=target_time)
+        ).order_by('-priority', '-valid_from').first()
+        
+        if assignment:
+            return assignment.formula
+            
+        # 2. Fórmula por defecto del tipo (si existe)
+        # TODO: Implementar cuando VariableType tenga relación con TelemetryFormula
+        # if self.type_definition and self.type_definition.default_formula_def:
+        #    return self.type_definition.default_formula_def
+            
+        return None
+
+    def get_effective_rules(self, timestamp=None):
+        """
+        Obtiene todas las reglas aplicables para este timestamp.
+        Retorna lista de tuplas (ProcessingRule, overrides_dict)
+        """
+        from django.utils import timezone
+        from django.db.models import Q
+        target_time = timestamp or timezone.now()
+        
+        assignments = self.rule_assignments.filter(
+            is_active=True,
+            valid_from__lte=target_time
+        ).filter(
+            Q(valid_to__isnull=True) | Q(valid_to__gte=target_time)
+        ).select_related('rule').order_by('-priority')
+        
+        return [(a.rule, a.parameters_override) for a in assignments]
+
 
 
 class TelemetryRecord(ModelApi):

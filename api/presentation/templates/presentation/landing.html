@@ -246,7 +246,34 @@
             .arch-diagram { flex-direction: column; gap: 2rem; }
             .arrow { transform: rotate(90deg); }
         }
+        .markdown-content code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            color: var(--accent-secondary);
+            font-size: 0.85em;
+        }
+
+        /* Mermaid Styles */
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            margin: 2rem 0;
+            background: rgba(255,255,255,0.02);
+            padding: 1rem;
+            border-radius: 12px;
+        }
     </style>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ 
+            startOnLoad: true, 
+            theme: 'dark',
+            securityLevel: 'loose',
+            fontFamily: 'Outfit'
+        });
+    </script>
 </head>
 <body>
 
@@ -292,6 +319,48 @@
         </div>
     </div>
     
+    <!-- Agent Responsibilities Section (Dynamic from AGENTS.md) -->
+    <div class="grid-container">
+        <div class="section-title">
+            <h2>Sistema de Agentes & Responsabilidades</h2>
+        </div>
+        <div class="feature-card full" style="color: #cbd5e1;">
+            <div class="markdown-content">
+                {{ agents_doc|safe }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Dynamic API Architecture Diagram -->
+    <div class="grid-container">
+        <div class="section-title">
+            <h2>Mapa de Arquitectura API</h2>
+        </div>
+        <div class="feature-card full" style="color: #cbd5e1;">
+            <div class="markdown-content">
+                {{ architecture_doc|safe }}
+            </div>
+            <p style="text-align: center; color: #64748b; font-size: 0.9em; margin-top: 1rem;">
+                * Diagrama detallado de endpoints Unified (V0) vs Legacy Optimized.
+            </p>
+        </div>
+    </div>
+
+    <!-- Traceability & Security Diagram (NEW) -->
+    <div class="grid-container">
+        <div class="section-title">
+            <h2>Trazabilidad de Datos & Seguridad</h2>
+        </div>
+        <div class="feature-card full" style="color: #cbd5e1; border-color: var(--accent-secondary);">
+            <div class="markdown-content">
+                {{ traceability_doc|safe }}
+            </div>
+            <p style="text-align: center; color: #64748b; font-size: 0.9em; margin-top: 1rem;">
+                * Flujo completo desde Hardware hasta UI con puntos de auditoría.
+            </p>
+        </div>
+    </div>
+
     <!-- Deep Dive: Connectivity & Logic -->
     <div class="grid-container">
         <div class="section-title">

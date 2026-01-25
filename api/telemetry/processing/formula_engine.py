@@ -48,6 +48,7 @@ class FormulaEngine:
         self.variables = {}
         self.prev = {}
         self.time = {}
+        self.eval_stack = set()  # For cycle detection
         self._load_context()
     
     def _load_context(self):
@@ -67,7 +68,13 @@ class FormulaEngine:
             # Se cargan bajo demanda en _replace_tokens
             
             # 4. Variables del punto (para referencias cruzadas)
-            # Se cargan bajo demanda cuando se evalúa
+            # Pre-cargar para lookup eficiente durante recursión
+            from api.telemetry.models import CoreVariable
+            self.variables = {
+                v.internal_code: v 
+                for v in CoreVariable.objects.filter(point_id=self.point_id)
+                if v.internal_code
+            }
             
             # 5. Valores previos (se cargan bajo demanda)
             
@@ -185,8 +192,8 @@ class FormulaEngine:
                 prev_timestamp = last_record.timestamp if last_record else None
                 self.time = self._load_time_context(current_timestamp, prev_timestamp)
             
-            # Reemplazar tokens
-            processed = self._replace_tokens(formula, current_values)
+            # Reemplazar tokens (con timestamp para recursión)
+            processed = self._replace_tokens(formula, current_values, current_timestamp)
             
             # Validar que solo contenga números, operadores y espacios
             if not re.match(r'^[0-9\.\+\-\*\/\(\)\s]+$', processed):
@@ -225,13 +232,14 @@ class FormulaEngine:
             logger.error(f"Error evaluando fórmula '{formula}': {e}", exc_info=True)
             return 0.0
     
-    def _replace_tokens(self, formula: str, current_values: Dict[str, Any]) -> str:
+    def _replace_tokens(self, formula: str, current_values: Dict[str, Any], current_timestamp: Optional[datetime] = None) -> str:
         """
-        Reemplaza todos los tokens por valores.
+        Reemplaza todos los tokens por valores. Soporata recursión.
         
         Args:
             formula: Fórmula original
             current_values: Valores actuales de variables
+            current_timestamp: Timestamp actual (para recursión)
         
         Returns:
             Fórmula con tokens reemplazados
@@ -241,11 +249,48 @@ class FormulaEngine:
         # 1. {var_code} -> valor de variable actual
         for match in re.findall(r'\{([a-zA-Z0-9_]+)\}', processed):
             if match in current_values:
+                # Caso 1: Valor ya calculado
                 val = current_values[match]
-                try:
-                    processed = processed.replace(f'{{{match}}}', str(float(val)))
-                except (ValueError, TypeError):
-                    processed = processed.replace(f'{{{match}}}', '0')
+            elif match in self.variables:
+                # Caso 2: Variable existe pero no calculada -> Recursión
+                if match in self.eval_stack:
+                    logger.error(f"Ciclo detectado para variable '{match}' en punto {self.point_id}")
+                    val = 0
+                else:
+                    # Calcular recursivamente
+                    try:
+                        target_var = self.variables[match]
+                        # Necesitamos el raw_value de esa variable. 
+                        # Si es virtual, raw=0 (o None). Si es sensor, debería estar en inputs.
+                        # Asumimos que si no está en current_values es porque:
+                        # a) Es virtual dependiente
+                        # b) Es un sensor que no llegó (usar 0)
+                        
+                        self.eval_stack.add(match)
+                        val = self.process_variable(
+                            target_var, 
+                            0, # Raw value placeholder (revisar si podemos obtenerlo)
+                            current_values, 
+                            current_timestamp
+                        )
+                        self.eval_stack.remove(match)
+                        
+                        # Guardar result para futuros usos en esta misma cadena
+                        current_values[match] = val
+                    except Exception as e:
+                        logger.error(f"Error en recursión para '{match}': {e}")
+                        if match in self.eval_stack:
+                            self.eval_stack.remove(match)
+                        val = 0
+            else:
+                # Caso 3: Variable no existe
+                val = 0
+
+            # Reemplazo seguro
+            try:
+                processed = processed.replace(f'{{{match}}}', str(float(val)))
+            except (ValueError, TypeError):
+                processed = processed.replace(f'{{{match}}}', '0')
         
         # 2. {config.code} -> valor de configuración del punto
         for match in re.findall(r'\{config\.([a-zA-Z0-9_]+)\}', processed):
@@ -291,9 +336,9 @@ class FormulaEngine:
         Obtiene la fórmula a usar para una variable.
         
         Prioridad:
-        1. CoreVariable.formula (si existe)
-        2. VariableType.default_formula (si existe)
-        3. None (no hay fórmula)
+        1. Assignment temporal vigente (FormulaAssignment)
+        2. Fórmula legacy directa (CoreVariable.formula)
+        3. Fórmula por defecto del tipo
         
         Args:
             variable: Instancia de CoreVariable
@@ -301,13 +346,18 @@ class FormulaEngine:
             current_timestamp: Timestamp actual
         
         Returns:
-            Fórmula a usar o None
+            String con la expresión matemática o None
         """
-        # Prioridad 1: Fórmula específica de la variable
+        # Prioridad 1: Asignación Dinámica Temporal
+        formula_def = variable.get_effective_formula(current_timestamp)
+        if formula_def:
+            return formula_def.expression
+
+        # Prioridad 2: Fórmula legacy
         if variable.formula:
             return variable.formula
         
-        # Prioridad 2: Fórmula por defecto del tipo
+        # Prioridad 3: Fórmula por defecto del tipo
         if variable.type_definition and variable.type_definition.default_formula:
             return variable.type_definition.default_formula
         
@@ -321,34 +371,111 @@ class FormulaEngine:
         current_timestamp: Optional[datetime] = None
     ) -> float:
         """
-        Procesa una variable usando su fórmula configurada.
-        
-        Args:
-            variable: Instancia de CoreVariable
-            raw_value: Valor crudo del proveedor
-            current_values: Valores actuales de todas las variables
-            current_timestamp: Timestamp del registro
-        
-        Returns:
-            Valor procesado
+        Procesa una variable usando su fórmula y reglas configuradas.
+        Pipeline:
+        1. Pre-Processing Rules (Validación/Limpieza Raw)
+        2. Fórmula de Cálculo
+        3. Post-Processing Rules (Validación Resultado/Reset/Eventos)
         """
+        # Contexto base para reglas
+        context = {
+            'raw_value': raw_value,
+            'current_values': current_values,
+            'timestamp': current_timestamp,
+            'engine': self
+        }
+
+        # 1. Obtener reglas vigentes
+        active_rules = variable.get_effective_rules(current_timestamp)
+        
+        # 2. Pre-Processing
+        # TODO: Implementar lógica de modificación de raw_value si es necesario
+        # Por ahora solo validaciones que podrían lanzar excepción o retornar default
+        
         # Agregar valor crudo a current_values si no está
         if variable.internal_code and variable.internal_code not in current_values:
             current_values[variable.internal_code] = raw_value
         
-        # Obtener fórmula
+        # Inject standard 'value' token for current variable raw value
+        current_values['value'] = raw_value
+
+        # 3. Cálculo (Fórmula)
+        result = 0.0
         formula = self.get_formula_for_variable(variable, current_values, current_timestamp)
         
         if not formula:
-            # Sin fórmula: aplicar scale_factor y offset directamente
+            # Sin fórmula: aplicar scale_factor y offset directamente (Legacy fallback)
             try:
-                value = float(raw_value) if raw_value is not None else 0.0
-                return (value * variable.scale_factor) + variable.offset
+                calc_val = float(raw_value) if raw_value is not None else 0.0
+                result = (calc_val * variable.scale_factor) + variable.offset
             except (ValueError, TypeError):
-                return 0.0
+                result = 0.0
+        else:
+            # Evaluar fórmula
+            result = self.evaluate(formula, current_values, current_timestamp)
+
+        # 4. Post-Processing (Reglas)
+        final_result = result
         
-        # Evaluar fórmula
-        return self.evaluate(formula, current_values, current_timestamp)
+        for rule, params in active_rules:
+            try:
+                # Merge params with defaults
+                effective_params = rule.default_parameters.copy()
+                effective_params.update(params)
+                
+                if rule.rule_type == 'MAX_DIFF':
+                    # Diff respecto a valor anterior
+                    prev_val = self.get_previous_value(
+                        self.point_id, variable.internal_code, current_timestamp=current_timestamp
+                    )
+                    if prev_val is not None:
+                        diff = abs(final_result - float(prev_val))
+                        limit = float(effective_params.get('limit', 1000))
+                        action = effective_params.get('action', 'CLAMP') # CLAMP, REJECT
+                        
+                        if diff > limit:
+                            logger.warning(
+                                f"MAX_DIFF excedido en {variable.internal_code}: {diff} > {limit}. Action: {action}"
+                            )
+                            if action == 'CLAMP':
+                                final_result = float(prev_val) # Clamp to previous
+                            elif action == 'REJECT':
+                                # Throw error or return None? For now, clamp to prev creates continuity
+                                final_result = float(prev_val)
+
+                elif rule.rule_type == 'RESET_DETECTOR':
+                    # Detectar si el valor cayó significativamente (reinicio de contador)
+                    prev_val = self.get_previous_value(
+                        self.point_id, variable.internal_code, current_timestamp=current_timestamp
+                    )
+                    if prev_val is not None:
+                         curr = float(final_result)
+                         prev = float(prev_val)
+                         
+                         # Si el valor actual es menor que el anterior Y la diferencia es grande
+                         if curr < prev:
+                             # Es un reset potencial.
+                             # trigger notification?
+                             # Logic logic imported from calculate_total_m3 legacy
+                             logger.warning(f"Posible Reset en {variable.internal_code}: {prev} -> {curr}")
+                             # Aquí podríamos llamar a una lógica de ajuste de offset si fuera necesario
+                             # Por ahora solo log y notificación
+                             pass
+                    
+                elif rule.rule_type == 'MIN_VALUE':
+                     limit = float(effective_params.get('limit', 0))
+                     if final_result < limit:
+                         final_result = limit
+                         
+                elif rule.rule_type == 'MAX_VALUE':
+                     limit = float(effective_params.get('limit', 999999))
+                     if final_result > limit:
+                         final_result = limit
+
+            except Exception as e:
+                logger.error(f"Error procesando regla {rule.name} para {variable}: {e}")
+
+        return final_result
     
     # ====================================================================
     # MÉTODOS ESTÁTICOS DE COMPATIBILIDAD (Reemplazan procesadores legacy)

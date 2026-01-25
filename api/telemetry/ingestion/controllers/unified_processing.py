@@ -166,6 +166,55 @@ def save_telemetry_data(
             f"(ID: {v3_record.id}, device: {device_id or 'N/A'})"
         )
 
+        # ---------------------------------------------------------------------
+        # [NUEVO] 4.5. Guardar mediciones normalizadas (TelemetryMeasurement)
+        # ---------------------------------------------------------------------
+        try:
+            from api.telemetry.models import TelemetryMeasurement, CoreVariable
+            
+            # Obtener variables del punto para mapear códigos
+            # Optimización: cachear esto si es posible, o usar select_related en el caller
+            core_vars = CoreVariable.objects.filter(point_id=point_id)
+            var_map = {v.internal_code: v for v in core_vars}
+            
+            measurements_to_create = []
+            
+            # Iterar sobre v3_data (datos finales limpios)
+            for key, value in v3_data.items():
+                if key in var_map:
+                    variable = var_map[key]
+                    
+                    # Validar que sea numérico
+                    try:
+                        float_val = float(value)
+                    except (ValueError, TypeError):
+                        continue
+                        
+                    measurements_to_create.append(TelemetryMeasurement(
+                        record=v3_record,
+                        variable=variable,
+                        timestamp=v3_record.timestamp,
+                        final_value=float_val,
+                        processed_value=float_val, # Asumimos procesado = final por ahora en ingestión legacy
+                        is_validated=True,
+                        quality_code="PROCESSED_V1",
+                        tags={"ingestion_source": "unified_processing"}
+                    ))
+            
+            if measurements_to_create:
+                TelemetryMeasurement.objects.bulk_create(measurements_to_create)
+                telemetry_logger.debug(
+                    f"Punto {point_id} - {len(measurements_to_create)} mediciones normalizadas guardadas"
+                )
+                
+        except Exception as e:
+            telemetry_logger.error(
+                f"Error guardando mediciones normalizadas para record {v3_record.id}: {e}", 
+                exc_info=True
+            )
+            # No fallamos la transacción principal por esto, por ahora.
+
+
         # 5. Enviar a proveedores de compliance dinámicamente (V3)
         try:
             compliance_configs = get_compliance_configs_for_record(point_id, dt_medition)

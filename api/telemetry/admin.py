@@ -434,6 +434,6 @@ class SystemConfigurationAdmin(admin.ModelAdmin):
 # =============================================================================
 # IMPORTAR OTROS ADMINS PARA REGISTRO
 # =============================================================================
-from . import admin_v3
+from . import admin_variables
 from . import admin_constants
 

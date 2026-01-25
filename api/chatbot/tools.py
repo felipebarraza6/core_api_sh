@@ -1471,3 +1471,114 @@ def get_timeseries_analysis(point_name, window_days=7, context_client=None):
         context="POINT",
         point=f"{point_obj.title} ({point_obj.project.client.name})",
     )
+
+def get_aggregated_metrics(target_name, aggregate_func='sum', field='total_today_diff', context_client=None):
+    """
+    Calcula métricas agregadas (Suma, Promedio, Max, Min) para un punto o cliente.
+    Responde a preguntas como: "¿Cuánto consumió el Pozo 4 hoy?" o "Promedio de nivel ayer".
+    """
+    from django.db.models import Sum, Avg, Max, Min, Count
+    from django.utils import timezone
+    from datetime import timedelta
+    from api.telemetry.models.telemetry import TelemetryRecord
+    
+    # 1. Resolver el objetivo (Punto o Cliente)
+    # Intentamos buscar como Punto primero
+    found_points = search_points(target_name, context_client)
+    
+    points_to_query = []
+    entity_name = ""
+    
+    if found_points:
+        # Es un punto (o varios)
+        point_ids = [p['id'] for p in found_points]
+        # Si hay muchos y no es especifico, restringir a contexto si existe
+        if len(point_ids) > 1 and context_client:
+             # Filtrar los que coinciden con el cliente
+             point_ids = [p['id'] for p in found_points if p['client'].lower() == context_client.lower()]
+             
+        points_to_query = point_ids
+        entity_name = found_points[0]['title'] if len(points_to_query) == 1 else f"{len(points_to_query)} puntos"
+    else:
+        # Si no es punto, probar como cliente
+        from api.telemetry.models.catchment_points import Client, CatchmentPoint
+        clients = Client.objects.filter(name__icontains=target_name)
+        if clients.exists():
+            client = clients.first()
+            entity_name = f"Cliente {client.name}"
+            points_to_query = CatchmentPoint.objects.filter(project__client=client).values_list('id', flat=True)
+            
+    if not points_to_query:
+        return f"No encontré puntos ni clientes para '{target_name}'."
+        
+    # 2. Definir Rango de Tiempo (Por defecto: Hoy)
+    # TODO: Extraer rango del texto (NLP simple o reglass). Por ahora Hardcoded 'hoy'.
+    now = timezone.now()
+    start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # 3. Definir Función de Agregación
+    func_map = {
+        'sum': Sum,
+        'avg': Avg,
+        'max': Max,
+        'min': Min,
+        'count': Count
+    }
+    aggregator = func_map.get(aggregate_func.lower(), Sum)
+    
+    # 4. Mappear campo coloquial a campo DB
+    # 'consumo' -> total_today_diff (o calcular diferencia de totalizers)
+    # 'caudal' -> data__flow
+    # 'nivel' -> data__nivel
+    
+    db_field = 'data__flow' # default
+    if 'consumo' in field.lower() or 'total' in field.lower():
+        # Para consumo, sumamos 'total_today_diff' (o el delta diario calculado)
+        # Nota: total_today_diff es un campo JSON, no se puede agregar directo tan facil en Postgres JSONB sin casting
+        # Mejor usar 'value' si el record guarda el valor principal ahi.
+        # Asumiremos que 'value' es el caudal por defecto en TelemetryRecord, pero data es JSON.
+        # Fallback: Contar registros
+        if aggregate_func == 'count':
+            db_field = 'id'
+            
+    # 5. Ejecutar Query (Simplificada por limitaciones de JSONField aggregation en Django simple)
+    # Si es JSONField, es complejo agregar con ORM puro sin KeyTextTransform.
+    # Vamos a obtener los raw records y sumar en python (lento pero seguro para chatbot)
+    # Limite 1000 ultimos para no explotar.
+    
+    records = TelemetryRecord.objects.filter(
+        point_id__in=points_to_query,
+        timestamp__gte=start_date
+    ).order_by('-timestamp')[:1000]
+    
+    total_val = 0.0
+    count_val = 0
+    min_val = 999999.9
+    max_val = -999999.9
+    
+    target_key = 'flow'
+    if 'nivel' in field: target_key = 'nivel'
+    if 'consumo' in field: target_key = 'total_today_diff'
+    
+    for r in records:
+        val = float(r.data.get(target_key, 0) or 0)
+        total_val += val
+        count_val += 1
+        if val < min_val: min_val = val
+        if val > max_val: max_val = val
+        
+    # Resultado
+    final_val = 0
+    unit = "L/s" if target_key == 'flow' else ("m³" if target_key == 'total_today_diff' else "m")
+    
+    if aggregate_func == 'sum': final_val = total_val
+    elif aggregate_func == 'avg': final_val = total_val / count_val if count_val > 0 else 0
+    elif aggregate_func == 'max': final_val = max_val if count_val > 0 else 0
+    elif aggregate_func == 'min': final_val = min_val if count_val > 0 else 0
+    elif aggregate_func == 'count': 
+        final_val = count_val
+        unit = "registros"
+        
+    label_map = {'sum': 'Suma', 'avg': 'Promedio', 'max': 'Máximo', 'min': 'Mínimo', 'count': 'Conteo'}
+    
+    return f"📊 *{label_map.get(aggregate_func, 'Dato')} de {field} para {entity_name} (Hoy)*\n👉 *{round(final_val, 2)} {unit}* (Basado en {count_val} muestras)."
