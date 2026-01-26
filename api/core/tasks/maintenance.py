@@ -12,7 +12,8 @@ from django.core.management import call_command
 from django.utils import timezone
 from datetime import timedelta
 
-from api.telemetry.models import TelemetryRecord, NotificationsCatchment
+from api.telemetry.models import TelemetryRecord
+from api.notifications.models import NotificationResponse
 from api.core.cache.telemetry_cache import TelemetryCache
 
 logger = logging.getLogger(__name__)
@@ -38,8 +39,7 @@ def cleanup_old_telemetry(self):
 
         # Clean up old notifications (keep 180 days)
         notification_cutoff = timezone.now() - timedelta(days=180)
-        from api.core.models import ResponseNotificationsCatchment
-        deleted_notifications, _ = ResponseNotificationsCatchment.objects.filter(
+        deleted_notifications, _ = NotificationResponse.objects.filter(
             created_at__lt=notification_cutoff
         ).delete()
 

@@ -6,8 +6,28 @@ Extracted from unified_processing.py for modularity.
 
 from typing import Any, Dict
 from .utils import telemetry_logger, log_variable_processing
-from .nivel import nivel_mt, water_table
 from api.telemetry.models import TelemetryRecord
+
+def nivel_mt(
+    value: float,
+    d3: float,
+    is_inverse: bool = False,
+) -> float:
+    """
+    Calculate the nivel in meters.
+    """
+    if is_inverse:
+        return d3 - value
+    return value
+
+def water_table(
+    nivel: float,
+    d3: float,
+) -> float:
+    """
+    Calculate the water table.
+    """
+    return d3 - nivel
 
 def process_nivel_variable(
     data: Dict[str, Any],

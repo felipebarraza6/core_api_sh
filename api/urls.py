@@ -43,21 +43,15 @@ urlpatterns = [
     ),
     # Admin de Django (debe ir al final para no interceptar las rutas personalizadas)
     path("admin/", admin.site.urls),
-    # API REST - Django REST Framework Router
-    path("api/", include(("api.core.router", "api"), namespace="api")),
-    # API V2 - Batch endpoints optimizados
-    path("api/v2/", include(("api.core.urls_v2", "api_v2"), namespace="api_v2")),
+    # API V1 - Legacy endpoints
+    path("api/v1/", include(("api.v1.urls", "api"), namespace="api_v1")),
+    # API V2 - Consolidated endpoints
+    path("api/v2/", include(("api.v2.urls", "api_v2"), namespace="api_v2")),
     re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}),
     path(
         "api/password_reset/",
         include("django_rest_passwordreset.urls", namespace="password_reset"),
     ),
-    # CRM - Gestión de Clientes, Proyectos y Tareas
-    path("api/crm/", include("api.crm.urls")),
-    # Chatbot Integration
-    path("api/chat-bot/", include("api.chatbot.urls")),
-    # Providers - Sistema dinámico de proveedores de telemetría
-    path("api/providers/", include(("api.telemetry.providers.urls", "providers"), namespace="providers")),
     # Prometheus Metrics
     path("metrics/", prometheus_metrics, name="prometheus-metrics"),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

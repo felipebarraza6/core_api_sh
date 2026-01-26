@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from api.telemetry.models import CoreVariable, TelemetryRecord
+from api.telemetry.ingestion.controllers.processing.utils import (
     calculate_days_not_connection,
     determine_dga_send,
     evaluate_dynamic_formula,
