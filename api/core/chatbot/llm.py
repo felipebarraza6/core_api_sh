@@ -11,6 +11,7 @@ from .tools import (
     get_recent_notifications, compare_points, get_client_stats,
     get_client_ranking, get_stuck_points, get_help_menu, get_timeseries_analysis
 )
+from api.core.services.telemetry_analysis import TelemetryAnalysisService
 from .intent_router import get_routed_intent
 from .metrics import log_query_metric, get_metrics_summary
 from .cache import get_cached_response, cache_response, get_cache_ttl
@@ -95,6 +96,16 @@ def resolve_intent_and_respond(user_text, user_name="Usuario", user_id=None):
     import time
     start_time = time.time()
     
+    # ===== CAPA 0.5: Comandos de Administración (Slash Commands & Keywords) =====
+    norm_text = user_text.strip().lower()
+    if norm_text in ("/analisis_total", "analisis total", "analisis_total"):
+        logger.info(f"⚡ Executing Admin Command: /analisis_total")
+        return TelemetryAnalysisService.audit_active_points()
+        
+    if user_text.strip().lower() == "/analisis_reset":
+         logger.info(f"⚡ Executing Admin Command: /analisis_reset")
+         return TelemetryAnalysisService.analyze_additions()
+
     # ===== CAPA 1: Intent Router (Pre-clasificación Determinista) =====
     routed_intent = get_routed_intent(user_text)
     

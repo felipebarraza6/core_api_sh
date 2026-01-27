@@ -32,9 +32,7 @@ from .cards import (
     build_config_card, build_ranking_card, build_compare_card,
     build_help_card, build_error_card, build_text_response
 )
-from .llm import get_conversation_context, save_conversation_context
-
-logger = logging.getLogger(__name__)
+from api.core.services.telemetry_analysis import TelemetryAnalysisService
 
 # Mapeo de Command IDs a handlers
 COMMAND_HANDLERS = {
@@ -48,6 +46,8 @@ COMMAND_HANDLERS = {
     8: 'handle_ranking',
     9: 'handle_compara',
     10: 'handle_ayuda',
+    11: 'handle_analisis_total',
+    12: 'handle_analisis_reset',
 }
 
 
@@ -307,3 +307,17 @@ def handle_ayuda(argument_text, user_id):
     """
     data = get_help_menu()
     return build_help_card(data)
+
+
+def handle_analisis_total(argument_text, user_id):
+    """
+    /analisis_total - Ejecuta auditoría de puntos activos (Admin).
+    """
+    return build_text_response(TelemetryAnalysisService.audit_active_points())
+
+
+def handle_analisis_reset(argument_text, user_id):
+    """
+    /analisis_reset - Analiza adiciones recientes (Admin).
+    """
+    return build_text_response(TelemetryAnalysisService.analyze_additions())
