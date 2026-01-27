@@ -11,12 +11,17 @@ from api.core.admin_views import (
 )
 
 
+from django.views.generic import RedirectView
+
 # Configuración del Admin Site con logo SmartHydro
 admin.site.site_header = "SmartHydro - Control de Telemetría"
 admin.site.site_title = "SmartHydro"
 admin.site.index_title = "Panel de Administración"
 
 urlpatterns = [
+    # Redirección de Raíz a Admin
+    path('', RedirectView.as_view(url='/admin/login/', permanent=False), name='root_redirect'),
+
     # Rutas del admin personalizadas (deben ir ANTES de admin.site.urls)
     path('admin/dashboard/', admin_dashboard_view, name='admin_dashboard'),
     path('admin/telemetry-monitoring/', telemetry_monitoring_view, name='telemetry_monitoring'),

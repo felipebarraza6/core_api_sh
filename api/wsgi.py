@@ -13,4 +13,11 @@ from django.core.wsgi import get_wsgi_application
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'api.settings')
 
+
+try:
+    import gunicorn
+    gunicorn.SERVER_SOFTWARE = "SmartHydro Secure"
+except ImportError:
+    pass
+
 application = get_wsgi_application()

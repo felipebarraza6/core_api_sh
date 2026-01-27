@@ -62,3 +62,10 @@ daemon = False
 # keyfile = "/path/to/keyfile"
 # certfile = "/path/to/certfile"
 
+# ✅ SECURITY PATCH: Ocultar versión de Gunicorn
+try:
+    import gunicorn
+    gunicorn.SERVER_SOFTWARE = "SmartHydro Secure"
+except ImportError:
+    pass
+

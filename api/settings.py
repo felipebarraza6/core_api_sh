@@ -184,6 +184,12 @@ CRONJOBS = [
         "api.cronjobs.reports.dga_mayor_hourly.run",
         ">> /tmp/smarthydro/dga_mayor_hourly.log 2>&1",
     ),
+    # verificación de integridad de datos - cada hora a los :15
+    (
+        "15 * * * *",
+        "api.cronjobs.data_integrity_check.run",
+        ">> /tmp/smarthydro/integrity.log 2>&1",
+    ),
 ]
 
 # Reordenar apps para que "Operaciones y Telemetría" aparezca primero en el menú
@@ -191,6 +197,7 @@ CRONJOBS = [
 INSTALLED_APPS = LOCAL_APPS + DJANGO_APPS + THIRD_PARTY_APPS
 
 MIDDLEWARE = [
+    "api.core.middleware.security.SecurityHeadersMiddleware",  # ✅ SECURITY: Top Priority (Apply to Static & Error pages)
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.gzip.GZipMiddleware",  # ✅ RENDIMIENTO: Compresión de respuestas (debe ir temprano)
@@ -298,7 +305,7 @@ DATABASES = {
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://redis:6379/1",
+        "LOCATION": os.environ.get("REDIS_URL", "redis://redis_secure:6379/1"),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "IGNORE_EXCEPTIONS": True,  # Fallback gracefully if Redis is down

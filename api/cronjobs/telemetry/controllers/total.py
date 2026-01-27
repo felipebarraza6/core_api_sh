@@ -86,7 +86,8 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
             diff = potential_new_total - last_total
             
             # Si el salto es > 500 m³, es sospechoso (probable glitch de sensor)
-            if diff > MAX_DIFF_M3_PER_HOUR:
+            # EXCEPCIÓN: Si last_total es 0, permitimos el salto (inicialización o recuperación de error)
+            if diff > MAX_DIFF_M3_PER_HOUR and last_total > 0:
                 logger.warning(
                     f"🚨 SALTO MASIVO DETECTADO Punto {point_catchment['id']}: "
                     f"Salto de {diff:.0f} m³ ({last_total:.0f} → {potential_new_total:.0f}). "
@@ -156,7 +157,7 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
             final_total = 0
             status_flag = "CLAMPED_ZERO"
         
-        final_int = int(round(final_total))
+        final_val = round(final_total, 2)
         
         if return_full_details:
              metadata = {
@@ -165,9 +166,9 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                  "raw_m3": current_raw_m3,
                  "status": status_flag
              }
-             return final_int, metadata
+             return final_val, metadata
              
-        return final_int
+        return final_val
         
     except Exception as e:
         logger.error(f"Error en total_m3: {e}")
