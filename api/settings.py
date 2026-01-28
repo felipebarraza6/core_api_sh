@@ -59,18 +59,19 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # Content Security Policy (CSP) - Security Headers
 # Configuración balanceada: API restrictiva + Admin funcional
 CSP_DEFAULT_SRC = ("'none'",)  # Bloquear todo por defecto
-CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "https://*.smarthydro.app")  # Admin + subdominios
-CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://*.smarthydro.app")  # Estilos de subdominios
-CSP_IMG_SRC = ("'self'", "data:", "https://*.smarthydro.app")  # Imágenes de subdominios
+CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "'unsafe-eval'", "https://*.smarthydro.app", "https://smarthydro.cl", "https://static.cloudflareinsights.com", "blob:")  # Admin + subdominios + Cloudflare + Workers
+CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://*.smarthydro.app", "https://smarthydro.cl", "https://www.smarthydro.cl")  # Estilos de subdominios y sitio principal
+CSP_IMG_SRC = ("'self'", "data:", "https://*.smarthydro.app", "https://smarthydro.cl", "https://www.smarthydro.cl")  # Imágenes de subdominios y sitio principal
 CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "data:")  # Fuentes de Google + data URIs
-CSP_CONNECT_SRC = ("'self'", "https://*.smarthydro.app")  # Permitir AJAX a todos los subdominios de smarthydro.app
+CSP_CONNECT_SRC = ("'self'", "https://*.smarthydro.app", "https://smarthydro.cl", "https://static.cloudflareinsights.com")  # AJAX + Cloudflare
+CSP_WORKER_SRC = ("'self'", "blob:")  # Permitir Web Workers
 CSP_OBJECT_SRC = ("'none'",)  # Bloquear objetos (Flash, etc.)
 CSP_BASE_URI = ("'self'",)  # Restringir base URI
-CSP_FRAME_SRC = ("'none'",)  # No permitir iframes
+CSP_FRAME_SRC = ("'self'", "https://*.smarthydro.app", "https://smarthydro.cl", "https://www.smarthydro.cl")  # Permitir iframes de smarthydro
 CSP_FRAME_ANCESTORS = ("'none'",)  # No permitir ser embebido
-CSP_FORM_ACTION = ("'self'", "https://*.smarthydro.app")  # Permitir formularios a subdominios de smarthydro.app
-CSP_MEDIA_SRC = ("'self'", "https://*.smarthydro.app")  # Permitir video/audio de subdominios
-CSP_MANIFEST_SRC = ("'self'", "https://*.smarthydro.app")  # Permitir manifests de subdominios
+CSP_FORM_ACTION = ("'self'", "https://*.smarthydro.app", "https://smarthydro.cl", "https://www.smarthydro.cl")  # Permitir formularios
+CSP_MEDIA_SRC = ("'self'", "https://*.smarthydro.app", "https://smarthydro.cl", "https://www.smarthydro.cl")  # Permitir video/audio de subdominios y sitio principal
+CSP_MANIFEST_SRC = ("'self'", "https://*.smarthydro.app", "https://smarthydro.cl", "https://www.smarthydro.cl")  # Permitir manifests
 
 # Application definition
 DJANGO_APPS = [
