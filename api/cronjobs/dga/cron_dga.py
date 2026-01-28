@@ -272,13 +272,46 @@ def _prepare_response_data(
                 else:
                     dga_logger.debug(f"Punto sin CAUDAL_PROMEDIO, usando valor guardado: {flow_value}")
 
+        # ✅ CORRECCIÓN NORMATIVA DGA: Enviar total SIN offset (solo escala)
+        # DGA requiere: (pulsos * pulses_factor) / 1000
+        # NO debe incluir el offset/addition del perfil
+        total_para_dga = register.total or "0"
+
+        try:
+            # Obtener el offset actual del perfil
+            from api.core.models import ProfileDataConfigCatchment
+            profile = ProfileDataConfigCatchment.objects.filter(
+                point_catchment_id=register.catchment_point.id
+            ).first()
+
+            offset = 0
+            if profile and profile.addition:
+                offset = profile.addition
+
+            # Si hay offset, restarlo del total guardado para obtener el valor RAW
+            if offset > 0 and register.total:
+                total_con_offset = float(register.total)
+                total_sin_offset = total_con_offset - offset
+                total_para_dga = str(int(total_sin_offset))
+                dga_logger.info(
+                    f"Total corregido para DGA (punto {register.catchment_point.id}): "
+                    f"{total_con_offset} - {offset} = {total_para_dga}"
+                )
+            else:
+                # Sin offset, usar el total directamente
+                total_para_dga = register.total or "0"
+
+        except Exception as e:
+            dga_logger.warning(f"Error calculando total sin offset: {e}, usando total directo")
+            total_para_dga = register.total or "0"
+
         response_data = {
             "catchment_point": register.catchment_point.title,
             # Redondear a hora cerrada (minutos y segundos = 00) para API DGA
             "date_time_medition": date_time_medition_chile.replace(minute=0, second=0, microsecond=0).strftime(
                 "%Y-%m-%dT%H:00:00"
             ),
-            "total": register.total or "0",
+            "total": total_para_dga,  # ✅ CORREGIDO: Total SIN offset (solo escala)
             "flow": flow_value,  # MODIFICADO: Usar valor calculado dinámicamente si corresponde
             "water_table": register.water_table or 0.0,
             "type_dga": dga_config.type_dga,

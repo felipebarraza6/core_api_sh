@@ -232,7 +232,7 @@ def get_data_twin(variables, token, point_catchment):
                 )
                 # ✅ ACUMULADO DEL DÍA (OPTIMIZADO)
                 created_register["total_today_diff"] = total_day(
-                    point_catchment, None, created_register["total_diff"]
+                    point_catchment, None, created_register["total"]
                 )
                 created_register["date_time_last_logger"] = data["date_time"]
                 date_time_last_logger_total = data["date_time"]
@@ -452,16 +452,9 @@ def get_data_twin(variables, token, point_catchment):
         # En caso de error, NO enviar a DGA por seguridad
         created_register["send_dga"] = False
 
-    # Check if record already exists for this time
-    exists = InteractionDetail.objects.filter(
+    # ✅ Crear o actualizar registro de forma atómica (previene duplicados)
+    InteractionDetail.objects.update_or_create(
         catchment_point_id=point_catchment["id"],
-        date_time_medition=created_register["date_time_medition"]
-    ).exists()
-    
-    if exists:
-        print(f"⚠️ PUNTO {point_catchment['id']}: Registro ya existe para {created_register['date_time_medition']}. Saltando creación para evitar duplicados.")
-        return
-
-    InteractionDetail.objects.create(
-        catchment_point_id=point_catchment["id"], **created_register
+        date_time_medition=created_register["date_time_medition"],
+        defaults=created_register
     )

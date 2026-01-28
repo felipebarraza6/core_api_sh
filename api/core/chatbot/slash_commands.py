@@ -16,6 +16,7 @@ Command IDs registrados:
   8: /ranking   - Top consumidores (requiere cliente)
   9: /compara   - Comparar dos puntos (requiere "P1 vs P2")
   10: /ayuda    - Menú de ayuda
+  11: /analisis_total - Auditoría completa de telemetría (30 días)
 """
 
 import logging
@@ -24,7 +25,7 @@ from .tools import (
     get_global_status, get_recent_notifications, get_client_summary,
     get_point_latest_data, get_dga_compliance, get_point_history,
     get_point_config, get_client_ranking, compare_points, get_help_menu,
-    search_points, get_client_measurements
+    search_points, get_client_measurements, get_telemetry_audit
 )
 from .cards import (
     build_status_card, build_notifications_card, build_client_card,
@@ -48,6 +49,7 @@ COMMAND_HANDLERS = {
     8: 'handle_ranking',
     9: 'handle_compara',
     10: 'handle_ayuda',
+    11: 'handle_analisis_total',
 }
 
 
@@ -307,3 +309,12 @@ def handle_ayuda(argument_text, user_id):
     """
     data = get_help_menu()
     return build_help_card(data)
+
+
+def handle_analisis_total(argument_text, user_id):
+    """
+    /analisis_total - Auditoría completa de telemetría (30 días).
+    Muestra TODOS los puntos con anomalías sin truncar.
+    """
+    data = get_telemetry_audit(days=30, show_all=True)
+    return build_text_response(data)

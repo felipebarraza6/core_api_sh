@@ -1194,3 +1194,104 @@ def get_timeseries_analysis(point_name, window_days=7, context_client=None):
         res += "Comportamiento dentro de los parámetros normales."
         
     return add_suggestions(res, context="POINT", point=f"{point_obj.title} ({point_obj.project.client.name})")
+
+
+def get_telemetry_audit(days=30, show_all=True):
+    """Auditoría completa de telemetría: detecta incoherencias, caídas y saltos."""
+    from django.db.models import Q, Count, Sum, Avg
+    from django.utils import timezone
+    from datetime import timedelta
+    from collections import defaultdict
+
+    now = timezone.now()
+    start_date = now - timedelta(days=days)
+
+    # Obtener todos los puntos activos
+    all_points = CatchmentPoint.objects.all()
+    total_points = all_points.count()
+
+    # Diccionarios para almacenar anomalías por tipo
+    incoherencias = []  # Total=0 pero hay pulsos
+    caidas_grandes = []  # Caídas a 0
+    saltos_masivos = []  # Recuperaciones repentinas
+
+    for point in all_points:
+        # Obtener datos recientes del punto
+        records = InteractionDetail.objects.filter(
+            catchment_point_id=point.id,
+            date_time_medition__gte=start_date
+        ).order_by('date_time_medition')
+
+        if not records.exists():
+            continue
+
+        prev_total = None
+        for record in records:
+            total_diff = float(record.total_diff or 0)
+            pulses = int(record.pulses or 0)
+
+            # 1. Incoherencia: Total=0 pero hay pulsos registrados
+            if total_diff == 0 and pulses > 0:
+                incoherencias.append({
+                    'point': point.title,
+                    'client': point.project.client.name if point.project and point.project.client else 'N/A',
+                    'pulses': pulses,
+                    'date': record.date_time_medition
+                })
+
+            # 2. Caída grande: Total cae a 0 desde valor significativo
+            if prev_total is not None and prev_total > 10 and total_diff == 0:
+                caidas_grandes.append({
+                    'point': point.title,
+                    'client': point.project.client.name if point.project and point.project.client else 'N/A',
+                    'prev_total': prev_total,
+                    'date': record.date_time_medition
+                })
+
+            # 3. Salto masivo: Recuperación repentina desde 0
+            if prev_total is not None and prev_total == 0 and total_diff > 10:
+                saltos_masivos.append({
+                    'point': point.title,
+                    'client': point.project.client.name if point.project and point.project.client else 'N/A',
+                    'new_total': total_diff,
+                    'date': record.date_time_medition
+                })
+
+            prev_total = total_diff
+
+    # Agrupar por punto para resumen
+    points_with_issues = set()
+    for item in incoherencias + caidas_grandes + saltos_masivos:
+        points_with_issues.add(item['point'])
+
+    # Construir respuesta
+    res = f"📊 *Auditoría de Telemetría (Últimos {days} días)*\n"
+    res += f"Puntos analizados: {total_points}\n\n"
+    res += "*Resultados:*\n"
+    res += f"✅ Incoherencias Críticas (Total=0, Pulsos>0): {len(incoherencias)}\n"
+    res += f"⚠️ Caídas Grandes (Drop to 0): {len(caidas_grandes)}\n"
+    res += f"📈 Saltos Masivos (Recuperaciones): {len(saltos_masivos)}\n\n"
+
+    if points_with_issues:
+        res += f"*Puntos con anomalías recientes ({len(points_with_issues)}):*\n"
+
+        if show_all:
+            # Mostrar TODOS los puntos
+            sorted_points = sorted(points_with_issues)
+            for i, point_name in enumerate(sorted_points, 1):
+                res += f"{i}. {point_name}\n"
+        else:
+            # Mostrar solo primeros 10
+            sorted_points = sorted(points_with_issues)[:10]
+            for point_name in sorted_points:
+                res += f"• {point_name}\n"
+
+            remaining = len(points_with_issues) - 10
+            if remaining > 0:
+                res += f"... y {remaining} más.\n"
+    else:
+        res += "✅ *No se detectaron anomalías en el período analizado.*\n"
+
+    res += f"\n💡 Usa `/punto <nombre>` para investigar un punto específico."
+
+    return res

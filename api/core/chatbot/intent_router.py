@@ -157,6 +157,18 @@ INTENT_ANCHORS = {
         "ultimo dato", "último dato", "ultima lectura", "última lectura",
         # Variables
         "variables", "sensores", "caudal", "nivel", "total"
+    ],
+    "TELEMETRY_AUDIT": [
+        # Comandos slash
+        "/analisis_total", "/auditoria", "/audit",
+        # Análisis completo
+        "analisis total", "análisis total", "auditoria completa", "auditoría completa",
+        "auditoria", "auditoría", "audit",
+        # Anomalías
+        "todas las anomalias", "todas las anomalías", "anomalias completas",
+        "incoherencias", "ver todo", "lista completa",
+        # Reporte
+        "reporte completo", "informe completo", "analisis completo"
     ]
 }
 
@@ -169,7 +181,8 @@ INTENT_PRIORITY = {
     "STATS": 5,
     "ANOMALIES": 5,
     "TRENDS": 7,
-    "CLEAR_CONTEXT": 4
+    "CLEAR_CONTEXT": 4,
+    "TELEMETRY_AUDIT": 8  # Alta prioridad, al nivel de notificaciones
 }
 
 

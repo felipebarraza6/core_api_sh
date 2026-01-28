@@ -18,6 +18,10 @@ from api.core.models import InteractionDetail
 # ✅ Logging estructurado
 from api.cronjobs.utils.logging_config import telemetry_logger
 
+# ✅ Timezone para Chile
+import pytz
+chile_tz = pytz.timezone('America/Santiago')
+
 
 def get_data_with_retry(getter_func, *args, max_retries=3, backoff_factor=2):
     """

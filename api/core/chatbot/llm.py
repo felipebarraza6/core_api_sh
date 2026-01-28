@@ -4,12 +4,13 @@ import re
 import json
 from django.conf import settings
 from .tools import (
-    search_points, get_point_latest_data, get_client_summary, 
+    search_points, get_point_latest_data, get_client_summary,
     get_client_measurements, get_point_status_summary, get_dga_compliance,
     get_project_measurements, get_point_config, get_client_alerts,
     get_point_history, get_client_errors, get_global_status,
     get_recent_notifications, compare_points, get_client_stats,
-    get_client_ranking, get_stuck_points, get_help_menu, get_timeseries_analysis
+    get_client_ranking, get_stuck_points, get_help_menu, get_timeseries_analysis,
+    get_telemetry_audit
 )
 from .intent_router import get_routed_intent
 from .metrics import log_query_metric, get_metrics_summary
@@ -112,7 +113,10 @@ def resolve_intent_and_respond(user_text, user_name="Usuario", user_id=None):
         elif routed_intent == "CLEAR_CONTEXT":
             clear_conversation_context(user_id)
             result = "✅ Contexto limpiado. ¿En qué puedo ayudarte ahora?"
-        
+
+        elif routed_intent == "TELEMETRY_AUDIT":
+            result = get_telemetry_audit(days=30, show_all=True)
+
         elif routed_intent == "RANKING":
             # Intentar extraer param
             clean = re.sub(r'\b(ranking|top|consumo)\b', '', user_text, flags=re.IGNORECASE).strip()

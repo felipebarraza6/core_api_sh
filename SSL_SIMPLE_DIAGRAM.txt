@@ -1,0 +1,206 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                   FLUJO DE CERTIFICADOS SSL - SMARTHYDRO                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│  EJEMPLO: Usuario visita https://api.smarthydro.app/health/               │
+└────────────────────────────────────────────────────────────────────────────┘
+
+
+   👤 USUARIO
+   (Chrome/Firefox)
+        │
+        │  Escribe: https://api.smarthydro.app
+        │
+        ▼
+   ╔════════════════════════════════════════════════════════════╗
+   ║  🟠 PASO 1: Usuario → Cloudflare                          ║
+   ╠════════════════════════════════════════════════════════════╣
+   ║  Certificado #1: Cloudflare/Google Trust Services         ║
+   ║  ├─ Emisor: Google Trust Services (WE1)                   ║
+   ║  ├─ Dominio: smarthydro.app (incluye *.smarthydro.app)    ║
+   ║  ├─ Válido hasta: Abril 2026 (se renueva automático)      ║
+   ║  └─ Propósito: ENCRIPTAR usuario → Cloudflare             ║
+   ║                                                            ║
+   ║  Usuario ve: 🔒 Conexión segura                           ║
+   ║  ¿Quién lo maneja? Cloudflare (AUTOMÁTICO)               ║
+   ║  ¿Necesitas instalarlo? NO                                ║
+   ╚════════════════════════════════════════════════════════════╝
+        │
+        │  Cloudflare busca: ¿A dónde va api.smarthydro.app?
+        │  DNS responde: 147.182.128.93 (tu VPS)
+        │
+        ▼
+   ╔════════════════════════════════════════════════════════════╗
+   ║  🔵 PASO 2: Cloudflare → VPS (147.182.128.93)             ║
+   ╠════════════════════════════════════════════════════════════╣
+   ║  Certificado #2: Let's Encrypt                            ║
+   ║  ├─ Emisor: Let's Encrypt (R13)                           ║
+   ║  ├─ Dominio: api.smarthydro.app                           ║
+   ║  ├─ Válido hasta: Abril 2026 (renueva cada 60 días)       ║
+   ║  └─ Propósito: VERIFICAR que VPS es legítimo              ║
+   ║                                                            ║
+   ║  Cloudflare verifica: ¿El VPS tiene SSL válido?           ║
+   ║  Respuesta: ✅ SÍ - Let's Encrypt válido                  ║
+   ║  ¿Quién lo maneja? nginx-proxy + letsencrypt container    ║
+   ║  ¿Necesitas instalarlo? SÍ (pero YA está instalado ✅)    ║
+   ╚════════════════════════════════════════════════════════════╝
+        │
+        │  Cloudflare conecta con VPS por HTTPS
+        │
+        ▼
+   ╔════════════════════════════════════════════════════════════╗
+   ║  🟢 PASO 3: nginx-proxy → Django                           ║
+   ╠════════════════════════════════════════════════════════════╣
+   ║  nginx recibe petición HTTPS de Cloudflare                ║
+   ║  nginx redirige a Django (puerto 8000)                     ║
+   ║  Django procesa y responde: {"status": "ok"}              ║
+   ╚════════════════════════════════════════════════════════════╝
+        │
+        │  Respuesta viaja de regreso
+        │
+        ▼
+   👤 USUARIO
+   Recibe: {"status": "ok"}
+   Ve: 🔒 Conexión segura
+
+✅ TODO FUNCIONA PORQUE HAY 2 CERTIFICADOS ACTIVOS
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+   👤 USUARIO
+   (Chrome/Firefox)
+        │
+        │  Escribe: https://smarthydro.app
+        │
+        ▼
+   ╔════════════════════════════════════════════════════════════╗
+   ║  🟠 PASO 1: Usuario → Cloudflare                          ║
+   ╠════════════════════════════════════════════════════════════╣
+   ║  Certificado #1: Cloudflare/Google Trust Services         ║
+   ║  ✅ FUNCIONA (mismo certificado que arriba)               ║
+   ╚════════════════════════════════════════════════════════════╝
+        │
+        │  Cloudflare busca: ¿A dónde va smarthydro.app?
+        │  DNS responde: (IP del cPanel - servidor de correo)
+        │
+        ▼
+   ╔════════════════════════════════════════════════════════════╗
+   ║  🔴 PASO 2: Cloudflare → cPanel                            ║
+   ╠════════════════════════════════════════════════════════════╣
+   ║  Certificado #3: ???                                       ║
+   ║  ├─ Emisor: ¿NO EXISTE? ❌                                 ║
+   ║  ├─ Dominio: smarthydro.app                                ║
+   ║  └─ Propósito: VERIFICAR que cPanel es legítimo            ║
+   ║                                                            ║
+   ║  Cloudflare busca: ¿El cPanel tiene SSL válido?           ║
+   ║  Respuesta: ❌ NO ENCUENTRA o certificado inválido         ║
+   ║  Cloudflare dice: "No puedo verificar, RECHAZO conexión"  ║
+   ║  ¿Quién lo maneja? TÚ (debes instalarlo en cPanel)        ║
+   ║  ¿Necesitas instalarlo? SÍ (para que funcione) ⚠️          ║
+   ╚════════════════════════════════════════════════════════════╝
+        │
+        │  Cloudflare NO puede conectar
+        │
+        ✖
+
+   👤 USUARIO
+   Recibe: ❌ Error 525 - SSL Handshake Failed
+   Ve: ⚠️ Cloudflare no pudo conectar al servidor
+
+
+❌ FALLA PORQUE FALTA CERTIFICADO #3 EN cPanel
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                              RESUMEN                                         ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Certificado #1 (Cloudflare)                                               │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+│  • ¿Dónde está? En servidores de Cloudflare                                │
+│  • ¿Para qué? Encriptar Usuario → Cloudflare                               │
+│  • ¿Lo ves? SÍ - candado 🔒 en navegador                                   │
+│  • ¿Debes instalarlo? NO - automático                                      │
+│  • Estado: ✅ ACTIVO                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Certificado #2 (Let's Encrypt en VPS)                                     │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+│  • ¿Dónde está? En tu VPS (147.182.128.93)                                 │
+│  • ¿Para qué? Verificar que VPS es legítimo para Cloudflare                │
+│  • ¿Lo ves? NO - es interno (Cloudflare → VPS)                             │
+│  • ¿Debes instalarlo? SÍ - pero ya está ✅                                 │
+│  • Estado: ✅ ACTIVO (se renueva solo cada 60 días)                        │
+│  • Ubicación: /etc/nginx/certs/api.smarthydro.app.crt                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Certificado #3 (¿cPanel?)                                                 │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+│  • ¿Dónde está? En servidor cPanel (correos)                                │
+│  • ¿Para qué? Verificar que cPanel es legítimo para Cloudflare             │
+│  • ¿Lo ves? NO - es interno (Cloudflare → cPanel)                          │
+│  • ¿Debes instalarlo? SÍ - FALTA ❌                                         │
+│  • Estado: ❌ NO EXISTE (por eso error 525)                                 │
+│  • Solución: Instalar AutoSSL en cPanel                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         ¿POR QUÉ 3 CERTIFICADOS?                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+   Porque Cloudflare está "en el medio" actuando como proxy:
+
+   Usuario ←─[Cert #1]─→ Cloudflare ←─[Cert #2]─→ Servidor
+
+   Cloudflare necesita:
+   • Un certificado para hablar con el usuario (Cert #1) ✅
+   • Verificar que el servidor es legítimo (Cert #2 o #3) ⚠️
+
+   Sin Cert #2/#3 → Cloudflare no confía → Error 525
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    ¿QUÉ HACER CON ERROR 525?                                ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+   OPCIÓN A: No hacer nada (si solo usas correos)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   ✅ El error NO afecta emails
+   ✅ El error NO afecta api.smarthydro.app
+   ❌ Los visitantes de smarthydro.app verán error 525
+
+   OPCIÓN B: Instalar SSL en cPanel
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   1. Entrar a cPanel
+   2. Buscar "SSL/TLS Status" o "AutoSSL"
+   3. Click "Run AutoSSL" para smarthydro.app
+   4. Esperar 2-5 minutos
+   ✅ Error 525 desaparece
+   ✅ smarthydro.app funciona (aunque esté vacío)
+
+   OPCIÓN C: Cambiar Cloudflare a modo "Flexible"
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Dashboard → SSL/TLS → "Flexible"
+   ✅ Error 525 desaparece
+   ⚠️ Conexión Cloudflare → cPanel sin encriptar (HTTP)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+   📝 NOTA IMPORTANTE:
+
+   El certificado de Cloudflare (15 años) NO es un certificado "normal".
+   Es válido por tanto tiempo porque Cloudflare controla sus propios servidores
+   y puede garantizar la seguridad.
+
+   Los certificados Let's Encrypt (90 días) son certificados "normales"
+   reconocidos por todo el Internet. Se renuevan cada 60 días automáticamente.
+
+═══════════════════════════════════════════════════════════════════════════════

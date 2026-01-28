@@ -25,10 +25,16 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
 
 # Configuración de seguridad para producción
-CSRF_TRUSTED_ORIGINS = ["https://*.smarthydro.app", "https://api.smarthydro.app", "https://ikolu.smarthydro.app"]
+CSRF_TRUSTED_ORIGINS = [
+    "https://api.smarthydro.app",
+    "https://ikolu.smarthydro.app",
+    "https://smarthydro.app",
+    "https://*.smarthydro.app",
+]
 ALLOWED_HOSTS = [
     "api.smarthydro.app",
     "ikolu.smarthydro.app",
+    ".smarthydro.app",  # ✅ Cloudflare: Cualquier subdominio
     "localhost",
     "127.0.0.1",
     "postgres",  # Para conexiones internas Docker
@@ -43,6 +49,24 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_HSTS_SECONDS = 31536000  # 1 año
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
+
+# ✅ Cloudflare: Confiar en proxy headers
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Content Security Policy (CSP) - Security Headers
+# Configuración balanceada: API restrictiva + Admin funcional
+CSP_DEFAULT_SRC = ("'none'",)  # Bloquear todo por defecto
+CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'")  # Admin necesita JS inline para funcionar
+CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com")  # CSS del admin + Google Fonts
+CSP_IMG_SRC = ("'self'", "data:")  # Imágenes propias + data URIs
+CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "data:")  # Fuentes de Google + data URIs
+CSP_CONNECT_SRC = ("'self'",)  # Solo conexiones AJAX al mismo origen
+CSP_OBJECT_SRC = ("'none'",)  # Bloquear objetos (Flash, etc.)
+CSP_BASE_URI = ("'self'",)  # Restringir base URI
+CSP_FRAME_SRC = ("'none'",)  # No permitir iframes
+CSP_FRAME_ANCESTORS = ("'none'",)  # No permitir ser embebido
+CSP_FORM_ACTION = ("'self'",)  # Solo enviar formularios al mismo origen
 
 # Application definition
 DJANGO_APPS = [
@@ -193,6 +217,7 @@ INSTALLED_APPS = LOCAL_APPS + DJANGO_APPS + THIRD_PARTY_APPS
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "csp.middleware.CSPMiddleware",  # Content Security Policy
     "django.middleware.gzip.GZipMiddleware",  # ✅ RENDIMIENTO: Compresión de respuestas (debe ir temprano)
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",  # Mover antes de CommonMiddleware
@@ -298,7 +323,7 @@ DATABASES = {
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://redis:6379/1",
+        "LOCATION": "redis://redis_secure:6379/1",
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "IGNORE_EXCEPTIONS": True,  # Fallback gracefully if Redis is down

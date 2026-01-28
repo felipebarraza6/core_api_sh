@@ -309,7 +309,7 @@ def _send_to_sma(
         tuple: (success, message, id_verificacion)
     """
     try:
-        # Construir endpoint dinámico basado en code_dga y flow_granted_dga
+        # Construir endpoint dinámico basado en code_dga y total_granted_dga
         code_dga = dga_config.code_dga
         flow_granted_dga = dga_config.total_granted_dga
 
@@ -318,7 +318,7 @@ def _send_to_sma(
             return False, error_msg, ""
 
         if not flow_granted_dga:
-            error_msg = "Error: No se encontró flow_granted_dga en la configuración"
+            error_msg = "Error: No se encontró total_granted_dga en la configuración"
             return False, error_msg, ""
 
         # Extraer el número del code_dga (ejemplo: "7511" de "OB-7511-123")

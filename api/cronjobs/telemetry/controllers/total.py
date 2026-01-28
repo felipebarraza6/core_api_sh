@@ -76,7 +76,7 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
         # offset remains 0 if profile is not found.
 
         # ====================================================================
-        # VALIDACIÓN ANTI-SALTO MASIVO (ANTES DE ACEPTAR NUEVO VALOR)
+        # VALIDACIÓN ANTI-SALTO MASIVO (NORMAlIZADA POR TIEMPO)
         # ====================================================================
         MAX_DIFF_M3_PER_HOUR = 500  # Consumo máximo razonable por hora
         
@@ -85,12 +85,22 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
             potential_new_total = current_raw_m3 + offset
             diff = potential_new_total - last_total
             
-            # Si el salto es > 500 m³, es sospechoso (probable glitch de sensor)
-            if diff > MAX_DIFF_M3_PER_HOUR:
+            # Normalizar diff por tiempo transcurrido
+            time_diff_hours = 1.0 # Default fallback
+            if last_interaction.date_time_medition:
+                now = timezone.now()
+                # Usar la hora del registro si la tenemos, si no, usar now
+                time_delta = now - last_interaction.date_time_medition
+                time_diff_hours = max(time_delta.total_seconds() / 3600.0, 1.0) # Al menos 1 hora para evitar división por cero
+            
+            m3_per_hour = diff / time_diff_hours
+
+            # Si el salto es > 500 m³ por hora, es sospechoso
+            if m3_per_hour > MAX_DIFF_M3_PER_HOUR:
                 logger.warning(
                     f"🚨 SALTO MASIVO DETECTADO Punto {point_catchment['id']}: "
-                    f"Salto de {diff:.0f} m³ ({last_total:.0f} → {potential_new_total:.0f}). "
-                    f"Manteniendo último total válido para evitar corrupción."
+                    f"Salto de {diff:.0f} m³ en {time_diff_hours:.1f} horas ({m3_per_hour:.1f} m³/h). "
+                    f"Límite {MAX_DIFF_M3_PER_HOUR} m³/h. Manteniendo último total válido."
                 )
                 # Retornar el valor anterior sin actualizar nada
                 if return_full_details:
@@ -98,6 +108,7 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                         "raw_pulses": current_pulses,
                         "status": "MASSIVE_JUMP_BLOCKED",
                         "diff_detected": diff,
+                        "m3_per_hour": m3_per_hour,
                         "logic": "kept_last_valid"
                     }
                 return int(round(last_total))

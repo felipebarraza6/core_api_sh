@@ -1,15 +1,15 @@
 """
-Reporte Horario DGA MAYOR - Cumplimiento
-=========================================
-Envío: Cada hora a los :05 minutos (reporta la hora anterior)
+Reporte Horario DGA - Estado por Proyecto (Catastro)
+====================================================
+Envío: Cada hora a los :05 minutos
 Destino: Canal Google Chat DGA
 
-Ejemplo: A las 16:05 reporta mediciones de las 15:00
-
 Contenido:
-- Lista de puntos con estándar MAYOR que cargaron mediciones a DGA
-- Agrupado por cliente
-- Muestra: Punto [Código DGA] | Total | Caudal | Nivel Freático
+- Catastro completo DGA por PROYECTO
+- Muestra TODOS los puntos independiente del estándar
+- Última medición enviada de cada punto (con voucher)
+- Los MAYOR cambian hora a hora, los MEDIO se mantienen todo el día
+- Alerta visual si superó el caudal autorizado
 """
 
 import logging
@@ -23,10 +23,11 @@ logger = logging.getLogger(__name__)
 
 def run():
     """
-    Reporte horario de mediciones DGA estándar MAYOR.
-    Se ejecuta a los :05 de cada hora y reporta las mediciones de la hora anterior.
+    Reporte DGA - Catastro completo por proyecto.
+    Muestra la última medición enviada de cada punto (con voucher).
+    Incluye TODOS los estándares: MAYOR cambian hora a hora, MEDIO se mantienen.
     """
-    logger.info("Iniciando Reporte Horario DGA MAYOR...")
+    logger.info("Iniciando Reporte DGA - Catastro por Proyecto...")
 
     try:
         import pytz
@@ -34,17 +35,8 @@ def run():
         now = timezone.now()
         now_chile = now.astimezone(chile_tz)
 
-        # Calcular la hora a reportar (hora anterior)
-        # Si estamos a las 16:05, reportamos mediciones de las 15:00
-        report_hour = now_chile.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
-
-        # Ventana: desde la hora reportada hasta una hora después
-        window_start = report_hour
-        window_end = report_hour + timedelta(hours=1)
-
-        # Obtener puntos con estándar MAYOR que envían a DGA
-        mayor_configs = list(DgaDataConfigCatchment.objects.filter(
-            standard='MAYOR',
+        # Obtener TODOS los puntos que envían a DGA (todos los estándares)
+        dga_configs = list(DgaDataConfigCatchment.objects.filter(
             send_dga=True
         ).select_related(
             'point_catchment',
@@ -52,92 +44,136 @@ def run():
             'point_catchment__project__client'
         ))
 
-        if not mayor_configs:
-            logger.info("No hay puntos configurados con estándar MAYOR.")
+        if not dga_configs:
+            logger.info("No hay puntos configurados para envío DGA.")
             return
 
-        point_ids = [c.point_catchment_id for c in mayor_configs]
-        code_map = {c.point_catchment_id: c.code_dga for c in mayor_configs}
+        point_ids = [c.point_catchment_id for c in dga_configs]
+        code_map = {c.point_catchment_id: c.code_dga for c in dga_configs}
+        standard_map = {c.point_catchment_id: c.standard for c in dga_configs}
+        flow_granted_map = {c.point_catchment_id: c.flow_granted_dga for c in dga_configs}
 
-        # Buscar mediciones de la hora reportada QUE SE ENVIARON A DGA
-        # Filtramos por send_dga=True para mostrar solo lo realmente enviado
-        records = list(InteractionDetail.objects.filter(
-            catchment_point_id__in=point_ids,
-            date_time_medition__gte=window_start,
-            date_time_medition__lt=window_end,
-            send_dga=True  # ✅ Solo registros marcados para envío DGA
-        ).select_related(
-            'catchment_point',
-            'catchment_point__project',
-            'catchment_point__project__client'
-        ).order_by('catchment_point__project__client__name', 'catchment_point__title'))
+        # Obtener la ÚLTIMA medición con voucher de cada punto (sin filtro de tiempo)
+        # Esto permite ver el estado actual completo: MAYOR recientes + MEDIO del día
+        point_records = {}
+        for point_id in point_ids:
+            # Buscar última medición con voucher para este punto
+            last_record = InteractionDetail.objects.filter(
+                catchment_point_id=point_id,
+                n_voucher__isnull=False
+            ).select_related(
+                'catchment_point',
+                'catchment_point__project',
+                'catchment_point__project__client'
+            ).order_by('-date_time_medition').first()
 
-        if not records:
-            logger.info(f"No hay mediciones DGA MAYOR para las {report_hour.strftime('%H:%M')}.")
+            if last_record:
+                point_records[point_id] = last_record
+
+        unique_records = list(point_records.values())
+
+        if not unique_records:
+            logger.info("No hay mediciones DGA confirmadas.")
             return
 
-        # Agrupar por punto (solo un registro por punto)
-        seen_points = set()
-        unique_records = []
-        for r in records:
-            if r.catchment_point_id not in seen_points:
-                seen_points.add(r.catchment_point_id)
-                unique_records.append(r)
-
-        # Construir mensaje con mejor formato
-        report_hour_str = report_hour.strftime("%H:%M")
-        date_str = now_chile.strftime("%d/%m/%Y")
+        # Construir mensaje agrupado por PROYECTO
+        date_str = now_chile.strftime("%d/%m/%Y %H:%M")
 
         msg_parts = []
-        msg_parts.append(f"📊 **REPORTE DGA MAYOR**")
-        msg_parts.append(f"📅 {date_str} - Mediciones {report_hour_str} hrs")
-        msg_parts.append(f"📈 Total puntos: {len(unique_records)}")
+        msg_parts.append(f"📊 **CATASTRO DGA POR PROYECTO**")
+        msg_parts.append(f"📅 {date_str}")
+        msg_parts.append(f"📈 Puntos activos: {len(unique_records)}")
         msg_parts.append("")
-        msg_parts.append("─" * 35)
+        msg_parts.append("─" * 40)
 
-        current_client = None
-        client_count = 0
-
+        # Agrupar por proyecto
+        project_groups = {}
         for r in unique_records:
             point = r.catchment_point
-            client_name = point.project.client.name if point.project and point.project.client else "N/A"
-            code_obra = code_map.get(point.id, "N/A")
+            project_name = point.project.name if point.project else "Sin Proyecto"
 
-            # Nuevo cliente = nueva sección
-            if client_name != current_client:
-                if current_client is not None:
-                    msg_parts.append("")
-                msg_parts.append(f"🏢 **{client_name}**")
-                msg_parts.append("")
-                current_client = client_name
-                client_count += 1
+            if project_name not in project_groups:
+                project_groups[project_name] = []
+            project_groups[project_name].append(r)
 
-            # Formatear valores con manejo seguro
-            try:
-                total_val = "{:,.0f}".format(float(r.total)) if r.total else "-"
-            except (ValueError, TypeError):
-                total_val = str(r.total) if r.total else "-"
+        # Ordenar proyectos alfabéticamente
+        for project_name in sorted(project_groups.keys()):
+            project_records = project_groups[project_name]
 
-            try:
-                flow_val = "{:.2f}".format(float(r.flow)) if r.flow else "-"
-            except (ValueError, TypeError):
-                flow_val = str(r.flow) if r.flow else "-"
-
-            try:
-                water_val = "{:.2f}".format(float(r.water_table)) if r.water_table else "-"
-            except (ValueError, TypeError):
-                water_val = str(r.water_table) if r.water_table else "-"
-
-            # Línea del punto
-            msg_parts.append(f"  📍 {point.title}")
-            msg_parts.append(f"      [{code_obra}]")
-            msg_parts.append(f"      Total: {total_val} m³")
-            msg_parts.append(f"      Caudal: {flow_val} L/s")
-            msg_parts.append(f"      NF: {water_val} m")
+            # Encabezado del proyecto
+            msg_parts.append(f"🏗️ **{project_name}**")
             msg_parts.append("")
 
-        msg_parts.append("─" * 35)
-        msg_parts.append(f"✅ {len(unique_records)} mediciones | {client_count} clientes")
+            # Puntos del proyecto
+            for r in project_records:
+                point = r.catchment_point
+                code_obra = code_map.get(point.id, "N/A")
+                standard = standard_map.get(point.id, "N/A")
+                voucher_str = str(r.n_voucher)[:36] if r.n_voucher else "Sin voucher"
+                flow_granted = flow_granted_map.get(point.id, None)
+
+                # Fecha de la medición
+                medicion_time = r.date_time_medition.astimezone(chile_tz).strftime("%d/%m %H:%M")
+
+                # Formatear valores con manejo seguro
+                # Total siempre con punto como separador de miles (100.000)
+                try:
+                    if r.total is not None:
+                        total_num = float(r.total)
+                        total_val = "{:,.0f}".format(total_num).replace(",", ".")
+                    else:
+                        total_val = "-"
+                except (ValueError, TypeError):
+                    total_val = "-"
+
+                # Caudal: mostrar 0.0 si es 0.0, nunca nulo
+                try:
+                    if r.flow is not None:
+                        flow_num = float(r.flow)
+                        flow_val = "{:.2f}".format(flow_num)
+                    else:
+                        flow_num = None
+                        flow_val = "-"
+                except (ValueError, TypeError):
+                    flow_num = None
+                    flow_val = "-"
+
+                # Verificar si excede el caudal autorizado
+                exceeds_flow = False
+                if flow_num is not None and flow_granted is not None:
+                    try:
+                        if flow_num > float(flow_granted):
+                            exceeds_flow = True
+                    except (ValueError, TypeError):
+                        pass
+
+                # Indicador visual si excede
+                status_icon = "⚠️ " if exceeds_flow else ""
+
+                # Determinar si es caudal o caudal medio según estándar
+                # MAYOR = caudal instantáneo (cada hora)
+                # MEDIO, MENOR, etc = caudal medio (promedio diario)
+                is_instantaneous = (standard == "MAYOR")
+                caudal_label = "Caudal" if is_instantaneous else "Caudal Medio"
+
+                # Línea del punto con información completa
+                msg_parts.append(f"  📍 {status_icon}**{point.title}**")
+                msg_parts.append(f"      🏷️ {code_obra} - {standard}")
+                msg_parts.append(f"      📅 {medicion_time}")
+
+                # Mostrar caudal con alerta si excede
+                if exceeds_flow:
+                    msg_parts.append(f"      💧 {caudal_label}: {flow_val} L/s ⚠️ (Autorizado: {flow_granted} L/s)")
+                else:
+                    msg_parts.append(f"      💧 {caudal_label}: {flow_val} L/s | Total: {total_val} m³")
+
+                msg_parts.append(f"      ✅ Voucher: {voucher_str}")
+                msg_parts.append("")
+
+            msg_parts.append("")
+
+        msg_parts.append("─" * 40)
+        msg_parts.append(f"✅ {len(unique_records)} mediciones | {len(project_groups)} proyectos")
 
         # Enviar mensaje
         full_msg = "\n".join(msg_parts)
@@ -150,7 +186,7 @@ def run():
         else:
             send_dga_chat_message(full_msg)
 
-        logger.info(f"Reporte DGA MAYOR enviado: {len(unique_records)} mediciones de las {report_hour_str}.")
+        logger.info(f"Catastro DGA enviado: {len(unique_records)} puntos de {len(project_groups)} proyectos.")
 
     except Exception as e:
-        logger.error(f"Error en Reporte DGA MAYOR: {e}", exc_info=True)
+        logger.error(f"Error en Catastro DGA: {e}", exc_info=True)

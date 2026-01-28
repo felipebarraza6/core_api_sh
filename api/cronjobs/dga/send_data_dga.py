@@ -49,10 +49,10 @@ def send(response):
     type_dga = response["type_dga"]
 
     # Validaciones de caudal y nivel freatico
-    if caudal < 0 or caudal is None:
+    if caudal is None or caudal < 0:
         caudal = 0.0
 
-    if nivel_freatico_del_pozo < 0 or nivel_freatico_del_pozo is None:
+    if nivel_freatico_del_pozo is None or nivel_freatico_del_pozo < 0:
         nivel_freatico_del_pozo = 0.0
 
     print(

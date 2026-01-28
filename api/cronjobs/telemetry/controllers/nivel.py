@@ -6,6 +6,11 @@ from api.core.models import InteractionDetail
 def nivel_mt(value, base, point_catchment_id=None, position=None):
     """Calcular nivel en metros"""
     try:
+        # ✅ Validar base antes de dividir
+        if base is None or float(base) == 0:
+            print(f"Base inválida (None o 0) para punto {point_catchment_id}. Retornando 00.00")
+            return "00.00"
+
         calculate = float(value) / float(base)
 
         # Si el nivel es negativo O es cero (error de lectura), buscar estrategia de corrección

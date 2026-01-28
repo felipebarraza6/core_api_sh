@@ -55,7 +55,7 @@ services:
     # ========================================
     # REDIS - CACHÉ Y COLAS
     # ========================================
-  redis:
+  redis_secure:
     image: redis:7-alpine
     container_name: redis_secure
     networks:
