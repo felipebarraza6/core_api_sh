@@ -63,12 +63,12 @@ CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'")  # Admin necesita JS inline para 
 CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com")  # CSS del admin + Google Fonts
 CSP_IMG_SRC = ("'self'", "data:")  # Imágenes propias + data URIs
 CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "data:")  # Fuentes de Google + data URIs
-CSP_CONNECT_SRC = ("'self'",)  # Solo conexiones AJAX al mismo origen
+CSP_CONNECT_SRC = ("'self'", "https://*.smarthydro.app")  # Permitir AJAX a todos los subdominios de smarthydro.app
 CSP_OBJECT_SRC = ("'none'",)  # Bloquear objetos (Flash, etc.)
 CSP_BASE_URI = ("'self'",)  # Restringir base URI
 CSP_FRAME_SRC = ("'none'",)  # No permitir iframes
 CSP_FRAME_ANCESTORS = ("'none'",)  # No permitir ser embebido
-CSP_FORM_ACTION = ("'self'",)  # Solo enviar formularios al mismo origen
+CSP_FORM_ACTION = ("'self'", "https://*.smarthydro.app")  # Permitir formularios a subdominios de smarthydro.app
 
 # Application definition
 DJANGO_APPS = [
