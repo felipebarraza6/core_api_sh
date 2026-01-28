@@ -9,6 +9,7 @@ from api.core.admin_views import (
     telemetry_monitoring_view, telemetry_monitoring_api, admin_dashboard_view,
     telemetry_point_records_api
 )
+from api.core.views.health import health_check, index
 
 
 # Configuración del Admin Site con logo SmartHydro
@@ -17,6 +18,9 @@ admin.site.site_title = "SmartHydro"
 admin.site.index_title = "Panel de Administración"
 
 urlpatterns = [
+    # Health check y raíz (sin autenticación, deben ir al inicio)
+    path('', index, name='index'),
+    path('health/', health_check, name='health'),
     # Rutas del admin personalizadas (deben ir ANTES de admin.site.urls)
     path('admin/dashboard/', admin_dashboard_view, name='admin_dashboard'),
     path('admin/telemetry-monitoring/', telemetry_monitoring_view, name='telemetry_monitoring'),

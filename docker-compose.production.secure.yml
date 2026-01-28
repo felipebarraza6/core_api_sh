@@ -169,7 +169,7 @@ services:
     restart: unless-stopped
     # ✅ SEGURIDAD: Healthcheck
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f -L http://localhost:8000/admin/ > /dev/null 2>&1 || exit 1" ]
+      test: [ "CMD-SHELL", "curl -f http://localhost:8000/health/ > /dev/null 2>&1 || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
