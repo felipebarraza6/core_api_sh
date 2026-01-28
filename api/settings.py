@@ -38,6 +38,8 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     "postgres",  # Para conexiones internas Docker
+    "django",  # ✅ Docker Compose service name
+    "172.25.0.2",  # ✅ Django container IP (para nginx proxy interno)
 ]
 
 # Security - Configuraciones de seguridad estrictas
