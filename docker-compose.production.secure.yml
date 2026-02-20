@@ -152,6 +152,7 @@ services:
       - django_static:/app/staticfiles
       - django_media:/app/media
       - django_logs:/app/logs
+      - google_credentials:/app/credentials
     depends_on:
       postgres:
         condition: service_healthy
@@ -211,6 +212,7 @@ services:
       - ./:/app
       - cron_logs:/var/log/smarthydro
       - django_logs:/app/logs
+      - google_credentials:/app/credentials
     depends_on:
       postgres:
         condition: service_healthy
@@ -275,6 +277,12 @@ volumes:
       type: none
       o: bind
       device: /opt/smarthydro/cron_logs
+  google_credentials:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/smarthydro/credentials
   nginx_proxy_certs:
     driver: local
   nginx_proxy_vhost:

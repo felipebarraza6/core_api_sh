@@ -94,16 +94,22 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = ["api.core.apps.CoreAppConfig", "django_crontab", "import_export"]
 
-# Configuración de correo para alertas - DESDE VARIABLES DE ENTORNO
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = os.environ.get("EMAIL_HOST", "s1042.use1.mysecurecloudhost.com")
-EMAIL_PORT = int(os.environ.get("EMAIL_PORT", 465))
-EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "True").lower() == "true"
-EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "notify@smarthydro.app")
-EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")
+# ========================================
+# CONFIGURACIÓN DE CORREO - GMAIL API
+# ========================================
+# Backend de envío usando Gmail API en lugar de SMTP
+EMAIL_BACKEND = "api.utils.gmail.GmailApiBackend"
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl")
+CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "soporte@smarthydro.cl")
 
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "notify@smarthydro.app")
-CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "telemetry@smarthydro.app")
+# Ruta a credenciales de Google Service Account (JSON)
+GOOGLE_SERVICE_ACCOUNT_FILE = os.path.join(
+    BASE_DIR,
+    os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "credentials/google_service_account_key.json")
+)
+
+# Cuenta delegada que enviará los correos (debe estar en Google Workspace)
+GOOGLE_DELEGATED_USER = os.environ.get("GOOGLE_DELEGATED_USER", "soporte@smarthydro.cl")
 
 # ========================================
 # FEATURE FLAGS - Control de nuevas funcionalidades
@@ -206,6 +212,12 @@ CRONJOBS = [
         "0 12 * * *",
         "api.cronjobs.reports.daily_chat_report.run",
         ">> /tmp/smarthydro/daily_chat_report.log 2>&1",
+    ),
+    # reporte diario tickets activos - 10:00 AM Chile (13:00 UTC)
+    (
+        "0 13 * * *",
+        "api.cronjobs.reports.daily_active_tickets.run",
+        ">> /tmp/smarthydro/daily_active_tickets.log 2>&1",
     ),
     # reporte horario DGA MAYOR - cada hora a los :05 (reporta hora anterior)
     (

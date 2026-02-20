@@ -135,6 +135,10 @@ venv.bak/
 .env.production
 .env.*.local
 
+# Google Service Account credenciales (NUNCA versionar)
+credentials/
+!credentials/README.md
+
 # Archivos de configuración seguros (SÍ se suben al repositorio)
 !init-db-secure.sql
 !docker-compose.production.secure.yml
