@@ -447,7 +447,9 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_SAVE_EVERY_REQUEST = True
 
 # Configuración de archivos estáticos
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# Usar CompressedStaticFilesStorage en lugar de CompressedManifestStaticFilesStorage
+# para evitar errores con archivos .map faltantes
+STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 
 # ========================================
 # CONFIGURACIÓN DJANGO JAZZMIN - UI MEJORADA

@@ -1138,6 +1138,9 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
     Puntos de captación de agua donde se instalan los sensores de telemetría.
     Cada punto pertenece a un proyecto y puede tener múltiples configuraciones (datos, DGA, Ikolu).
     """
+    # ✅ Template personalizado para mostrar indicadores (importante para el botón de reporte)
+    change_list_template = 'admin/core/interactiondetail/change_list.html'
+
     list_display = (
         'id', 'title', 'project', 'owner_user', 'frecuency',
         'get_providers_badge', 'get_telemetry_status', 'last_interaction_detail'
@@ -1149,6 +1152,55 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
         extra_context = extra_context or {}
         extra_context['monitoring_link'] = reverse('telemetry_monitoring')
         return super().changelist_view(request, extra_context)
+
+    def get_indicators(self, request, queryset):
+        """
+        Indicadores para Puntos de Captación y Acceso a Reportes
+        """
+        indicators = []
+        
+        # 1. Botón de Reporte (Prioritario)
+        indicators.append({
+            'value': 'Descargar Excel',
+            'label': 'Reporte Puntos Activos',
+            'icon': 'fas fa-file-download',
+            'color': 'success', # Verde para destacar descarga
+            'url': reverse('active_points_report'),
+        })
+        
+        # 2. Total de puntos
+        total = queryset.count()
+        
+        # 3. Puntos con telemetría activa
+        active_telemetry = queryset.filter(data_config_profiles__is_telemetry=True).count()
+        
+        if total > 0:
+            pct_active = (active_telemetry / total) * 100
+            indicators.append({
+                'value': f'{active_telemetry} / {total}',
+                'label': 'Telemetría Activa',
+                'icon': 'fas fa-satellite-dish',
+                'color': 'primary',
+            })
+            
+            # 4. Puntos desconectados (Alerta)
+            # Usando lógica simplificada para indicador rápido
+            from django.db.models import Max
+            import pytz
+            from datetime import timedelta
+            
+            # Solo considerar puntos con telemetría activa
+            disconnected = queryset.filter(
+                data_config_profiles__is_telemetry=True
+            ).exclude(
+                interactiondetail__days_not_conection=0,
+                interactiondetail__date_time_medition__gte=timezone.now() - timedelta(days=1)
+            ).count()
+            
+            # Nota: La cuenta anterior es aproximada, para precisión usar filtros complejos
+            # pero para indicador rápido está bien.
+        
+        return indicators
     
     # ✅ Fieldsets para organizar
     fieldsets = (
@@ -1798,11 +1850,17 @@ class NotificationsCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
     Permite el seguimiento de problemas y acciones tomadas en los puntos de captación.
     """
     list_per_page = ADMIN_LIST_PER_PAGE
-    list_display = ('id', 'point_catchment', 'title', 'type_notification', 'created', 'get_responses_count')
-    list_filter = ('created', 'type_notification', 'point_catchment__project__name')
+    list_display = ('id', 'point_catchment', 'title', 'type_notification', 'is_read', 'created', 'get_responses_count')
+    list_filter = ('is_read', 'created', 'type_notification', 'point_catchment__project__name')
     search_fields = ('title', 'message', 'point_catchment__title')
     autocomplete_fields = ['point_catchment']
     date_hierarchy = 'created'
+    actions = ['mark_as_read']
+
+    def mark_as_read(self, request, queryset):
+        updated = queryset.update(is_read=True)
+        self.message_user(request, f"{updated} notificaciones marcadas como leídas.")
+    mark_as_read.short_description = "Marcar como leídas"
     
     def get_responses_count(self, obj):
         count = obj.responses.count()
@@ -2416,6 +2474,15 @@ def generar_excel_ultimo_mes_proyecto(modeladmin, request, queryset):
 
 generar_excel_ultimo_mes_proyecto.short_description = 'Generar Informe de Renovación - Ultimo mes'
 
+def download_active_points_report(modeladmin, request, queryset):
+    """
+    Acción para descargar el reporte de puntos activos desde el dropdown.
+    """
+    from django.http import HttpResponseRedirect
+    return HttpResponseRedirect(reverse('active_points_report'))
+
+download_active_points_report.short_description = "📊 Descargar Reporte Puntos Activos"
+
 # Asignar acciones al admin
 InteractionDetailAdmin.actions = [
     agregar_registros_cola_dga,
@@ -2425,6 +2492,7 @@ InteractionDetailAdmin.actions = [
 ]
 
 CatchmentPointAdmin.actions = [
+    download_active_points_report,
     generar_analisis_telemetria_pdf,
     generar_ot_soporte_pdf,
     generar_excel_por_punto,

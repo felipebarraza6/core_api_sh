@@ -24,7 +24,8 @@ class GmailApiBackend:
     Compatible con Django send_mail() y send_mass_mail().
     """
 
-    def __init__(self):
+    def __init__(self, fail_silently=False, **kwargs):
+        self.fail_silently = fail_silently
         self.service = self._get_service()
 
     def _get_service(self):

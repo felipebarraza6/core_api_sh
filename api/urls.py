@@ -11,6 +11,7 @@ from api.core.admin_views import (
 )
 from api.core.views.health import health_check, index
 from api.core.views.status import status_json, status_dashboard
+from api.core.views.reports import ActiveCatchmentPointsReportView
 
 
 # Configuración del Admin Site con logo SmartHydro
@@ -31,6 +32,9 @@ urlpatterns = [
     path('admin/telemetry-monitoring/api/point/<int:point_id>/records/', telemetry_point_records_api, name='telemetry_point_records_api'),
     # Admin de Django (debe ir al final para no interceptar las rutas personalizadas)
     path('admin/', admin.site.urls),
+    
+    # Reports
+    path('reports/active-points/', ActiveCatchmentPointsReportView.as_view(), name='active_points_report'),
     # API Original (sin cambios)
     path('api/', include(('api.core.router', 'api'), namespace='api')),
     # API Optimizada (nueva, separada)

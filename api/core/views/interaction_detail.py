@@ -498,7 +498,9 @@ class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
         "n_voucher", 
         "pulses",
         "is_error", 
-        "notification"]
+        "notification",
+        "variable_details",
+        "is_partial"]
     
     
     column_header = {
@@ -554,7 +556,8 @@ class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
             'modified', 'id', 'created', "days_not_conection",
             'catchment_point', 'send_dga', 'return_dga',
             "date_time_last_logger", "n_voucher", "pulses",
-            "is_error", "notification"
+            "is_error", "notification",
+            "variable_details", "is_partial"
         ]
 
         if not self.request:
@@ -756,7 +759,9 @@ class InteractionXLSDga(XLSXFileMixin, ReadOnlyModelViewSet):
         "total_diff",
         "total_today_diff",
         "is_error", 
-        "notification"]
+        "notification",
+        "variable_details",
+        "is_partial"]
     
     
     column_header = {
