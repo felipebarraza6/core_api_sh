@@ -399,14 +399,19 @@ def get_data_twin(variables, token, point_catchment):
             print(f"Error en alerta reconexión/desconexión: {e}")
 
     get = DgaDataConfigCatchment.objects.get(point_catchment__id=point_catchment["id"])
-    current_time = datetime.now(chile)
+
+    # Usar la hora del registro, no la hora actual del sistema
+    record_time = datetime.strptime(created_register["date_time_medition"], "%Y-%m-%dT%H:00:00")
 
     # Solo enviar a DGA si está habilitado Y corresponde la frecuencia
-    if get.send_dga and validate_frequency(point_catchment, current_time):
+    if get.send_dga and validate_frequency(point_catchment, record_time):
         created_register["send_dga"] = True
     else:
         created_register["send_dga"] = False
 
-    InteractionDetail.objects.create(
-        catchment_point_id=point_catchment["id"], **created_register
+    # ✅ Crear o actualizar registro de forma atómica (previene duplicados)
+    InteractionDetail.objects.update_or_create(
+        catchment_point_id=point_catchment["id"],
+        date_time_medition=created_register["date_time_medition"],
+        defaults=created_register
     )
