@@ -32,12 +32,21 @@ telemetry_logger = logging.getLogger('cronjobs.telemetry')
 telemetry_logger.setLevel(logging.INFO)
 if not telemetry_logger.handlers:
     telemetry_logger.addHandler(console_handler)
+telemetry_logger.propagate = False  # Evitar duplicación en root logger
 
 # Logger específico para DGA
 dga_logger = logging.getLogger('cronjobs.dga')
 dga_logger.setLevel(logging.INFO)
 if not dga_logger.handlers:
     dga_logger.addHandler(console_handler)
+dga_logger.propagate = False  # Evitar duplicación en root logger
+
+# Logger específico para SMA
+sma_logger = logging.getLogger('cronjobs.sma')
+sma_logger.setLevel(logging.INFO)
+if not sma_logger.handlers:
+    sma_logger.addHandler(console_handler)
+sma_logger.propagate = False  # Evitar duplicación en root logger
 
 
 def log_info(message: str, logger_name: str = 'cronjobs'):

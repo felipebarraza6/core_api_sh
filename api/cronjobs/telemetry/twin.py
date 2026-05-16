@@ -407,6 +407,8 @@ def get_data_twin(variables, token, point_catchment):
     else:
         created_register["send_dga"] = False
 
-    InteractionDetail.objects.create(
-        catchment_point_id=point_catchment["id"], **created_register
+    InteractionDetail.objects.update_or_create(
+        catchment_point_id=point_catchment["id"],
+        date_time_medition=created_register["date_time_medition"],
+        defaults=created_register
     )

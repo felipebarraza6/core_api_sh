@@ -209,18 +209,18 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
         # 4a. Si hay brecha de tiempo muy grande (reconexión después de desconexión)
         if time_difference > (MAX_TIME_GAP_HOURS * 3600):
             logger.info(
-                f"⚠️ Punto {point_catchment['id']}: Gap de tiempo muy grande "
-                f"({time_difference/3600:.1f}h > {MAX_TIME_GAP_HOURS}h) - Caudal = 0"
+                f"⚠️ Punto {point_catchment['id']}: Gap de tiempo grande "
+                f"({time_difference/3600:.1f}h > {MAX_TIME_GAP_HOURS}h). "
+                f"Caudal se calculará como promedio sobre el gap."
             )
-            return 0.0
         
         # 4b. Si el registro anterior tenía días sin conexión (logger desconectado)
         if hasattr(get_last, 'days_not_conection') and get_last.days_not_conection and get_last.days_not_conection > 0:
             logger.info(
                 f"⚠️ Punto {point_catchment['id']}: Reconexión detectada "
-                f"(días sin conexión anterior: {get_last.days_not_conection}) - Caudal = 0"
+                f"(días sin conexión anterior: {get_last.days_not_conection}). "
+                f"Caudal se calculará como promedio sobre el gap."
             )
-            return 0.0
 
         # 5. Calcular diferencia de volumen (m3)
         last_total = float(get_last.total)

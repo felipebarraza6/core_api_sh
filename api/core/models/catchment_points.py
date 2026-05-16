@@ -54,6 +54,7 @@ class CatchmentPoint(ModelApi):
         related_name="catchment_points",
         on_delete=models.CASCADE,
         verbose_name="Proyecto",
+        db_index=True,
     )
     title = models.CharField(
         max_length=200, blank=True, null=True, verbose_name="Nombre"
@@ -64,14 +65,15 @@ class CatchmentPoint(ModelApi):
         related_name="owned_catchment_points",
         on_delete=models.CASCADE,
         verbose_name="Propietario",
+        db_index=True,
     )
     users_viewers = models.ManyToManyField(
         User, verbose_name="usuario", related_name="viewed_catchment_points", blank=True
     )
 
-    is_thethings = models.BooleanField(default=False, verbose_name="Nettra")
-    is_tdata = models.BooleanField(default=False, verbose_name="Twin")
-    is_novus = models.BooleanField(default=False, verbose_name="Novus")
+    is_thethings = models.BooleanField(default=False, verbose_name="Nettra", db_index=True)
+    is_tdata = models.BooleanField(default=False, verbose_name="Twin", db_index=True)
+    is_novus = models.BooleanField(default=False, verbose_name="Novus", db_index=True)
 
     lat = models.CharField(
         max_length=300, blank=True, null=True, verbose_name="latitud"
@@ -203,7 +205,9 @@ class ProfileIkoluCatchment(ModelApi):
         verbose_name_plural = "Perfiles Ikolu"
 
     def __str__(self):
-        return f"{self.point_catchment}"
+        if self.point_catchment:
+            return f"{self.point_catchment} - Perfil Ikolu"
+        return "Perfil Ikolu (sin punto)"
 
 
 class NotificationsCatchment(ModelApi):
@@ -214,6 +218,9 @@ class NotificationsCatchment(ModelApi):
         related_name="notifications",
         on_delete=models.CASCADE,
         verbose_name="Punto de captacion",
+        blank=True,
+        null=True,
+        db_index=True,
     )
     title = models.CharField(max_length=300, verbose_name="Titulo")
     message = models.CharField(max_length=1300, verbose_name="Mensaje")
@@ -270,6 +277,15 @@ class NotificationsCatchment(ModelApi):
     is_wait = models.BooleanField(default=False, verbose_name="Espera")
     is_finish = models.BooleanField(default=False, verbose_name="Finalizado")
 
+    status_dga = models.BooleanField(default=False, verbose_name="Estado DGA")
+    status_sma = models.BooleanField(default=False, verbose_name="Estado SMA")
+    emails = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Emails destinatarios",
+        help_text="Lista de emails. Ej: [\"correo1@x.com\", \"correo2@x.com\"]",
+    )
+
     class Meta:
         """Meta data notifications"""
 
@@ -288,9 +304,10 @@ class ResponseNotificationsCatchment(ModelApi):
         related_name="responses",
         on_delete=models.CASCADE,
         verbose_name="Notificación",
+        db_index=True,
     )
     user = models.ForeignKey(
-        User, related_name="responses", on_delete=models.CASCADE, verbose_name="Usuario"
+        User, related_name="responses", on_delete=models.CASCADE, verbose_name="Usuario", db_index=True
     )
     response = models.CharField(max_length=1300, verbose_name="Respuesta")
 
@@ -328,6 +345,7 @@ class FileCatchment(ModelApi):
         related_name="files",
         on_delete=models.CASCADE,
         verbose_name="Punto de captacion",
+        db_index=True,
     )
     type_file = models.ForeignKey(
         TypeFileCatchment,
@@ -362,6 +380,7 @@ class ProfileDataConfigCatchment(ModelApi):
         verbose_name="Punto de captacion",
         blank=True,
         null=True,
+        db_index=True,
     )
     token_service = models.CharField(max_length=400, blank=True, null=True)
     d1 = models.DecimalField(
@@ -392,17 +411,19 @@ class ProfileDataConfigCatchment(ModelApi):
         decimal_places=2,
     )
     d6 = models.IntegerField(
-        default=0.0, verbose_name="Caudalimetro inicial", blank=True, null=True
+        default=0, verbose_name="Caudalimetro inicial", blank=True, null=True
     )
-    is_telemetry = models.BooleanField(default=False, verbose_name="Activar telemetría")
+    is_telemetry = models.BooleanField(default=False, verbose_name="Activar telemetría", db_index=True)
     date_start_telemetry = models.DateField(
         blank=True, null=True, verbose_name="Fecha inicio telemetria"
     )
     date_delivery_act = models.DateField(
         blank=True, null=True, verbose_name="Fecha acta de entrega"
     )
-    addition = models.IntegerField(
+    addition = models.DecimalField(
         default=0,
+        max_digits=15,
+        decimal_places=3,
         verbose_name="Adicion (Reset)",
         help_text="Valor acumulado automáticamente cuando el sensor se reinicia (glitch/reset)."
     )
@@ -425,6 +446,7 @@ class DgaDataConfigCatchment(ModelApi):
         related_name="dga_data_config_profiles",
         on_delete=models.CASCADE,
         verbose_name="Punto de captacion",
+        db_index=True,
     )
 
     standards_choices = [
@@ -460,7 +482,6 @@ class DgaDataConfigCatchment(ModelApi):
         max_length=1200, blank=True, null=True, verbose_name="Codigo de obra(dga)"
     )
     flow_granted_dga = models.DecimalField(
-        max_length=1200,
         default=0.0,
         verbose_name="Caudal otorgado(lt/s)",
         max_digits=5,

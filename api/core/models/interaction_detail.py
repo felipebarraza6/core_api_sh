@@ -3,6 +3,7 @@
 from django.db import models
 
 from .catchment_points import CatchmentPoint, NotificationsCatchment
+from .fields import AwareDateTimeField
 from .utils import ModelApi
 
 
@@ -12,10 +13,10 @@ class InteractionDetail(ModelApi):
     catchment_point = models.ForeignKey(
         CatchmentPoint, on_delete=models.CASCADE, verbose_name="Punto de captacion"
     )
-    date_time_medition = models.DateTimeField(
+    date_time_medition = AwareDateTimeField(
         max_length=800, blank=True, null=True, verbose_name="Fecha/hora medición"
     )
-    date_time_last_logger = models.DateTimeField(
+    date_time_last_logger = AwareDateTimeField(
         max_length=800, blank=True, null=True, verbose_name="Fecha/hora logger"
     )
     days_not_conection = models.IntegerField(
@@ -53,12 +54,12 @@ class InteractionDetail(ModelApi):
         default=0.0, verbose_name="Nivel freático(mt)", max_digits=5, decimal_places=2
     )
 
-    send_dga = models.BooleanField(default=False, verbose_name="Agregar a la cola DGA")
+    send_dga = models.BooleanField(default=False, verbose_name="Agregar a la cola DGA", db_index=True)
 
     return_dga = models.TextField(max_length=3000, blank=True, null=True)
 
     n_voucher = models.TextField(max_length=3000, blank=True, null=True)
-    is_error = models.BooleanField(default=False, verbose_name="Error")
+    is_error = models.BooleanField(default=False, verbose_name="Error", db_index=True)
 
     notification = models.ForeignKey(
         NotificationsCatchment,
@@ -77,8 +78,21 @@ class InteractionDetail(ModelApi):
         indexes = [
             models.Index(fields=['catchment_point', 'date_time_medition']),
             models.Index(fields=['date_time_medition']),
+            models.Index(fields=['send_dga', 'catchment_point', 'date_time_medition']),
+            models.Index(fields=['is_error']),
         ]
         unique_together = ("catchment_point", "date_time_medition")
+
+    def save(self, *args, **kwargs):
+        from django.utils import timezone
+        from datetime import datetime
+
+        for field_name in ("date_time_medition", "date_time_last_logger"):
+            value = getattr(self, field_name, None)
+            if isinstance(value, datetime) and timezone.is_naive(value):
+                setattr(self, field_name, timezone.make_aware(value))
+
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return str(self.catchment_point)
