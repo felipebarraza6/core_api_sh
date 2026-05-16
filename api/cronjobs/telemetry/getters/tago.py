@@ -3,15 +3,24 @@ import time
 import requests
 
 
-def get_data_tago(token_service, str_variable):
-    """Obtener datos de THETHINGS."""
+def _provider_val(provider, key, default=None):
+    if not provider:
+        return default
+    return provider.get(key, default) if isinstance(provider, dict) else getattr(provider, key, default)
 
-    token = token_service  # Reemplazar "YOUR_TOKEN" con el valor real del token
-    url = f"https://api.tago.io/data/?variable={str_variable}&query=last_item"
+
+def get_data_tago(provider, token_service, str_variable):
+    """Obtener datos de Tago.io."""
+
+    token = token_service
+    base_url = _provider_val(provider, 'base_url') or "https://api.tago.io"
+    url = f"{base_url.rstrip('/')}/data/?variable={str_variable}&query=last_item"
+    header_name = _provider_val(provider, 'auth_header_name') or "authorization"
+    auth_token = _provider_val(provider, 'auth_token') or token
     for _ in range(3):  # Intentar hasta 3 veces
         try:
             response = requests.request("GET", url, timeout=5, headers={
-                                        "authorization": token})
+                                        header_name: auth_token})
             response.raise_for_status()
             data = response.json()
             if data and data['result'] and len(data['result']) > 0:

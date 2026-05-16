@@ -14,6 +14,7 @@ from api.core.models import (
     InteractionDetail, User, Client, ProjectCatchments, CatchmentPoint,
     ProfileDataConfigCatchment, ProfileIkoluCatchment, DgaDataConfigCatchment,
     SchemesCatchment, Variable, RegisterPersons, NotificationsCatchment,
+    TelemetryProvider,
     ResponseNotificationsCatchment, TypeFileCatchment, FileCatchment
 )
 from import_export.admin import ImportExportModelAdmin, ExportActionMixin
@@ -28,7 +29,7 @@ admin.site.site_title = "SmartHydro Admin"
 admin.site.index_title = "Panel de Administración"
 
 # Configuración global de admin
-# (La organización del menú se gestiona en settings.py via JAZZMIN_SETTINGS)
+# (La organización del menú se gestiona en admin.py con configuración estándar Django)
 
 # Configurar paginación global a 24 elementos por página para todos los admins
 # Esto mejora la carga y rendimiento del admin
@@ -44,34 +45,34 @@ class AdminIndicatorsMixin:
     Mixin para agregar indicadores en la cabecera de las páginas de listado.
     Cada admin puede sobrescribir get_indicators() para personalizar sus indicadores.
     """
-    
+
     def get_indicators(self, request, queryset):
         """
         Retorna una lista de indicadores para mostrar en la cabecera.
         Cada indicador es un dict con: value, label, icon, color, url (opcional)
-        
+
         Args:
             request: HttpRequest
             queryset: QuerySet filtrado según los filtros aplicados
-            
+
         Returns:
             list: Lista de dicts con indicadores
         """
         return []
-    
+
     def changelist_view(self, request, extra_context=None):
         """
         Sobrescribe changelist_view para agregar indicadores al contexto.
         """
         extra_context = extra_context or {}
-        
+
         # Llamar al changelist_view del padre para obtener el queryset filtrado
         response = super().changelist_view(request, extra_context)
-        
+
         # Si es una respuesta HTTP (redirect), retornarla
         if hasattr(response, 'status_code'):
             return response
-        
+
         # Obtener el queryset del contexto
         if hasattr(response, 'context_data'):
             cl = response.context_data.get('cl')
@@ -80,14 +81,14 @@ class AdminIndicatorsMixin:
                 # Obtener indicadores
                 indicators = self.get_indicators(request, queryset)
                 response.context_data['indicators'] = indicators
-                
+
                 # Agregar datos para gráficos si el admin los necesita
                 if hasattr(self, 'get_charts_data'):
                     import json
                     charts_data = self.get_charts_data(request, queryset)
                     # Convertir a JSON para el template
                     response.context_data['charts_data'] = json.dumps(charts_data)
-        
+
         return response
 
 
@@ -184,7 +185,7 @@ class UserAdm(ExportActionMixin, UserAdmin):
     search_fields = ('username', 'email', 'first_name', 'last_name')
     list_filter = ('is_staff', 'is_active', 'is_superuser', 'date_joined')
     ordering = ('-date_joined',)
-    
+
     # Fieldsets para el formulario de edición
     fieldsets = (
         ('Información Básica', {
@@ -205,7 +206,7 @@ class UserAdm(ExportActionMixin, UserAdmin):
             'description': 'Información de registro y última sesión.'
         }),
     )
-    
+
     # Fieldsets para el formulario de creación
     add_fieldsets = (
         (None, {
@@ -219,7 +220,7 @@ class UserAdm(ExportActionMixin, UserAdmin):
             'fields': ('is_staff', 'is_active', 'is_superuser'),
         }),
     )
-    
+
     readonly_fields = ('last_login', 'date_joined')
 
 admin.site.register(User, UserAdm)
@@ -318,7 +319,7 @@ class HasDisconnectionFilter(admin.SimpleListFilter):
             ).values('catchment_point').annotate(
                 latest_date=Max('date_time_medition')
             )
-            
+
             disconnected_points = []
             for interaction in latest_interactions:
                 latest = InteractionDetail.objects.filter(
@@ -329,7 +330,7 @@ class HasDisconnectionFilter(admin.SimpleListFilter):
                 ).exists()
                 if latest:
                     disconnected_points.append(interaction['catchment_point'])
-            
+
             return queryset.filter(id__in=disconnected_points)
         elif self.value() == 'connected':
             latest_interactions = InteractionDetail.objects.filter(
@@ -337,7 +338,7 @@ class HasDisconnectionFilter(admin.SimpleListFilter):
             ).values('catchment_point').annotate(
                 latest_date=Max('date_time_medition')
             )
-            
+
             connected_points = []
             for interaction in latest_interactions:
                 latest = InteractionDetail.objects.filter(
@@ -347,7 +348,7 @@ class HasDisconnectionFilter(admin.SimpleListFilter):
                 ).exists()
                 if latest:
                     connected_points.append(interaction['catchment_point'])
-            
+
             return queryset.filter(id__in=connected_points)
         return queryset
 
@@ -413,10 +414,10 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
         'get_send_dga_badge', 'get_voucher_badge', 'get_status_badge'
     )
     date_hierarchy = 'date_time_medition'
-    
+
     # ✅ Paginación: 24 elementos por página
     list_per_page = ADMIN_LIST_PER_PAGE
-    
+
     # ✅ Fieldsets para organizar mejor
     fieldsets = (
         ('Información Básica', {
@@ -438,7 +439,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
             'description': 'Estado de conexión del punto. is_partial indica si hay variables funcionando pero otras fallando.'
         }),
     )
-    
+
     # ✅ Autocomplete para relaciones
     autocomplete_fields = ['catchment_point']
 
@@ -472,12 +473,12 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
 
     # ✅ Búsqueda mejorada
     search_fields = (
-        'catchment_point__title', 
+        'catchment_point__title',
         'catchment_point__project__name',
         'n_voucher',
         'id'
     )
-    
+
     # ✅ Filtros mejorados y organizados
     # Filtros principales primero (más usados), luego filtros de estado
     list_filter = (
@@ -490,7 +491,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
         DaysNotConnectionFilter,  # Filtro días sin conexión
         PartialDisconnectionFilter,  # ✅ NEW: Filtro desconexión parcial vs total
     )
-    
+
     # ✅ Solo lectura para campos calculados
     readonly_fields = ('total_diff', 'total_today_diff', 'days_not_conection', 'is_partial')
 
@@ -499,7 +500,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
         """Calcula y formatea el GAP (tiempo desde último cambio)"""
         if current_value is None:
             return ""
-            
+
         try:
             # Buscar el registro anterior DIERENTE
             prev = obj.__class__.objects.filter(
@@ -508,12 +509,12 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
             ).exclude(
                 **{field_name: current_value}
             ).order_by('-date_time_medition').only('date_time_medition').first()
-            
+
             gap_html = ""
             if prev and prev.date_time_medition:
                 diff = obj.date_time_medition - prev.date_time_medition
                 minutes = int(diff.total_seconds() / 60)
-                
+
                 if minutes < 60:
                     time_str = f"{minutes}m"
                     color = "#28a745" # Verde < 1h
@@ -526,11 +527,11 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                     hours = (minutes % 1440) // 60
                     time_str = f"{days}d {hours}h"
                     color = "#dc3545" # Rojo > 24h
-                
+
                 gap_html = f'<div style="color: {color}; font-size: 10px; margin-top: 2px;">GAP: {time_str}</div>'
             else:
                 gap_html = '<div style="color: #999; font-size: 10px; margin-top: 2px;">GAP: --</div>'
-                
+
             return gap_html
         except Exception:
             return ""
@@ -542,7 +543,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
         if len(full_name) > 25:
             short_name = full_name[:22] + "..."
             point_html = f'<span title="{full_name}" style="cursor: help; border-bottom: 1px dotted #999;">{short_name}</span>'
-        
+
         # Obtener info de Proyecto y Cliente
         try:
             p = obj.catchment_point.project
@@ -562,7 +563,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
         return mark_safe(point_html)
     get_catchment_point_display.short_description = 'Punto de Captación'
     get_catchment_point_display.admin_order_field = 'catchment_point__title'
-    
+
 
 
     def get_total_con_escala(self, obj):
@@ -580,26 +581,26 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
         try:
             from api.core.utils.flow_display import get_interaction_flow_display_data
             flow_data = get_interaction_flow_display_data(obj)
-            
+
             val = flow_data["value"]
             is_calc = flow_data["is_calculated"]
             flow_type = flow_data["type"]
-            
+
             flow_html = f"{val:.2f}"
             if is_calc:
                 label = "(prom)" if flow_type == "MEDIO_DIARIO" else "(calc)"
                 flow_html = f'<span style="color: #28a745; font-weight: bold;">{val:.2f} {label}</span>'
-            
+
             # GAP para flow (usando el valor crudo almacenado para comparación)
             gap_html = self._get_gap_html(obj, 'flow', obj.flow)
-            
+
             return mark_safe(f'<div style="line-height: 1.2;">{flow_html}{gap_html}</div>')
         except Exception as e:
             return mark_safe(f'<span style="color: #dc3545;">Error</span>')
-    
+
     get_flow_display.short_description = 'Caudal'
     get_flow_display.admin_order_field = 'flow'
-    
+
     def get_consumo_display(self, obj):
         """Muestra consumo (total_diff)"""
         val = obj.total_diff or 0.0
@@ -612,7 +613,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
         val = obj.pulses
         if val is None:
             return "-"
-        
+
         gap_html = self._get_gap_html(obj, 'pulses', val)
         return mark_safe(f'<div style="line-height: 1.2;">{val}{gap_html}</div>')
     get_pulses_display.short_description = 'Pulsos'
@@ -696,9 +697,9 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 return mark_safe(f'<span style="background: #dc3545; color: white; padding: 3px 8px; border-radius: 3px;">🔴 Desconectado ({obj.days_not_conection}d)</span>')
         else:
             return mark_safe('<span style="background: #28a745; color: white; padding: 3px 8px; border-radius: 3px;">✅ OK</span>')
-    
+
     get_status_badge.short_description = 'Estado'
-    
+
     def get_voucher_badge(self, obj):
         """Badge para voucher DGA"""
         if obj.n_voucher:
@@ -799,10 +800,10 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
         Obtiene indicadores para InteractionDetail basados en el queryset filtrado.
         """
         indicators = []
-        
+
         # Calcular métricas del queryset filtrado
         total_records = queryset.count()
-        
+
         if total_records > 0:
             # Métricas agregadas
             metrics = queryset.aggregate(
@@ -813,10 +814,10 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 error_count=Count('id', filter=Q(is_error=True)),
                 dga_queue=Count('id', filter=Q(send_dga=True)),
             )
-            
+
             # Última medición
             last_record = queryset.order_by('-date_time_medition').first()
-            
+
             # Indicador: Total de registros
             indicators.append({
                 'value': f'{total_records:,}',
@@ -824,7 +825,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 'icon': 'fas fa-database',
                 'color': 'primary',
             })
-            
+
             # Indicador: Promedio de caudal
             if metrics['avg_flow']:
                 indicators.append({
@@ -833,7 +834,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                     'icon': 'fas fa-tint',
                     'color': 'info',
                 })
-            
+
             # Indicador: Total acumulado
             if metrics['total_consumption']:
                 indicators.append({
@@ -842,7 +843,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                     'icon': 'fas fa-chart-bar',
                     'color': 'success',
                 })
-            
+
             # Indicador: Errores
             error_count = metrics['error_count'] or 0
             error_pct = (error_count / total_records * 100) if total_records > 0 else 0
@@ -852,7 +853,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 'icon': 'fas fa-exclamation-triangle',
                 'color': 'danger' if error_count > 0 else 'success',
             })
-            
+
             # Indicador: Cola DGA
             dga_count = metrics['dga_queue'] or 0
             indicators.append({
@@ -861,7 +862,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 'icon': 'fas fa-paper-plane',
                 'color': 'warning' if dga_count > 0 else 'secondary',
             })
-            
+
             # Indicador: Última medición
             if last_record:
                 last_date = last_record.date_time_medition
@@ -876,7 +877,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                             time_str = f'{hours} h'
                     else:
                         time_str = f'{time_diff.days} días'
-                    
+
                     indicators.append({
                         'value': time_str,
                         'label': 'Última Medición',
@@ -891,9 +892,9 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 'icon': 'fas fa-database',
                 'color': 'secondary',
             })
-        
+
         return indicators
-    
+
     def get_charts_data(self, request, queryset):
         """
         Obtiene datos para gráficos basados en el queryset filtrado.
@@ -904,12 +905,12 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
             'nivel_chart': {'labels': [], 'data': []},
             'errors_chart': {'labels': [], 'data': []},
         }
-        
+
         # Detectar filtros aplicados
         point_id = request.GET.get('catchment_point')
         date_from = request.GET.get('date_time_medition__gte')
         date_to = request.GET.get('date_time_medition__lte')
-        
+
         # Calcular días para consulta
         days = 7  # Por defecto
         if date_from:
@@ -919,7 +920,7 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 days = min(days, 30)  # Máximo 30 días
             except:
                 pass
-        
+
         # Obtener datos por hora (últimas 24h si hay filtro de punto)
         if point_id:
             last_24h = timezone.now() - timedelta(hours=24)
@@ -933,18 +934,18 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 total_consumption=Sum('total_diff'),
                 error_count=Count('id', filter=Q(is_error=True)),
             ).order_by('hour')
-            
+
             for item in hourly_data:
                 hour_str = item['hour'].strftime('%H:%M') if item['hour'] else ''
                 charts_data['flow_chart']['labels'].append(hour_str)
                 charts_data['flow_chart']['data'].append(float(item['avg_flow']) if item['avg_flow'] else 0)
-                
+
                 charts_data['nivel_chart']['labels'].append(hour_str)
                 charts_data['nivel_chart']['data'].append(float(item['avg_nivel']) if item['avg_nivel'] else 0)
-                
+
                 charts_data['total_chart']['labels'].append(hour_str)
                 charts_data['total_chart']['data'].append(int(item['total_consumption']) if item['total_consumption'] else 0)
-                
+
                 charts_data['errors_chart']['labels'].append(hour_str)
                 charts_data['errors_chart']['data'].append(int(item['error_count']) if item['error_count'] else 0)
         else:
@@ -957,21 +958,21 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 total_consumption=Sum('total_diff'),
                 error_count=Count('id', filter=Q(is_error=True)),
             ).order_by('date')[:30]  # Últimos 30 días
-            
+
             for item in daily_data:
                 date_str = item['date'].strftime('%d/%m') if item['date'] else ''
                 charts_data['flow_chart']['labels'].append(date_str)
                 charts_data['flow_chart']['data'].append(float(item['avg_flow']) if item['avg_flow'] else 0)
-                
+
                 charts_data['nivel_chart']['labels'].append(date_str)
                 charts_data['nivel_chart']['data'].append(float(item['avg_nivel']) if item['avg_nivel'] else 0)
-                
+
                 charts_data['total_chart']['labels'].append(date_str)
                 charts_data['total_chart']['data'].append(int(item['total_consumption']) if item['total_consumption'] else 0)
-                
+
                 charts_data['errors_chart']['labels'].append(date_str)
                 charts_data['errors_chart']['data'].append(int(item['error_count']) if item['error_count'] else 0)
-        
+
         return charts_data
 
 
@@ -999,26 +1000,26 @@ class ClientAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin):
             'description': 'Información de contacto del cliente para comunicación y facturación.'
         }),
     )
-    
+
     def get_indicators(self, request, queryset):
         """
         Obtiene indicadores para Client basados en el queryset filtrado.
         """
         indicators = []
-        
+
         total_clients = queryset.count()
-        
+
         if total_clients > 0:
             # Total de proyectos
             total_projects = ProjectCatchments.objects.filter(
                 client__in=queryset
             ).count()
-            
+
             # Total de puntos
             total_points = CatchmentPoint.objects.filter(
                 project__client__in=queryset
             ).count()
-            
+
             # Indicador: Total de clientes
             indicators.append({
                 'value': f'{total_clients}',
@@ -1026,7 +1027,7 @@ class ClientAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin):
                 'icon': 'fas fa-building',
                 'color': 'primary',
             })
-            
+
             # Indicador: Total de proyectos
             indicators.append({
                 'value': f'{total_projects}',
@@ -1034,7 +1035,7 @@ class ClientAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin):
                 'icon': 'fas fa-project-diagram',
                 'color': 'info',
             })
-            
+
             # Indicador: Total de puntos
             indicators.append({
                 'value': f'{total_points}',
@@ -1049,7 +1050,7 @@ class ClientAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin):
                 'icon': 'fas fa-building',
                 'color': 'secondary',
             })
-        
+
         return indicators
 
 
@@ -1068,31 +1069,31 @@ class ProjectCatchmentsAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
     list_filter = ('created', 'client')
     autocomplete_fields = ['client']
     list_per_page = ADMIN_LIST_PER_PAGE
-    
+
     def get_points_count(self, obj):
         count = obj.catchment_points.count()
         return mark_safe(f'<strong>{count}</strong> puntos')
     get_points_count.short_description = 'Puntos de Captación'
-    
+
     def get_indicators(self, request, queryset):
         """
         Obtiene indicadores para ProjectCatchments basados en el queryset filtrado.
         """
         indicators = []
-        
+
         total_projects = queryset.count()
-        
+
         if total_projects > 0:
             # Total de puntos en los proyectos
             total_points = CatchmentPoint.objects.filter(
                 project__in=queryset
             ).count()
-            
+
             # Proyectos con telemetría activa
             projects_with_telemetry = queryset.filter(
                 catchment_points__data_config_profiles__is_telemetry=True
             ).distinct().count()
-            
+
             # Indicador: Total de proyectos
             indicators.append({
                 'value': f'{total_projects}',
@@ -1100,7 +1101,7 @@ class ProjectCatchmentsAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 'icon': 'fas fa-project-diagram',
                 'color': 'primary',
             })
-            
+
             # Indicador: Total de puntos
             indicators.append({
                 'value': f'{total_points}',
@@ -1108,7 +1109,7 @@ class ProjectCatchmentsAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 'icon': 'fas fa-map-marker-alt',
                 'color': 'info',
             })
-            
+
             # Indicador: Proyectos con telemetría
             telemetry_pct = (projects_with_telemetry / total_projects * 100) if total_projects > 0 else 0
             indicators.append({
@@ -1124,7 +1125,7 @@ class ProjectCatchmentsAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 'icon': 'fas fa-project-diagram',
                 'color': 'secondary',
             })
-        
+
         return indicators
 
 
@@ -1146,7 +1147,7 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
         'get_providers_badge', 'get_telemetry_status', 'last_interaction_detail'
     )
     list_per_page = ADMIN_LIST_PER_PAGE
-    
+
     def changelist_view(self, request, extra_context=None):
         """Agregar enlace a monitoreo en tiempo real"""
         extra_context = extra_context or {}
@@ -1158,7 +1159,7 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
         Indicadores para Puntos de Captación y Acceso a Reportes
         """
         indicators = []
-        
+
         # 1. Botón de Reporte (Prioritario)
         indicators.append({
             'value': 'Descargar Excel',
@@ -1167,13 +1168,13 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
             'color': 'success', # Verde para destacar descarga
             'url': reverse('active_points_report'),
         })
-        
+
         # 2. Total de puntos
         total = queryset.count()
-        
+
         # 3. Puntos con telemetría activa
         active_telemetry = queryset.filter(data_config_profiles__is_telemetry=True).count()
-        
+
         if total > 0:
             pct_active = (active_telemetry / total) * 100
             indicators.append({
@@ -1182,13 +1183,13 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
                 'icon': 'fas fa-satellite-dish',
                 'color': 'primary',
             })
-            
+
             # 4. Puntos desconectados (Alerta)
             # Usando lógica simplificada para indicador rápido
             from django.db.models import Max
             import pytz
             from datetime import timedelta
-            
+
             # Solo considerar puntos con telemetría activa
             disconnected = queryset.filter(
                 data_config_profiles__is_telemetry=True
@@ -1196,12 +1197,12 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
                 interactiondetail__days_not_conection=0,
                 interactiondetail__date_time_medition__gte=timezone.now() - timedelta(days=1)
             ).count()
-            
+
             # Nota: La cuenta anterior es aproximada, para precisión usar filtros complejos
             # pero para indicador rápido está bien.
-        
+
         return indicators
-    
+
     # ✅ Fieldsets para organizar
     fieldsets = (
         ('Información Básica', {
@@ -1221,17 +1222,17 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
             'classes': ('collapse',)
         }),
     )
-    
+
     # ✅ Inlines para ver configuraciones relacionadas
     inlines = [ProfileDataConfigInline, DgaDataConfigInline, ProfileIkoluInline]
-    
+
     # ✅ Autocomplete
     autocomplete_fields = ['project', 'owner_user', 'users_viewers']
     filter_horizontal = ['users_viewers']
-    
+
     # ✅ Búsqueda mejorada
     search_fields = ('title', 'project__name', 'project__client__name', 'owner_user__username')
-    
+
     # ✅ Filtros mejorados
     list_filter = (
         HasDisconnectionFilter,
@@ -1243,7 +1244,7 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
         ('project__client', admin.RelatedOnlyFieldListFilter),
         TelemetryStatusFilter,
     )
-    
+
     def get_providers_badge(self, obj):
         """Badge con proveedores activos"""
         providers = []
@@ -1256,18 +1257,18 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
         if not providers:
             return mark_safe('<span style="color: #6c757d;">Sin proveedores</span>')
         return mark_safe(' '.join(providers))
-    
+
     get_providers_badge.short_description = 'Proveedores'
-    
+
     def get_telemetry_status(self, obj):
         """Estado de telemetría"""
         profile = obj.data_config_profiles.filter(is_telemetry=True).first()
         if profile:
             return mark_safe('<span style="color: #28a745;">● Activa</span>')
         return mark_safe('<span style="color: #6c757d;">○ Inactiva</span>')
-    
+
     get_telemetry_status.short_description = 'Telemetría'
-    
+
     class HasDisconnectionFilter(admin.SimpleListFilter):
         title = 'Días de desconexión'
         parameter_name = 'disconnection_days'
@@ -1285,7 +1286,7 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
                 ).values('catchment_point').annotate(
                     latest_date=Max('date_time_medition')
                 )
-                
+
                 disconnected_points = []
                 for interaction in latest_interactions:
                     latest = InteractionDetail.objects.filter(
@@ -1296,7 +1297,7 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
                     ).exists()
                     if latest:
                         disconnected_points.append(interaction['catchment_point'])
-                
+
                 return queryset.filter(id__in=disconnected_points)
             elif self.value() == 'connected':
                 latest_interactions = InteractionDetail.objects.filter(
@@ -1304,7 +1305,7 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
                 ).values('catchment_point').annotate(
                     latest_date=Max('date_time_medition')
                 )
-                
+
                 connected_points = []
                 for interaction in latest_interactions:
                     latest = InteractionDetail.objects.filter(
@@ -1314,10 +1315,10 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
                     ).exists()
                     if latest:
                         connected_points.append(interaction['catchment_point'])
-                
+
                 return queryset.filter(id__in=connected_points)
             return queryset
-    
+
     class TelemetryStatusFilter(admin.SimpleListFilter):
         title = 'Estado Telemetría'
         parameter_name = 'telemetry_status'
@@ -1340,34 +1341,34 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
         last_interaction = InteractionDetail.objects.filter(
             catchment_point=obj
         ).order_by('-date_time_medition').first()
-        
+
         if not last_interaction:
             return mark_safe('<span style="color: #6c757d;">Sin datos</span>')
-        
+
         # Validar que date_time_medition no sea None
         if not last_interaction.date_time_medition:
             return mark_safe('<span style="color: #ffc107;">⚠️ Datos incompletos</span>')
-        
+
         chile = pytz.timezone("America/Santiago")
         date_time_medition_cl = last_interaction.date_time_medition.astimezone(chile)
         date_time_logger = last_interaction.date_time_last_logger
-        
+
         # Calcular flow dinámicamente
         from api.core.models import Variable
         from api.cronjobs.telemetry.controllers.flow import average_flow
-        
+
         has_avg_flow = Variable.objects.filter(
             type_variable="CAUDAL_PROMEDIO",
             scheme_catchment__points_catchment=obj,
         ).exists()
-        
+
         flow_display = f"{last_interaction.flow:.2f}" if last_interaction.flow else "0.00"
         if has_avg_flow and last_interaction.total_diff and last_interaction.total_diff > 0:
             try:
                 point_catchment = {"id": obj.id}
                 total_actual = float(last_interaction.total) if last_interaction.total else 0
                 curr_ts = last_interaction.date_time_last_logger or last_interaction.date_time_medition
-                
+
                 if curr_ts:
                     calculated_flow = average_flow(
                         point_catchment=point_catchment,
@@ -1378,7 +1379,7 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
                         flow_display = f"{calculated_flow:.2f} (calc)"
             except:
                 pass
-        
+
         # Formato mejorado
         status_color = "#28a745" if last_interaction.days_not_conection == 0 else "#ffc107"
         return mark_safe(f"""
@@ -1391,7 +1392,7 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
                 <strong style="color: {status_color};">🔌 Desconexión:</strong> {last_interaction.days_not_conection} días
             </div>
         """)
-    
+
     last_interaction_detail.short_description = 'Última medición'
 
 
@@ -1521,26 +1522,26 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
     Un esquema puede aplicarse a múltiples puntos y contiene las variables configuradas.
     """
     list_per_page = ADMIN_LIST_PER_PAGE
-    
+
     # ✅ Lista mejorada: muestra puntos y variables de forma más clara
     list_display = ('id', 'name', 'get_points_list', 'get_variables_list', 'created')
-    
+
     # ✅ Búsqueda mejorada: buscar por nombre y puntos asociados
     search_fields = ('name', 'description', 'points_catchment__title', 'points_catchment__project__name')
-    
+
     # ✅ Filtros útiles para gestión
     list_filter = (
         'created',
         ('points_catchment__project', admin.RelatedOnlyFieldListFilter),
         ('points_catchment', admin.RelatedOnlyFieldListFilter),
     )
-    
+
     # ✅ Usar filter_horizontal para mejor UX al seleccionar puntos
     filter_horizontal = ['points_catchment']
-    
+
     # ✅ Inlines para ver variables directamente
     inlines = [VariableInline]
-    
+
     # ✅ Fieldsets organizados
     fieldsets = (
         ('Información Básica', {
@@ -1552,21 +1553,21 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
             'description': 'Selecciona los puntos de captación asociados a este esquema'
         }),
     )
-    
+
     def get_points_list(self, obj):
         """
         Muestra lista de puntos asociados con enlaces y proyecto.
         Mejor visualización para gestión.
         """
         points = obj.points_catchment.select_related('project').all().order_by('project__name', 'title')
-        
+
         if not points.exists():
             return mark_safe('<span style="color: #999;">Sin puntos asignados</span>')
-        
+
         # Limitar a 5 puntos en la lista, mostrar total si hay más
         points_list = list(points[:5])
         total = points.count()
-        
+
         html_items = []
         for point in points_list:
             # Enlace al punto con título y proyecto
@@ -1579,7 +1580,7 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
                 f'</a> <span style="color: #666; font-size: 0.9em;">({project_name})</span>'
                 f'</li>'
             )
-        
+
         # Si hay más de 5, mostrar indicador
         if total > 5:
             html_items.append(
@@ -1587,34 +1588,34 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
                 f'... y {total - 5} punto(s) más'
                 f'</li>'
             )
-        
+
         # Mostrar total al inicio (color que funciona en tema claro y oscuro)
         result = f'<div style="margin-bottom: 8px;"><strong style="color: #417690;">Total: {total} punto(s)</strong></div>'
         result += f'<ul style="margin: 0; padding-left: 20px; list-style: none;">{"".join(html_items)}</ul>'
-        
+
         return mark_safe(result)
     get_points_list.short_description = 'Puntos Asociados'
     get_points_list.admin_order_field = 'points_catchment__title'
-    
+
     def get_variables_list(self, obj):
         """
         Muestra lista de variables con su configuración.
         Mejor visualización para gestión.
         """
         variables = obj.variables.all().order_by('type_variable', 'str_variable')
-        
+
         if not variables.exists():
             return mark_safe('<span style="color: #999;">Sin variables configuradas</span>')
-        
+
         # Limitar a 5 variables en la lista, mostrar total si hay más
         vars_list = list(variables[:5])
         total = variables.count()
-        
+
         html_items = []
         for var in vars_list:
             # Enlace a la variable con información de configuración
             url = reverse('admin:core_variable_change', args=[var.id])
-            
+
             # Badge de tipo de variable
             type_badge_colors = {
                 'NIVEL': '#4CAF50',
@@ -1623,7 +1624,7 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
                 'TOTALIZADO': '#9C27B0',
             }
             type_color = type_badge_colors.get(var.type_variable, '#666')
-            
+
             # Información de configuración según tipo
             config_info = []
             if var.type_variable == 'TOTALIZADO':
@@ -1635,10 +1636,10 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
             elif var.type_variable == 'NIVEL':
                 if var.calculate_nivel:
                     config_info.append(f'Base: {var.calculate_nivel}')
-            
+
             config_str = f' ({", ".join(config_info)})' if config_info else ''
             service_str = f' [{var.service}]' if var.service else ''
-            
+
             html_items.append(
                 f'<li style="margin-bottom: 6px; padding: 4px; background: #f5f5f5; border-left: 3px solid {type_color}; list-style: none;">'
                 f'<a href="{url}" target="_blank" style="text-decoration: none; font-weight: bold; color: {type_color};">'
@@ -1652,7 +1653,7 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
                 f'</span>'
                 f'</li>'
             )
-        
+
         # Si hay más de 5, mostrar indicador
         if total > 5:
             html_items.append(
@@ -1660,30 +1661,30 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
                 f'... y {total - 5} variable(s) más'
                 f'</li>'
             )
-        
+
         # Mostrar total al inicio (color que funciona en tema claro y oscuro)
         result = f'<div style="margin-bottom: 8px;"><strong style="color: #417690;">Total: {total} variable(s)</strong></div>'
         result += f'<ul style="margin: 0; padding-left: 0; list-style: none;">{"".join(html_items)}</ul>'
-        
+
         return mark_safe(result)
     get_variables_list.short_description = 'Variables Configuradas'
     get_variables_list.admin_order_field = 'variables__type_variable'
-    
+
     # ✅ Mejorar la vista de detalle con información adicional
     readonly_fields = ('get_points_summary', 'get_variables_summary',)
-    
+
     def get_points_summary(self, obj):
         """
         Resumen detallado de puntos en la vista de edición.
         """
         if not obj.pk:
             return "Guarda el esquema primero para ver los puntos asociados."
-        
+
         points = obj.points_catchment.select_related('project', 'owner_user').all().order_by('project__name', 'title')
-        
+
         if not points.exists():
             return mark_safe('<p style="color: #999;">No hay puntos asociados a este esquema.</p>')
-        
+
         # Agrupar por proyecto
         by_project = {}
         for point in points:
@@ -1691,13 +1692,13 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
             if project_name not in by_project:
                 by_project[project_name] = []
             by_project[project_name].append(point)
-        
+
         html = f'<div style="margin: 10px 0;"><h3>Resumen de Puntos ({points.count()} total)</h3>'
-        
+
         for project_name, project_points in sorted(by_project.items()):
             html += f'<div style="margin: 15px 0; padding: 10px; background: #f9f9f9; border-left: 3px solid #1F3461;">'
             html += f'<strong style="color: #1F3461;">{project_name}</strong> ({len(project_points)} punto(s))<ul style="margin: 8px 0 0 0; padding-left: 20px;">'
-            
+
             for point in project_points:
                 url = reverse('admin:core_catchmentpoint_change', args=[point.id])
                 owner = point.owner_user.username if point.owner_user else 'N/A'
@@ -1710,25 +1711,25 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
                     f'<span style="color: #666;">Propietario: {owner} | Frecuencia: {frecuency} min</span>'
                     f'</li>'
                 )
-            
+
             html += '</ul></div>'
-        
+
         html += '</div>'
         return mark_safe(html)
     get_points_summary.short_description = 'Resumen de Puntos'
-    
+
     def get_variables_summary(self, obj):
         """
         Resumen detallado de variables configuradas en la vista de edición.
         """
         if not obj.pk:
             return "Guarda el esquema primero para ver las variables configuradas."
-        
+
         variables = obj.variables.all().order_by('type_variable', 'str_variable')
-        
+
         if not variables.exists():
             return mark_safe('<p style="color: #999;">No hay variables configuradas en este esquema.</p>')
-        
+
         # Agrupar por tipo de variable
         by_type = {}
         for var in variables:
@@ -1736,7 +1737,7 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
             if type_display not in by_type:
                 by_type[type_display] = []
             by_type[type_display].append(var)
-        
+
         # Colores para cada tipo
         type_colors = {
             'Nivel': '#4CAF50',
@@ -1744,34 +1745,34 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
             'Caudal promedio((diff/3600)*1000)': '#FF9800',
             'Totalizado': '#9C27B0',
         }
-        
+
         html = f'<div style="margin: 10px 0;"><h3>Resumen de Variables ({variables.count()} total)</h3>'
-        
+
         for type_display, type_vars in sorted(by_type.items()):
             color = type_colors.get(type_display, '#666')
             html += f'<div style="margin: 15px 0; padding: 10px; background: #f9f9f9; border-left: 4px solid {color};">'
             html += f'<strong style="color: {color}; font-size: 1.1em;">{type_display}</strong> ({len(type_vars)} variable(s))<ul style="margin: 8px 0 0 0; padding-left: 20px;">'
-            
+
             for var in type_vars:
                 url = reverse('admin:core_variable_change', args=[var.id])
-                
+
                 # Información de configuración detallada
                 config_details = []
-                
+
                 if var.type_variable == 'TOTALIZADO':
                     config_details.append(f'<strong>Pulsos Factor:</strong> {var.pulses_factor or "N/A"}')
                 elif var.type_variable == 'CAUDAL':
                     config_details.append(f'<strong>Convertir a litros:</strong> {"Sí" if var.convert_to_lt else "No"}')
                 elif var.type_variable == 'NIVEL':
                     config_details.append(f'<strong>Base Cálculo:</strong> {var.calculate_nivel or "N/A"}')
-                
+
                 if var.service:
                     config_details.append(f'<strong>Proveedor:</strong> {var.get_service_display()}')
                 if var.token_service:
                     config_details.append(f'<strong>Token:</strong> {var.token_service[:20]}...' if len(var.token_service) > 20 else f'<strong>Token:</strong> {var.token_service}')
-                
+
                 config_html = '<br>'.join([f'<span style="color: #666; font-size: 0.9em;">{d}</span>' for d in config_details])
-                
+
                 html += (
                     f'<li style="margin: 8px 0; padding: 8px; background: white; border: 1px solid #ddd;">'
                     f'<a href="{url}" target="_blank" style="text-decoration: none; font-weight: bold; color: {color}; font-size: 1.05em;">'
@@ -1783,13 +1784,13 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
                     f'{config_html if config_details else ""}'
                     f'</li>'
                 )
-            
+
             html += '</ul></div>'
-        
+
         html += '</div>'
         return mark_safe(html)
     get_variables_summary.short_description = 'Resumen de Variables'
-    
+
     # ✅ Agregar el campo readonly al fieldsets
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
@@ -1806,6 +1807,30 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
                 }),
             )
         return fieldsets
+
+
+# ========================================
+# TELEMETRY PROVIDER ADMIN
+# ========================================
+
+@admin.register(TelemetryProvider)
+class TelemetryProviderAdmin(admin.ModelAdmin):
+    """
+    Proveedores de telemetría configurables desde el admin.
+    Permite cambiar URLs, credenciales y tokens sin tocar código.
+    """
+    list_display = ('id', 'name', 'provider_type', 'auth_type', 'is_active', 'created')
+    list_filter = ('provider_type', 'auth_type', 'is_active')
+    search_fields = ('name', 'base_url')
+    fieldsets = (
+        ('General', {
+            'fields': ('name', 'provider_type', 'base_url', 'is_active'),
+        }),
+        ('Autenticación', {
+            'fields': ('auth_type', 'auth_username', 'auth_password', 'auth_token', 'auth_header_name'),
+            'classes': ('collapse',),
+        }),
+    )
 
 
 # ========================================
@@ -1836,6 +1861,10 @@ class VariableAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin)
             'fields': ('pulses_factor', 'convert_to_lt', 'calculate_nivel', 'token_service'),
             'description': 'Parámetros de cálculo: factor de pulsos, conversiones y token de servicio.'
         }),
+        ('Proveedor CRUD', {
+            'fields': ('provider',),
+            'description': 'Proveedor configurable desde el admin (reemplaza service/token hardcodeado).'
+        }),
     )
 
 
@@ -1852,8 +1881,7 @@ class NotificationsCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
     list_per_page = ADMIN_LIST_PER_PAGE
     list_display = ('id', 'point_catchment', 'title', 'type_notification', 'is_read', 'created', 'get_responses_count')
     list_filter = ('is_read', 'created', 'type_notification', 'point_catchment__project__name')
-    search_fields = ('title', 'message', 'point_catchment__title')
-    autocomplete_fields = ['point_catchment']
+    search_fields = ('title', 'message', 'emails', 'point_catchment__title')
     date_hierarchy = 'created'
     actions = ['mark_as_read']
 
@@ -1861,34 +1889,34 @@ class NotificationsCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
         updated = queryset.update(is_read=True)
         self.message_user(request, f"{updated} notificaciones marcadas como leídas.")
     mark_as_read.short_description = "Marcar como leídas"
-    
+
     def get_responses_count(self, obj):
         count = obj.responses.count()
         return mark_safe(f'<strong>{count}</strong> respuestas')
     get_responses_count.short_description = 'Respuestas'
-    
+
     def get_indicators(self, request, queryset):
         """
         Obtiene indicadores para NotificationsCatchment basados en el queryset filtrado.
         """
         indicators = []
-        
+
         total_notifications = queryset.count()
-        
+
         if total_notifications > 0:
             # Notificaciones activas
             active = queryset.filter(is_active=True).count()
-            
+
             # Notificaciones sin respuesta
             without_response = queryset.filter(
                 responses__isnull=True
             ).distinct().count()
-            
+
             # Notificaciones críticas
             critical = queryset.filter(
                 type_notification__in=['CRITICAL', 'ALERT']
             ).count()
-            
+
             # Indicador: Total de notificaciones
             indicators.append({
                 'value': f'{total_notifications}',
@@ -1896,7 +1924,7 @@ class NotificationsCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
                 'icon': 'fas fa-bell',
                 'color': 'primary',
             })
-            
+
             # Indicador: Activas
             active_pct = (active / total_notifications * 100) if total_notifications > 0 else 0
             indicators.append({
@@ -1905,7 +1933,7 @@ class NotificationsCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
                 'icon': 'fas fa-exclamation-circle',
                 'color': 'warning' if active > 0 else 'success',
             })
-            
+
             # Indicador: Sin respuesta
             no_response_pct = (without_response / total_notifications * 100) if total_notifications > 0 else 0
             indicators.append({
@@ -1914,7 +1942,7 @@ class NotificationsCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
                 'icon': 'fas fa-question-circle',
                 'color': 'danger' if without_response > 0 else 'success',
             })
-            
+
             # Indicador: Críticas
             if critical > 0:
                 indicators.append({
@@ -1930,7 +1958,7 @@ class NotificationsCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
                 'icon': 'fas fa-bell',
                 'color': 'secondary',
             })
-        
+
         return indicators
 
 
@@ -1984,7 +2012,7 @@ class FileCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelA
     search_fields = ('name', 'point_catchment__title')
     autocomplete_fields = ['point_catchment', 'type_file']
     date_hierarchy = 'created'
-    
+
     def get_file_link(self, obj):
         if obj.file:
             return mark_safe(f'<a href="{obj.file.url}" target="_blank">📄 Ver archivo</a>')
@@ -2068,24 +2096,24 @@ def generar_ot_soporte_pdf(modeladmin, request, queryset):
     """
     from api.core.reports.ot_soporte_generator import generate_ot_soporte_pdf
     from django.http import HttpResponse
-    
+
     if queryset.count() != 1:
         modeladmin.message_user(request, '⚠️ Por favor seleccione solo un punto para generar la OT.', level='warning')
         return
-    
+
     point = queryset.first()
-    
+
     try:
         # Generar PDF
         pdf_buffer = generate_ot_soporte_pdf(point.id)
-        
+
         # Crear respuesta HTTP
         response = HttpResponse(
             pdf_buffer.read(),
             content_type='application/pdf'
         )
         response['Content-Disposition'] = f'attachment; filename="OT_Soporte_{point.id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
-        
+
         modeladmin.message_user(request, f'✅ OT Soporte generada para {point.title}.', level='success')
         return response
     except Exception as e:
@@ -2106,14 +2134,14 @@ def generar_analisis_telemetria_pdf(modeladmin, request, queryset):
     from django.http import HttpResponse
     import zipfile
     from io import BytesIO
-    
+
     if not queryset.exists():
         modeladmin.message_user(request, '⚠️ No hay puntos seleccionados.', level='warning')
         return
-    
+
     try:
         user_info = f"{request.user.get_full_name() or request.user.username} ({request.user.email or 'N/A'})"
-        
+
         # Si es un solo punto, devolver PDF directo
         if queryset.count() == 1:
             point = queryset.first()
@@ -2122,7 +2150,7 @@ def generar_analisis_telemetria_pdf(modeladmin, request, queryset):
             response['Content-Disposition'] = f'attachment; filename="analisis_telemetria_{point.id}_{point.title[:30]}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
             modeladmin.message_user(request, f'✅ PDF generado para punto {point.title}.', level='success')
             return response
-        
+
         # Si son varios puntos, generar ZIP con PDFs separados
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
@@ -2131,11 +2159,11 @@ def generar_analisis_telemetria_pdf(modeladmin, request, queryset):
                 pdf_buffer.seek(0)
                 filename = f"analisis_telemetria_{point.id}_{point.title[:30]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
                 zip_file.writestr(filename, pdf_buffer.read())
-        
+
         zip_buffer.seek(0)
         response = HttpResponse(zip_buffer.read(), content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename="analisis_telemetria_{queryset.count()}_puntos_{datetime.now().strftime("%Y%m%d_%H%M%S")}.zip"'
-        
+
         modeladmin.message_user(request, f'✅ {queryset.count()} PDF(s) generados y comprimidos en ZIP.', level='success')
         return response
     except Exception as e:
@@ -2153,22 +2181,22 @@ def generar_analisis_telemetria_proyecto_pdf(modeladmin, request, queryset):
     from api.core.models import CatchmentPoint
     import zipfile
     from io import BytesIO
-    
+
     if not queryset.exists():
         modeladmin.message_user(request, '⚠️ No hay proyectos seleccionados.', level='warning')
         return
-    
+
     try:
         # Obtener todos los puntos de los proyectos seleccionados
         all_points = CatchmentPoint.objects.filter(project__in=queryset)
-        
+
         if not all_points.exists():
             modeladmin.message_user(request, '⚠️ Los proyectos seleccionados no tienen puntos de captación.', level='warning')
             return
-        
+
         user_info = f"{request.user.get_full_name() or request.user.username} ({request.user.email or 'N/A'})"
         project_name = queryset.first().name if queryset.count() == 1 else f"{queryset.count()} Proyectos"
-        
+
         # Generar ZIP con PDFs separados
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
@@ -2177,11 +2205,11 @@ def generar_analisis_telemetria_proyecto_pdf(modeladmin, request, queryset):
                 pdf_buffer.seek(0)
                 filename = f"analisis_telemetria_{point.id}_{point.title[:30]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
                 zip_file.writestr(filename, pdf_buffer.read())
-        
+
         zip_buffer.seek(0)
         response = HttpResponse(zip_buffer.read(), content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename="analisis_telemetria_{project_name}_{all_points.count()}_puntos_{datetime.now().strftime("%Y%m%d_%H%M%S")}.zip"'
-        
+
         modeladmin.message_user(request, f'✅ {all_points.count()} PDF(s) generados para {queryset.count()} proyecto(s) y comprimidos en ZIP.', level='success')
         return response
     except Exception as e:
@@ -2199,31 +2227,31 @@ def generar_excel_por_proyecto(modeladmin, request, queryset):
     """
     from api.core.reports.excel_generator import generate_excel_by_project
     from django.http import HttpResponse
-    
+
     if not queryset.exists():
         modeladmin.message_user(request, '⚠️ No hay proyectos seleccionados.', level='warning')
         return
-    
+
     try:
         # Obtener todos los puntos de los proyectos seleccionados
         from api.core.models import CatchmentPoint
         all_points = CatchmentPoint.objects.filter(project__in=queryset)
-        
+
         if not all_points.exists():
             modeladmin.message_user(request, '⚠️ Los proyectos seleccionados no tienen puntos de captación.', level='warning')
             return
-        
+
         # Generar Excel
         project_name = queryset.first().name if queryset.count() == 1 else f"{queryset.count()} Proyectos"
         excel_buffer = generate_excel_by_project(list(all_points), project_name=project_name)
-        
+
         # Crear respuesta HTTP
         response = HttpResponse(
             excel_buffer.read(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         response['Content-Disposition'] = f'attachment; filename="analisis_telemetria_proyecto_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx"'
-        
+
         modeladmin.message_user(request, f'✅ Excel generado para {all_points.count()} punto(s) de {queryset.count()} proyecto(s).', level='success')
         return response
     except Exception as e:
@@ -2241,41 +2269,41 @@ def generar_excel_por_punto(modeladmin, request, queryset):
     from django.shortcuts import render
     from datetime import datetime
     import pytz
-    
+
     if not queryset.exists():
         modeladmin.message_user(request, '⚠️ No hay puntos seleccionados.', level='warning')
         return
-    
+
     if queryset.count() > 1:
         modeladmin.message_user(request, '⚠️ Por favor seleccione solo un punto para generar el Excel detallado por mes.', level='warning')
         return
-    
+
     point = queryset.first()
-    
+
     # Si es POST, procesar el formulario
     if request.method == 'POST':
         try:
             year = request.POST.get('year')
             month = request.POST.get('month')
-            
+
             # Convertir a int si se proporcionaron
             year = int(year) if year else None
             month = int(month) if month else None
-            
+
             # Validar mes
             if month and (month < 1 or month > 12):
                 modeladmin.message_user(request, '⚠️ Mes inválido. Debe ser entre 1 y 12.', level='warning')
                 return
-            
+
             # Generar Excel con filtros
             excel_buffer = generate_excel_by_point(point, year=year, month=month)
-            
+
             # Crear respuesta HTTP
             response = HttpResponse(
                 excel_buffer.read(),
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
-            
+
             # Nombre de archivo con filtros
             filename_parts = [f"analisis_telemetria_{point.id}"]
             if year:
@@ -2283,44 +2311,44 @@ def generar_excel_por_punto(modeladmin, request, queryset):
             if month:
                 filename_parts.append(f"{month:02d}")
             filename_parts.append(datetime.now().strftime("%Y%m%d_%H%M%S"))
-            
+
             response['Content-Disposition'] = f'attachment; filename="{"_".join(filename_parts)}.xlsx"'
-            
+
             periodo_text = ""
             if year and month:
-                month_names = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                month_names = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
                               'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
                 periodo_text = f" para {month_names[month]} {year}"
             elif year:
                 periodo_text = f" para el año {year}"
-            
+
             modeladmin.message_user(request, f'✅ Excel generado para punto {point.title}{periodo_text}.', level='success')
             return response
         except Exception as e:
             modeladmin.message_user(request, f'❌ Error al generar Excel: {str(e)}', level='error')
             return
-    
+
     # Si es GET, mostrar formulario de selección
     # Fix de zona horario para no reversar
     chile_tz = pytz.timezone("America/Santiago")
     now = datetime.now(chile_tz)
-    
+
     # Obtener años disponibles para este punto
     from api.core.models import InteractionDetail
     from django.db.models import Min, Max
-    
+
     years_data = InteractionDetail.objects.filter(
         catchment_point=point
     ).extra(
         select={'year': "EXTRACT(YEAR FROM date_time_medition)"}
     ).values('year').distinct().order_by('-year')
-    
+
     years = [int(y['year']) for y in years_data if y['year']]
-    
+
     # Si no hay años, usar solo el año actual
     if not years:
         years = [now.year]
-    
+
     context = {
         'title': f'Generar Excel Detallado - {point.title}',
         'point': point,
@@ -2335,7 +2363,7 @@ def generar_excel_por_punto(modeladmin, request, queryset):
         'opts': modeladmin.model._meta,
         'has_change_permission': modeladmin.has_change_permission(request),
     }
-    
+
     return render(request, 'admin/core/catchmentpoint/generar_excel_form.html', context)
 
 generar_excel_por_punto.short_description = 'Generar Excel Detallado por Mes (con filtro)'
@@ -2348,22 +2376,22 @@ def generar_excel_ultimo_mes_puntos(modeladmin, request, queryset):
     """
     from api.core.reports.excel_generator import generate_excel_last_month_by_points
     from django.http import HttpResponse
-    
+
     if not queryset.exists():
         modeladmin.message_user(request, '⚠️ No hay puntos seleccionados.', level='warning')
         return
-    
+
     try:
         # Generar Excel
         excel_buffer = generate_excel_last_month_by_points(list(queryset))
-        
+
         # Crear respuesta HTTP
         response = HttpResponse(
             excel_buffer.read(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         response['Content-Disposition'] = f'attachment; filename="analisis_ultimo_mes_{queryset.count()}_puntos_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx"'
-        
+
         modeladmin.message_user(request, f'✅ Excel del último mes completo generado para {queryset.count()} punto(s).', level='success')
         return response
     except Exception as e:
@@ -2379,15 +2407,15 @@ def generar_excel_ano_anterior_puntos(modeladmin, request, queryset):
     """
     from api.core.reports.excel_generator import generate_excel_last_year_by_points
     from django.http import HttpResponse
-    
+
     if not queryset.exists():
         modeladmin.message_user(request, '⚠️ No hay puntos seleccionados.', level='warning')
         return
-    
+
     try:
         # Generar Excel
         excel_buffer = generate_excel_last_year_by_points(list(queryset))
-        
+
         # Crear respuesta HTTP
         prev_year = datetime.now().year - 1
         response = HttpResponse(
@@ -2395,7 +2423,7 @@ def generar_excel_ano_anterior_puntos(modeladmin, request, queryset):
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         response['Content-Disposition'] = f'attachment; filename="analisis_anual_{prev_year}_{queryset.count()}_puntos.xlsx"'
-        
+
         modeladmin.message_user(request, f'✅ Excel Anual {prev_year} generado para {queryset.count()} punto(s).', level='success')
         return response
     except Exception as e:
@@ -2410,15 +2438,15 @@ def generar_excel_anual_comprimido(modeladmin, request, queryset):
     """
     from api.core.reports.excel_generator import generate_excel_annual_compressed
     from django.http import HttpResponse
-    
+
     if not queryset.exists():
         modeladmin.message_user(request, '⚠️ No hay puntos seleccionados.', level='warning')
         return
-    
+
     try:
         # Generar Excel
         excel_buffer = generate_excel_annual_compressed(list(queryset))
-        
+
         # Crear respuesta HTTP
         prev_year = datetime.now().year - 1
         response = HttpResponse(
@@ -2426,7 +2454,7 @@ def generar_excel_anual_comprimido(modeladmin, request, queryset):
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         response['Content-Disposition'] = f'attachment; filename="analisis_anual_comprimido_{prev_year}_{queryset.count()}_puntos.xlsx"'
-        
+
         modeladmin.message_user(request, f'✅ Excel Anual Comprimido {prev_year} generado.', level='success')
         return response
     except Exception as e:
@@ -2442,31 +2470,31 @@ def generar_excel_ultimo_mes_proyecto(modeladmin, request, queryset):
     from api.core.reports.excel_generator import generate_excel_last_month_by_points
     from django.http import HttpResponse
     from api.core.models import CatchmentPoint
-    
+
     if not queryset.exists():
         modeladmin.message_user(request, '⚠️ No hay proyectos seleccionados.', level='warning')
         return
-    
+
     try:
         # Obtener todos los puntos de los proyectos seleccionados
         all_points = CatchmentPoint.objects.filter(project__in=queryset)
-        
+
         if not all_points.exists():
             modeladmin.message_user(request, '⚠️ Los proyectos seleccionados no tienen puntos de captación.', level='warning')
             return
-        
+
         project_name = queryset.first().name if queryset.count() == 1 else f"{queryset.count()} Proyectos"
-        
+
         # Generar Excel
         excel_buffer = generate_excel_last_month_by_points(list(all_points), project_name=project_name)
-        
+
         # Crear respuesta HTTP
         response = HttpResponse(
             excel_buffer.read(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         response['Content-Disposition'] = f'attachment; filename="analisis_ultimo_mes_{project_name}_{all_points.count()}_puntos_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx"'
-        
+
         modeladmin.message_user(request, f'✅ Excel del último mes completo generado para {all_points.count()} punto(s) de {queryset.count()} proyecto(s).', level='success')
         return response
     except Exception as e:

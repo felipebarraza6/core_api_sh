@@ -160,24 +160,51 @@ def get_data_nettra(variables, token, point_catchment):
                 and variable.get("type_variable") != "CAUDAL_PROMEDIO"
             ):
                 token_twin = variable.get("token_service")
+                provider = variable.get("provider")
+
                 data = get_data_with_retry(
-                    get_data_tdata, token_twin, variable.get("str_variable")
+
+                    get_data_tdata,
+
+                    provider,
+
+                    token_twin,
+
+                    variable.get("str_variable")
                 )
             elif (
                 variable.get("service") == "NETTRA"
                 and variable.get("type_variable") != "CAUDAL_PROMEDIO"
             ):
                 token_nettra = variable.get("token_service")
+                provider = variable.get("provider")
+
                 data = get_data_with_retry(
-                    get_data_thethings, token_nettra, variable.get("str_variable")
+
+                    get_data_thethings,
+
+                    provider,
+
+                    token_nettra,
+
+                    variable.get("str_variable")
                 )
             elif (
                 variable.get("service") == "NOVUS"
                 and variable.get("type_variable") != "CAUDAL_PROMEDIO"
             ):
                 token_novus = variable.get("token_service")
+                provider = variable.get("provider")
+
                 data = get_data_with_retry(
-                    get_data_tago, token_novus, variable.get("str_variable")
+
+                    get_data_tago,
+
+                    provider,
+
+                    token_novus,
+
+                    variable.get("str_variable")
                 )
         else:
             data = get_data_with_retry(

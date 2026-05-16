@@ -16,6 +16,7 @@ from api.core.models.catchment_points import (
     RegisterPersons
 )
 from api.core.models.interaction_detail import InteractionDetail
+from api.core.models.telemetry_providers import TelemetryProvider
 from datetime import datetime, timedelta
 import pytz
 from .interaction_detail import InteractionDetailModelSerializerNoProcessing, InteractionDetailModelSerializer
@@ -34,6 +35,22 @@ class ProjectCatchmentsSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class ProjectMiniSerializer(serializers.ModelSerializer):
+    """Serializer ligero para proyectos dentro del árbol de clientes."""
+    class Meta:
+        model = ProjectCatchments
+        fields = ['id', 'name', 'code_internal', 'client']
+
+
+class ClientWithProjectsSerializer(serializers.ModelSerializer):
+    """Serializer que anida los proyectos dentro de cada cliente."""
+    projects = ProjectMiniSerializer(source='projectcatchments_set', many=True)
+
+    class Meta:
+        model = Client
+        fields = ['id', 'name', 'rut', 'address', 'phone', 'email', 'projects']
+
+
 class CatchmentPointSerializer(serializers.ModelSerializer):
     class Meta:
         model = CatchmentPoint
@@ -47,9 +64,187 @@ class ProfileIkoluCatchmentSerializer(serializers.ModelSerializer):
 
 
 class NotificationsCatchmentSerializer(serializers.ModelSerializer):
+    emails = serializers.ListField(
+        child=serializers.EmailField(),
+        allow_empty=True,
+        required=False,
+        help_text="Lista de emails destinatarios. Ej: ['correo1@x.com', 'correo2@x.com']"
+    )
+
     class Meta:
         model = NotificationsCatchment
         fields = '__all__'
+
+
+class NotificationsCatchmentDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer extendido para retrieve (GET /api/notifications/{id}/).
+    Incluye objeto 'stats' con métricas analíticas de la alerta.
+    """
+    emails = serializers.ListField(
+        child=serializers.EmailField(),
+        allow_empty=True,
+        required=False,
+        help_text="Lista de emails destinatarios. Ej: ['correo1@x.com', 'correo2@x.com']"
+    )
+    stats = serializers.SerializerMethodField()
+
+    class Meta:
+        model = NotificationsCatchment
+        fields = '__all__'
+
+    def get_stats(self, obj):
+        """
+        Calcular estadísticas analíticas de la alerta umbral.
+        Basado en las ResponseNotificationsCatchment asociadas (disparos históricos).
+        Incluye historial de mediciones de telemetría asociadas a cada disparo.
+        """
+        responses = obj.responses.all().order_by('created')
+        total = responses.count()
+
+        if total == 0:
+            return {
+                'total_triggers': 0,
+                'first_trigger': None,
+                'last_trigger': None,
+                'triggers_last_24h': 0,
+                'triggers_last_7d': 0,
+                'triggers_last_30d': 0,
+                'active_days': 0,
+                'avg_hours_between_triggers': None,
+                'peak_hour': None,
+                'trigger_history': [],
+            }
+
+        chile = pytz.timezone('America/Santiago')
+        now = timezone.now().astimezone(chile)
+        last_24h = now - timedelta(hours=24)
+        last_7d = now - timedelta(days=7)
+        last_30d = now - timedelta(days=30)
+
+        first = responses.first()
+        last = responses.last()
+
+        # Conteos por período
+        triggers_24h = responses.filter(created__gte=last_24h).count()
+        triggers_7d = responses.filter(created__gte=last_7d).count()
+        triggers_30d = responses.filter(created__gte=last_30d).count()
+
+        # Días distintos con disparos
+        active_days = responses.datetimes('created', 'day', order='ASC').distinct().count()
+
+        # Promedio de horas entre disparos consecutivos
+        avg_hours = None
+        if total >= 2:
+            deltas = []
+            prev = None
+            for r in responses:
+                if prev:
+                    delta = (r.created - prev.created).total_seconds() / 3600
+                    deltas.append(delta)
+                prev = r
+            if deltas:
+                avg_hours = round(sum(deltas) / len(deltas), 2)
+
+        # Hora pico (hora del día con más disparos)
+        peak_hour = None
+        from django.db.models.functions import ExtractHour
+        from django.db.models import Count
+        hour_counts = (
+            obj.responses.annotate(hour=ExtractHour('created'))
+            .values('hour')
+            .annotate(count=Count('id'))
+            .order_by('-count')
+            .first()
+        )
+        if hour_counts:
+            peak_hour = {
+                'hour': hour_counts['hour'],
+                'count': hour_counts['count'],
+            }
+
+        # Extraer valor medido del último disparo (parsear texto de response)
+        last_value = None
+        if last and last.response:
+            import re
+            match = re.search(r'Valor medido:\s*([0-9.]+)', last.response)
+            if match:
+                last_value = float(match.group(1))
+
+        # ============================================================
+        # HISTORIAL DE MEDICIONES (últimos 30 días):
+        # Para cada disparo reciente, buscar el InteractionDetail más
+        # cercano en tiempo para mostrar la línea completa de telemetría
+        # ============================================================
+        trigger_history = []
+        history_limit_days = 30
+        history_cutoff = now - timedelta(days=history_limit_days)
+
+        recent_responses = list(responses.filter(created__gte=history_cutoff)[:50])
+
+        if obj.point_catchment and recent_responses:
+            first_recent = recent_responses[0]
+            last_recent = recent_responses[-1]
+
+            # Ventana de búsqueda: 2 horas antes del primer disparo reciente
+            search_start = first_recent.created - timedelta(hours=2)
+            search_end = last_recent.created + timedelta(hours=1)
+
+            interactions = list(
+                InteractionDetail.objects.filter(
+                    catchment_point=obj.point_catchment,
+                    date_time_medition__gte=search_start,
+                    date_time_medition__lte=search_end,
+                ).order_by('date_time_medition').values(
+                    'id', 'date_time_medition', 'date_time_last_logger',
+                    'nivel', 'flow', 'total', 'pulses', 'total_diff',
+                    'total_today_diff', 'days_not_conection', 'is_error',
+                    'created'
+                )
+            )
+
+            import re
+            for resp in recent_responses:
+                # Extraer valor medido del texto de la respuesta
+                measured_value = None
+                if resp.response:
+                    match = re.search(r'Valor medido:\s*([0-9.]+)', resp.response)
+                    if match:
+                        measured_value = float(match.group(1))
+
+                # Buscar el InteractionDetail más cercano en tiempo
+                closest = None
+                closest_diff = None
+                for interaction in interactions:
+                    dt = interaction.get('date_time_medition')
+                    if dt:
+                        diff = abs((dt - resp.created).total_seconds())
+                        if closest_diff is None or diff < closest_diff:
+                            closest_diff = diff
+                            closest = interaction
+
+                trigger_history.append({
+                    'triggered_at': resp.created.isoformat(),
+                    'response_text': resp.response,
+                    'measured_value': measured_value,
+                    'matched_interaction': closest,
+                })
+
+        return {
+            'total_triggers': total,
+            'first_trigger': first.created.isoformat() if first else None,
+            'last_trigger': last.created.isoformat() if last else None,
+            'triggers_last_24h': triggers_24h,
+            'triggers_last_7d': triggers_7d,
+            'triggers_last_30d': triggers_30d,
+            'active_days': active_days,
+            'avg_hours_between_triggers': avg_hours,
+            'peak_hour': peak_hour,
+            'last_measured_value': last_value,
+            'history_limit_days': history_limit_days,
+            'history_limit_records': 50,
+            'trigger_history': trigger_history,
+        }
 
 
 class ResponseDepthNotificationsCatchmentSerializer(serializers.ModelSerializer):
@@ -89,11 +284,21 @@ class DgaCronSerializer(serializers.ModelSerializer):
                   'total_granted_dga', 'shac', 'date_start_compliance', 'date_created_code',)
 
 
+class TelemetryProviderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TelemetryProvider
+        fields = ('id', 'name', 'provider_type', 'base_url', 'auth_type',
+                  'auth_username', 'auth_password', 'auth_token', 'auth_header_name',
+                  'is_active')
+
+
 class VariableCronSerializer(serializers.ModelSerializer):
+    provider = TelemetryProviderSerializer(read_only=True)
+
     class Meta:
         model = Variable
         fields = ('id', 'str_variable', 'type_variable', 'token_service', 'service',
-                  'pulses_factor', 'convert_to_lt', 'calculate_nivel',)
+                  'pulses_factor', 'convert_to_lt', 'calculate_nivel', 'provider',)
 
 
 class SchemesCatchmentCronSerializer(serializers.ModelSerializer):
@@ -107,7 +312,7 @@ class SchemesCatchmentCronSerializer(serializers.ModelSerializer):
         Retrieve and serialize variables for the given scheme catchment.
         """
         get_data = Variable.objects.filter(
-            scheme_catchment=obj).all().order_by(
+            scheme_catchment=obj).select_related('provider').order_by(
             Case(
                 When(type_variable='TOTALIZADO', then=0),
                 When(token_service__isnull=True, then=2),
@@ -313,13 +518,6 @@ class FileCatchmentDetailSerializer(serializers.ModelSerializer):
         model = FileCatchment
         fields = ('id', 'file', 'name', 'description',
                   'type_file', 'created', 'modified')
-
-
-class NotificationsCatchmentDetailSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = NotificationsCatchment
-        fields = ('id', 'created', 'title', 'message',
-                  'type_variable', 'type_alert')
 
 
 class CatchmentPointIkoluSerializer(serializers.ModelSerializer):

@@ -601,6 +601,16 @@ class Variable(ModelApi):
         verbose_name="Proveedor",
     )
 
+    provider = models.ForeignKey(
+        "core.TelemetryProvider",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Proveedor CRUD",
+        related_name="variables",
+        help_text="Proveedor configurado desde el admin (reemplaza service/token hardcodeado)",
+    )
+
     # Total
     pulses_factor = models.IntegerField(
         blank=True,
