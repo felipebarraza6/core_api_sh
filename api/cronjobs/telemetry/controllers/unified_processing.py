@@ -3,7 +3,7 @@ CONTROLADORES UNIFICADOS PARA CRONJOBS DE TELEMETRÍA
 =====================================================
 
 Este archivo centraliza toda la lógica de procesamiento de variables para que
-todos los cronjobs (twin.py, twin_f1.py, twin_f5.py, nettra.py, novus.py)
+telemetry_unified.py (reemplaza cronjobs legacy)
 usen exactamente la misma lógica robusta.
 
 IMPORTANTE: Todos los cronjobs deben importar y usar estas funciones.

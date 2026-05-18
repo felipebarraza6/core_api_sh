@@ -162,37 +162,6 @@ CRONJOBS = [
     # (
     #     "* * * * *",
     #     "api.cronjobs.telemetry.twin_f1.run",
-    #     ">> /tmp/smarthydro/twin_1.log 2>&1",
-    # ),
-    # (
-    #     "*/5 * * * *",
-    #     "api.cronjobs.telemetry.twin_f5.run",
-    #     ">> /tmp/smarthydro/twin_5.log 2>&1",
-    # ),
-    # (
-    #     "*/10 * * * *",
-    #     "api.cronjobs.telemetry.twin_f10.run",
-    #     ">> /tmp/smarthydro/twin_10.log 2>&1",
-    # ),
-    # (
-    #     "0 * * * *",
-    #     "api.cronjobs.telemetry.nettra.run",
-    #     ">> /tmp/smarthydro/nettra_60.log 2>&1",
-    # ),
-    # (
-    #     "*/5 * * * *",
-    #     "api.cronjobs.telemetry.nettra_f5.run",
-    #     ">> /tmp/smarthydro/nettra_5.log 2>&1",
-    # ),
-    # (
-    #     "0 * * * *",
-    #     "api.cronjobs.telemetry.novus.run",
-    #     ">> /tmp/smarthydro/novus_60.log 2>&1",
-    # ),
-    # UNIFICADO: novus 60 minutos (paralelo a legacy para validación Fase 3)
-    # Si falla, comentar esta línea y ejecutar: python manage.py crontab add
-    (
-        "2 * * * *",
         "api.cronjobs.telemetry.telemetry_unified.run_novus_60",
         ">> /tmp/smarthydro/unified_novus_60.log 2>&1",
     ),
