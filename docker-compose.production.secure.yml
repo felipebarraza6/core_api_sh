@@ -212,7 +212,7 @@ services:
   cron:
     build: .
     container_name: cron_jobs_secure
-    entrypoint: /usr/local/bin/cron-entrypoint.sh
+    entrypoint: /app/cron-entrypoint.sh
     environment:
       - LOCAL_DB_NAME=smarthydro_prod
       - LOCAL_DB_USER=smarthydro_user

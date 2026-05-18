@@ -426,8 +426,21 @@ def process_variable_safely(
     """
     type_variable = variable.get("type_variable")
 
-    # Validación de calidad: rango min/max
+    # Regla de negocio: caudales negativos (ruido de sensor o offset)
+    # se tratan como 0.0 para no generar falsos errores de validación.
+    # Caudal negativo no tiene sentido físico.
     raw_value = data.get("value")
+    if type_variable in ("CAUDAL", "CAUDAL_PROMEDIO") and raw_value is not None:
+        try:
+            v = float(raw_value)
+            if v < 0.0:
+                data = dict(data)
+                data["value"] = 0.0
+                raw_value = 0.0
+        except (ValueError, TypeError):
+            pass
+
+    # Validación de calidad: rango min/max
     if raw_value is not None:
         _validate_variable_range(variable, raw_value, point_catchment, created_register)
 

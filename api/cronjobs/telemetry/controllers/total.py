@@ -62,24 +62,27 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
 
         current_raw_m3 = (current_pulses * float(pulses_factor)) / 1000.0
 
-        # -- NUEVA LÓGICA: Usar ProfileDataConfigCatchment para el offset/addition --
-        from api.core.models import ProfileDataConfigCatchment
+        # =====================================================================
+        # LEER CONFIGURACIÓN DEL PERFIL (desde dict serializado para evitar N+1)
+        # =====================================================================
+        profile_data = point_catchment.get("profile_data_config", {}) if isinstance(point_catchment, dict) else {}
 
-        profile = ProfileDataConfigCatchment.objects.filter(point_catchment_id=point_catchment["id"]).first()
+        offset = float(profile_data.get("addition", 0) or 0)
+        max_diff_m3 = float(profile_data.get("max_diff_m3_per_hour", 500) or 500)
+        reconnection_threshold = float(profile_data.get("reconnection_threshold_hours", 2) or 2)
 
-        # Recuperar offset actual del perfil (si existe)
-        offset = 0.0
-        if profile:
-            offset = float(profile.addition or 0)
+        # Fallback a query directa si no hay profile serializado (raro, pero seguro)
+        if not profile_data:
+            from api.core.models import ProfileDataConfigCatchment
+            profile = ProfileDataConfigCatchment.objects.filter(point_catchment_id=point_catchment["id"]).first()
+            if profile:
+                offset = float(profile.addition or 0)
+                max_diff_m3 = float(profile.max_diff_m3_per_hour) if profile.max_diff_m3_per_hour else 500.0
+                reconnection_threshold = float(profile.reconnection_threshold_hours) if profile.reconnection_threshold_hours else 2.0
 
-        # NOTE: Legacy fallback to variable.addition removed as per requirement.
-        # offset remains 0 if profile is not found.
-
-        # ====================================================================
+        # =====================================================================
         # VALIDACIÓN ANTI-SALTO MASIVO (NORMAlIZADA POR TIEMPO)
-        # ====================================================================
-        max_diff_m3 = float(profile.max_diff_m3_per_hour) if profile and profile.max_diff_m3_per_hour else 500.0
-        reconnection_threshold = float(profile.reconnection_threshold_hours) if profile and profile.reconnection_threshold_hours else 2.0
+        # =====================================================================
 
         if last_interaction and last_interaction.total is not None:
             last_total = float(last_interaction.total)
@@ -143,18 +146,21 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                     amount_to_add = (last_pulses * float(pulses_factor)) / 1000.0
                     new_addition = offset + amount_to_add
 
-                    if profile:
-                        from django.db import transaction
-                        from django.db.models import F
-                        with transaction.atomic():
-                            profile = ProfileDataConfigCatchment.objects.select_for_update().get(pk=profile.pk)
-                            profile.addition = F("addition") + amount_to_add
-                            profile.save(update_fields=["addition"])
-                            profile.refresh_from_db()
-                            offset = float(profile.addition)
-                    else:
-                        logger.error(f"Cannot update addition: ProfileDataConfigCatchment not found for point {point_catchment['id']}")
-                        offset = float(new_addition)
+                    from django.db import transaction
+                    from django.db.models import F
+                    from api.core.models import ProfileDataConfigCatchment
+                    with transaction.atomic():
+                        profile_obj = ProfileDataConfigCatchment.objects.select_for_update().filter(
+                            point_catchment_id=point_catchment["id"]
+                        ).first()
+                        if profile_obj:
+                            profile_obj.addition = F("addition") + amount_to_add
+                            profile_obj.save(update_fields=["addition"])
+                            profile_obj.refresh_from_db()
+                            offset = float(profile_obj.addition)
+                        else:
+                            logger.error(f"Cannot update addition: ProfileDataConfigCatchment not found for point {point_catchment['id']}")
+                            offset = float(new_addition)
 
                     logger.info(
                         f"🔄 RESET a 0 detectado Punto {point_catchment['id']}: "
@@ -195,18 +201,21 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                     amount_to_add = (last_pulses * float(pulses_factor)) / 1000.0
 
                     # ACTUALIZACIÓN ATÓMICA DE ADICIÓN EN PERFIL
-                    if profile:
-                        from django.db import transaction
-                        from django.db.models import F
-                        with transaction.atomic():
-                            profile = ProfileDataConfigCatchment.objects.select_for_update().get(pk=profile.pk)
-                            profile.addition = F("addition") + amount_to_add
-                            profile.save(update_fields=["addition"])
-                            profile.refresh_from_db()
-                            offset = float(profile.addition)
-                    else:
-                        logger.error(f"Cannot update addition: ProfileDataConfigCatchment not found for point {point_catchment['id']}")
-                        offset = offset + amount_to_add
+                    from django.db import transaction
+                    from django.db.models import F
+                    from api.core.models import ProfileDataConfigCatchment
+                    with transaction.atomic():
+                        profile_obj = ProfileDataConfigCatchment.objects.select_for_update().filter(
+                            point_catchment_id=point_catchment["id"]
+                        ).first()
+                        if profile_obj:
+                            profile_obj.addition = F("addition") + amount_to_add
+                            profile_obj.save(update_fields=["addition"])
+                            profile_obj.refresh_from_db()
+                            offset = float(profile_obj.addition)
+                        else:
+                            logger.error(f"Cannot update addition: ProfileDataConfigCatchment not found for point {point_catchment['id']}")
+                            offset = offset + amount_to_add
 
                     # Crear Notificación
                     NotificationsCatchment.objects.create(

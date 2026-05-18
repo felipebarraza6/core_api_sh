@@ -342,7 +342,12 @@ class ProfileDataConfigCatchmentRetrieveCronSerializer(serializers.ModelSerializ
 
     class Meta:
         model = ProfileDataConfigCatchment
-        fields = ('token_service', 'd3', 'nivel_offset', 'replicate_on_missing', 'use_transaction_atomic', 'scheme',)
+        fields = (
+            'token_service', 'd3', 'nivel_offset',
+            'replicate_on_missing', 'use_transaction_atomic', 'scheme',
+            'addition', 'max_diff_m3_per_hour', 'max_flow_ls',
+            'max_time_gap_hours', 'reconnection_threshold_hours',
+        )
 
 
 class DgaDataConfigCatchmentSerializer(serializers.ModelSerializer):
