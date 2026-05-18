@@ -1435,8 +1435,8 @@ class ProfileDataConfigCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin,
             'description': 'Dimensiones físicas del pozo utilizadas para validaciones de nivel y caudal.'
         }),
         ('Reglas de procesamiento', {
-            'fields': ('nivel_offset', 'replicate_on_missing', 'use_transaction_atomic'),
-            'description': 'Reglas configurables para el runner unificado: offset de nivel, replicación de datos faltantes, y transacción atómica.'
+            'fields': ('nivel_offset', 'replicate_on_missing', 'use_transaction_atomic', 'max_diff_m3_per_hour', 'max_flow_ls'),
+            'description': 'Reglas configurables para el runner unificado: offset de nivel, replicación de datos faltantes, transacción atómica, y límites de caudal/consumo.'
         }),
         ('Reset y Ajustes', {
             'fields': ('addition',),
@@ -1517,6 +1517,11 @@ class DgaDataConfigCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
         ('SMA', {
             'fields': ('send_sma', 'sma_device_id'),
             'description': 'Configuración para el envío de datos al SMA (Superintendencia del Medio Ambiente).',
+            'classes': ('collapse',)
+        }),
+        ('Agregación DGA', {
+            'fields': ('dga_aggregate_points',),
+            'description': 'Puntos adicionales cuyo total se suma al enviar a DGA.',
             'classes': ('collapse',)
         }),
         ('Informante', {

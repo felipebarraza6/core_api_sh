@@ -6,11 +6,23 @@ import logging
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# CONSTANTES DE PROTECCIÓN ANTI-DISPARO
+# CONSTANTES DE PROTECCIÓN ANTI-DISPARO (fallbacks si no hay profile)
 # ============================================================================
 MAX_FLOW_LS = 150.0           # Máximo caudal razonable en L/s
 MAX_TIME_GAP_HOURS = 2        # Si Δt > 2 horas, no calcular (reconexión)
 MAX_DIFF_M3_PER_HOUR = 500    # Máximo consumo razonable por hora
+
+
+def _get_profile_limits(point_catchment: dict):
+    """Lee límites configurables del profile, o retorna defaults."""
+    profile = point_catchment.get("profile_data_config") if isinstance(point_catchment, dict) else None
+    if not profile:
+        return MAX_DIFF_M3_PER_HOUR, MAX_FLOW_LS, MAX_TIME_GAP_HOURS
+    return (
+        float(profile.get("max_diff_m3_per_hour", MAX_DIFF_M3_PER_HOUR) or MAX_DIFF_M3_PER_HOUR),
+        float(profile.get("max_flow_ls", MAX_FLOW_LS) or MAX_FLOW_LS),
+        float(profile.get("max_time_gap_hours", MAX_TIME_GAP_HOURS) or MAX_TIME_GAP_HOURS),
+    )
 
 def instantaneous_flow_calculate(value, convert_to_lt, n_base):
     """
@@ -205,12 +217,13 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
         # ====================================================================
         # VALIDACIONES ANTI-DISPARO (Reconexión / Reset)
         # ====================================================================
+        max_diff, max_flow, max_gap = _get_profile_limits(point_catchment)
         
         # 4a. Si hay brecha de tiempo muy grande (reconexión después de desconexión)
-        if time_difference > (MAX_TIME_GAP_HOURS * 3600):
+        if time_difference > (max_gap * 3600):
             logger.info(
                 f"⚠️ Punto {point_catchment['id']}: Gap de tiempo grande "
-                f"({time_difference/3600:.1f}h > {MAX_TIME_GAP_HOURS}h). "
+                f"({time_difference/3600:.1f}h > {max_gap}h). "
                 f"Caudal se calculará como promedio sobre el gap."
             )
         
@@ -235,10 +248,10 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
 
         # 5b. Validar que el consumo por hora sea razonable
         consumption_per_hour = (diff_cubics / time_difference) * 3600
-        if consumption_per_hour > MAX_DIFF_M3_PER_HOUR:
+        if consumption_per_hour > max_diff:
             logger.warning(
                 f"🚨 Punto {point_catchment['id']}: Consumo por hora excesivo "
-                f"({consumption_per_hour:.0f} m³/h > {MAX_DIFF_M3_PER_HOUR}) - Caudal = 0"
+                f"({consumption_per_hour:.0f} m³/h > {max_diff}) - Caudal = 0"
             )
             return 0.0
 
@@ -246,10 +259,10 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
         value = round((diff_cubics / time_difference) * 1000.0, 2)
 
         # 6b. Validar caudal máximo razonable
-        if value > MAX_FLOW_LS:
+        if value > max_flow:
             logger.warning(
                 f"🚨 Punto {point_catchment['id']}: Caudal excesivo "
-                f"({value:.2f} L/s > {MAX_FLOW_LS}) - Caudal = 0"
+                f"({value:.2f} L/s > {max_flow}) - Caudal = 0"
             )
             return 0.0
 

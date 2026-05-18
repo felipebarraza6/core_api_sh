@@ -330,6 +330,7 @@ def _prepare_response_data(
             "id_data": register.id,
             "rut": dga_config.rut_report_dga,
             "password": dga_config.get_dga_password(),  # Usa método que fallback a settings
+            "dga_aggregate_points": list(dga_config.dga_aggregate_points) if dga_config.dga_aggregate_points else [],
             "dga_config": {
                 "rut_empresa": getattr(
                     dga_config, "rut_empresa",

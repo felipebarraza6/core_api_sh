@@ -499,6 +499,22 @@ class ProfileDataConfigCatchment(ModelApi):
         help_text="Envuelve el guardado en transaction.atomic() para prevenir duplicados.",
     )
 
+    # Límites de procesamiento (antes hardcodeados en flow.py/total.py)
+    max_diff_m3_per_hour = models.DecimalField(
+        default=500.0,
+        max_digits=10,
+        decimal_places=2,
+        verbose_name="Máx diff m³/hora",
+        help_text="Consumo máximo razonable por hora. Si el salto es mayor, se ignora como error de sensor.",
+    )
+    max_flow_ls = models.DecimalField(
+        default=150.0,
+        max_digits=10,
+        decimal_places=2,
+        verbose_name="Máx caudal L/s",
+        help_text="Caudal máximo razonable. Si supera este valor, se pone en 0.",
+    )
+
     class Meta:
         """Meta data profile data config"""
 
@@ -599,6 +615,14 @@ class DgaDataConfigCatchment(ModelApi):
         null=True,
         verbose_name="ID dispositivo SMA",
         help_text="Identificador del dispositivo en el sistema SMA (ej: 12180).",
+    )
+
+    # Agregación de puntos para DGA (antes hardcodeado punto 83 suma 84+85)
+    dga_aggregate_points = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Puntos agregados DGA",
+        help_text="Lista de IDs de puntos cuyo total se suma al enviar a DGA (ej: [84, 85]).",
     )
 
     class Meta:

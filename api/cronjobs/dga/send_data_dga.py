@@ -15,12 +15,17 @@ def send(response):
 
     def convertir_a_int(cadena):
         total1 = cadena
-        total2 = 0
-        total3 = 0
-        if response["catchment_point"] == 83:
-            total2 = InteractionDetail.objects.filter(catchment_point=84).last().total
-            total3 = InteractionDetail.objects.filter(catchment_point=85).last().total
-            cadena = int(total1 + total2 + total3)
+        # Agregación configurable de puntos (antes hardcodeado punto 83 suma 84+85)
+        aggregate_points = response.get("dga_aggregate_points", [])
+        if aggregate_points:
+            for pid in aggregate_points:
+                try:
+                    last_reg = InteractionDetail.objects.filter(catchment_point=pid).last()
+                    if last_reg and last_reg.total:
+                        total1 += float(last_reg.total)
+                except Exception:
+                    pass
+            cadena = int(total1)
 
         try:
             return int(cadena)

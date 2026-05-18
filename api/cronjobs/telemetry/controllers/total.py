@@ -78,7 +78,7 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
         # ====================================================================
         # VALIDACIÓN ANTI-SALTO MASIVO (NORMAlIZADA POR TIEMPO)
         # ====================================================================
-        MAX_DIFF_M3_PER_HOUR = 500  # Consumo máximo razonable por hora
+        max_diff_m3 = float(profile.max_diff_m3_per_hour) if profile and profile.max_diff_m3_per_hour else 500.0
         RECONNECTION_THRESHOLD_HOURS = 2  # Si pasaron >2h, es reconexión
 
         if last_interaction and last_interaction.total is not None:
@@ -114,12 +114,12 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
             else:
                 m3_per_hour = diff / time_diff_hours
 
-                # Si el salto es > 500 m³ por hora EN OPERACIÓN NORMAL, es sospechoso
-                if m3_per_hour > MAX_DIFF_M3_PER_HOUR:
+                # Si el salto es > límite m³ por hora EN OPERACIÓN NORMAL, es sospechoso
+                if m3_per_hour > max_diff_m3:
                     logger.warning(
                         f"🚨 SALTO MASIVO DETECTADO Punto {point_catchment['id']}: "
                         f"Salto de {diff:.0f} m³ en {time_diff_hours:.1f} horas ({m3_per_hour:.1f} m³/h). "
-                        f"Límite {MAX_DIFF_M3_PER_HOUR} m³/h. Manteniendo último total válido."
+                        f"Límite {max_diff_m3} m³/h. Manteniendo último total válido."
                     )
                     # Retornar el valor anterior sin actualizar nada
                     if return_full_details:
