@@ -139,10 +139,34 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
         if last_interaction and last_interaction.pulses is not None:
             try:
                 last_pulses = float(last_interaction.pulses)
+                # Fallback seguro por si last_interaction.total era None
+                last_total_safe = int(round(float(last_interaction.total))) if last_interaction.total is not None else 0
 
                 # DETECCIÓN DE REINICIO
                 # Caso 1: Reset a 0 (corte de energía, mantenimiento)
                 if current_pulses == 0 and last_pulses > 0:
+                    # PROTECCIÓN CRÍTICA: Un salto a 0 sin desconexión previa
+                    # es casi siempre un error de ingesta (getter falló, sensor offline,
+                    # valor None convertido a 0). NO detectar reset en ese caso.
+                    is_likely_real_reset = (
+                        time_diff_hours > reconnection_threshold
+                        or last_interaction.days_not_conection > 0
+                    )
+
+                    if not is_likely_real_reset:
+                        logger.warning(
+                            f"⚠️  Punto {point_catchment['id']}: pulsos=0 pero NO hay evidencia de desconexión "
+                            f"(último dato hace {time_diff_hours:.1f}h, umbral={reconnection_threshold}h). "
+                            f"Tratando como error de ingesta, manteniendo total anterior."
+                        )
+                        if return_full_details:
+                            return last_total_safe, {
+                                "raw_pulses": current_pulses,
+                                "status": "ZERO_WITHOUT_DISCONNECT",
+                                "logic": "kept_last_valid"
+                            }
+                        return last_total_safe
+
                     amount_to_add = (last_pulses * float(pulses_factor)) / 1000.0
                     new_addition = offset + amount_to_add
 
