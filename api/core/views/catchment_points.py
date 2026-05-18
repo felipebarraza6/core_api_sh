@@ -2,7 +2,9 @@
 
 from django_filters import rest_framework as filters
 from rest_framework import mixins, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from api.core.models.catchment_points import (
     CatchmentPoint,
@@ -22,11 +24,12 @@ from api.core.models.catchment_points import (
 from api.core.serializers import (
     CatchmentPointIkoluSerializer,
     CatchmentPointSerializer,
-    CatchmentPointSerializerDetailCron,
     ClientSerializer,
+    ClientWithProjectsSerializer,
     DgaDataConfigCatchmentSerializer,
     FileCatchmentSerializer,
     NotificationsCatchmentSerializer,
+    NotificationsCatchmentDetailSerializer,
     ProfileDataConfigCatchmentSerializer,
     ProfileIkoluCatchmentSerializer,
     ProjectCatchmentsSerializer,
@@ -53,6 +56,20 @@ class ClientViewSet(
     serializer_class = ClientSerializer
     lookup_field = "id"
 
+    @action(detail=False, methods=['get'], url_path='all')
+    def all(self, request):
+        """Devuelve todos los clientes sin paginación."""
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='with-projects')
+    def with_projects(self, request):
+        """Devuelve todos los clientes con sus proyectos anidados."""
+        queryset = self.get_queryset().prefetch_related('projectcatchments_set')
+        serializer = ClientWithProjectsSerializer(queryset, many=True)
+        return Response(serializer.data)
+
 
 class ProjectCatchmentsViewSet(
     mixins.CreateModelMixin,
@@ -67,6 +84,14 @@ class ProjectCatchmentsViewSet(
     queryset = ProjectCatchments.objects.all()
     serializer_class = ProjectCatchmentsSerializer
     lookup_field = "id"
+    filterset_fields = ['client']
+
+    @action(detail=False, methods=['get'], url_path='all')
+    def all(self, request):
+        """Devuelve todos los proyectos sin paginación, filtrable por cliente."""
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class CatchmentPointViewSet(
@@ -80,14 +105,21 @@ class CatchmentPointViewSet(
     permission_classes = [IsAuthenticated]
     filter_backends = (filters.DjangoFilterBackend,)
     # ✅ MEJORADO: Optimización con select_related y prefetch_related para mejorar rendimiento
+    # NOTA: data_config_profiles y schemes se agregan en get_queryset() con prefetch optimizado
     queryset = CatchmentPoint.objects.select_related('project', 'owner_user').prefetch_related(
         'ikolu_profiles',
-        'data_config_profiles',
         'dga_data_config_profiles',
-        'schemes'
     )
     serializer_class = CatchmentPointSerializer
     lookup_field = "id"
+    filterset_fields = ['project']
+
+    @action(detail=False, methods=['get'], url_path='all')
+    def all(self, request):
+        """Devuelve todos los puntos de captación sin paginación, filtrable por proyecto."""
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     def get_serializer_class(self):
         if self.action in ["retrieve"]:
@@ -159,6 +191,11 @@ class NotificationsCatchmentViewSet(
     serializer_class = NotificationsCatchmentSerializer
     lookup_field = "id"
 
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return NotificationsCatchmentDetailSerializer
+        return self.serializer_class
+
     class FilterNotificationsCatchment(filters.FilterSet):
         class Meta:
             model = NotificationsCatchment
@@ -173,6 +210,8 @@ class NotificationsCatchmentViewSet(
                 "is_response": ["exact"],
                 "is_finish": ["exact"],
                 "is_wait": ["exact"],
+                "status_dga": ["exact"],
+                "status_sma": ["exact"],
                 "start_date": ["exact"],
                 "end_date": ["exact"],
             }

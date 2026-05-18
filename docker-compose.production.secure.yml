@@ -19,12 +19,12 @@ services:
       - frontend
     labels:
       - "com.github.nginx-proxy.docker-gen=true"
-    restart: unless-stopped
+    restart: always
     # ✅ SEGURIDAD: Usuario no-root
     # user: "101:101"
     # ✅ SEGURIDAD: Healthcheck
     healthcheck:
-      test: [ "CMD-SHELL", "curl -L http://localhost/ > /dev/null 2>&1 || exit 1" ]
+      test: [ "CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' -L -H 'Host: api.smarthydro.app' http://localhost/health/ | grep -q '200' || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -84,7 +84,7 @@ services:
       # work_mem: 4MB por conexión (ajustar según max_connections)
       # effective_cache_size: 50% de RAM (ajustar según servidor)
     command: >
-      postgres -c shared_buffers=6GB -c work_mem=64MB -c maintenance_work_mem=1GB -c effective_cache_size=10GB -c max_connections=100 -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c max_worker_processes=4 -c max_parallel_workers_per_gather=2 -c max_parallel_workers=4
+      postgres -c shared_buffers=1536MB -c work_mem=16MB -c maintenance_work_mem=256MB -c effective_cache_size=3GB -c max_connections=100 -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c max_worker_processes=2 -c max_parallel_workers_per_gather=1 -c max_parallel_workers=2
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db-secure.sql:/docker-entrypoint-initdb.d/init-db-secure.sql:ro
@@ -144,14 +144,28 @@ services:
       - DJANGO_SECURE_BROWSER_XSS_FILTER=True
       - DJANGO_SECURE_FRAME_DENY=True
       - DJANGO_SECURE_REFERRER_POLICY=strict-origin-when-cross-origin
+      # ✅ EMAIL: Variables para envío de correos
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-soporte@smarthydro.cl}
+      - PASSWORD_RESET_FROM_EMAIL=${PASSWORD_RESET_FROM_EMAIL:-no-reply@smarthydro.cl}
+      - CONTACT_EMAIL=${CONTACT_EMAIL:-soporte@smarthydro.cl}
       # ✅ RENDIMIENTO: Variables de entorno para Gunicorn
       - GUNICORN_LOG_LEVEL=info
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # ✅ COMPLIANCE PROVIDERS: DGA, SMA, Google Chat (migrado desde código hardcodeado)
+      - DGA_DEFAULT_PASSWORD=${DGA_DEFAULT_PASSWORD}
+      - DGA_BASE_URL=${DGA_BASE_URL:-https://apimee.mop.gob.cl/api/v1}
+      - DGA_DEFAULT_RUT_EMPRESA=${DGA_DEFAULT_RUT_EMPRESA:-76944359-2}
+      - SMA_BASE_URL=${SMA_BASE_URL:-https://conexiones.sma.gob.cl/api/v1}
+      - SMA_USERNAME=${SMA_USERNAME}
+      - SMA_PASSWORD=${SMA_PASSWORD}
+      - GOOGLE_CHAT_WEBHOOK_URL=${GOOGLE_CHAT_WEBHOOK_URL}
+      - GOOGLE_CHAT_DGA_WEBHOOK_URL=${GOOGLE_CHAT_DGA_WEBHOOK_URL}
     volumes:
       - ./:/app
       - django_static:/app/staticfiles
       - django_media:/app/media
       - django_logs:/app/logs
+      - cron_logs:/app/cron_logs
       - google_credentials:/app/credentials
     depends_on:
       postgres:
@@ -208,6 +222,17 @@ services:
       - USE_CLUSTER=false
       - DJANGO_DEBUG=False
       - DJANGO_ALLOWED_HOSTS=localhost
+      - TDATA_USERNAME=${TDATA_USERNAME}
+      - TDATA_PASSWORD=${TDATA_PASSWORD}
+      # ✅ COMPLIANCE PROVIDERS: DGA, SMA, Google Chat (migrado desde código hardcodeado)
+      - DGA_DEFAULT_PASSWORD=${DGA_DEFAULT_PASSWORD}
+      - DGA_BASE_URL=${DGA_BASE_URL:-https://apimee.mop.gob.cl/api/v1}
+      - DGA_DEFAULT_RUT_EMPRESA=${DGA_DEFAULT_RUT_EMPRESA:-76944359-2}
+      - SMA_BASE_URL=${SMA_BASE_URL:-https://conexiones.sma.gob.cl/api/v1}
+      - SMA_USERNAME=${SMA_USERNAME}
+      - SMA_PASSWORD=${SMA_PASSWORD}
+      - GOOGLE_CHAT_WEBHOOK_URL=${GOOGLE_CHAT_WEBHOOK_URL}
+      - GOOGLE_CHAT_DGA_WEBHOOK_URL=${GOOGLE_CHAT_DGA_WEBHOOK_URL}
     volumes:
       - ./:/app
       - cron_logs:/var/log/smarthydro
@@ -221,7 +246,7 @@ services:
       - default
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD-SHELL", "test -f /tmp/smarthydro/twin_1.log && find /tmp/smarthydro/twin_1.log -mmin -5 -print -quit | grep -q twin_1.log" ]
+      test: [ "CMD-SHELL", "test -f /tmp/smarthydro/unified_twin_1.log && find /tmp/smarthydro/unified_twin_1.log -mmin -5 -print -quit | grep -q unified_twin_1.log" ]
       interval: 1m
       timeout: 10s
       retries: 3

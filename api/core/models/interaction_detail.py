@@ -31,6 +31,13 @@ class InteractionDetail(ModelApi):
         help_text="JSON con el estado individual de cada variable"
     )
 
+    # Almacenamiento flexible por variable (esquema dinámico)
+    variable_values = models.JSONField(
+        blank=True, null=True, default=dict,
+        verbose_name="Valores por variable",
+        help_text="JSON con los valores crudos de cada variable: {variable_id: valor}. Permite esquemas dinámicos sin alterar la BD."
+    )
+
     # Caudal
 
     flow = models.DecimalField(

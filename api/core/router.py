@@ -11,6 +11,9 @@ from api.core.views import users as views_users
 from api.core.views import catchment_points as views_catchment
 from api.core.views import interaction_detail as views_detail
 from api.core.views import management as views_management
+from api.core.views import reports as views_reports
+from api.core.views import alerts as views_alerts
+from api.core.views.chatbot import ChatbotAppView
 
 router = DefaultRouter()
 
@@ -57,8 +60,18 @@ router.register(r'register_persons',
 # Endpoints de gestión y administración
 router.register(r'management', views_management.ManagementViewSet, basename='management')
 
+# Endpoints de reportes
+router.register(r'reports', views_reports.ReportsGenerationViewSet, basename='reports')
+
+# Endpoints de alertas
+router.register(r'alert_rules', views_alerts.AlertRuleViewSet, basename='alert_rules')
+router.register(r'alert_channels', views_alerts.AlertChannelViewSet, basename='alert_channels')
+router.register(r'alert_triggers', views_alerts.AlertTriggerViewSet, basename='alert_triggers')
+router.register(r'system_events', views_alerts.SystemEventViewSet, basename='system_events')
+
 urlpatterns = [
-    path('', include(router.urls))
+    path('', include(router.urls)),
+    path('chat/', ChatbotAppView.as_view(), name='app_chat'),
 ]
 
 

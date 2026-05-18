@@ -1,25 +1,29 @@
-import os
-from api.settings import *
+"""
+Settings para tests con SQLite en memoria.
+Hereda todo de settings.py y solo sobrescribe la base de datos.
+"""
+from api.settings import *  # noqa: F401,F403
 
-# Remove jazzmin if present
-if 'jazzmin' in INSTALLED_APPS:
-    INSTALLED_APPS.remove('jazzmin')
-
-# Mock static files storage if whitenoise causes issues in partial env
-STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
-
-# Use SQLite for testing
+# Base de datos SQLite en disco para tests persistentes
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        'NAME': '/tmp/smarthydro_test.db',
     }
 }
 
-# Override Cache to avoid redis dependency
+# Desactivar cronjobs para tests
+CRONJOBS = []
+
+# Usar backend de email que no envía nada (solo captura en memoria)
+EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
+
+# No requerir conexión a Redis
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake',
     }
 }
+
+# Desactivar verificaciones de migraciones consistentes
+MIGRATION_MODULES = {}

@@ -12,15 +12,13 @@ from api.core.serializers import CatchmentPointSerializerDetailCron
 from .controllers.flow import (
     average_flow,
     instantaneous_flow,
-    instantaneous_flow_calculate,
 )
 from .controllers.nivel import nivel_mt, water_table
 from .controllers.total import total_day, total_hour, total_m3
 
 # GETTERS UNIFICADOS
-from .getters.tago import get_data_tago
-from .getters.tdata import get_data_tdata
-from .getters.thingsio import get_data_thethings
+# GETTERS UNIFICADOS
+from .getters.universal import get_data_universal
 
 
 def run():
@@ -135,63 +133,15 @@ def get_data_novus(variables, token, point_catchment):
     for variable in variables:
         data = None  # Inicializar data
 
-        if variable.get("token_service"):
-            if (
-                variable.get("service") == "TWIN"
-                and variable.get("type_variable") != "CAUDAL_PROMEDIO"
-            ):
-                token_twin = variable.get("token_service")
-                provider = variable.get("provider")
-
-                data = get_data_with_retry(
-
-                    get_data_tdata,
-
-                    provider,
-
-                    token_twin,
-
-                    variable.get("str_variable")
-                )
-            elif (
-                variable.get("service") == "NETTRA"
-                and variable.get("type_variable") != "CAUDAL_PROMEDIO"
-            ):
-                token_nettra = variable.get("token_service")
-                provider = variable.get("provider")
-
-                data = get_data_with_retry(
-
-                    get_data_thethings,
-
-                    provider,
-
-                    token_nettra,
-
-                    variable.get("str_variable")
-                )
-            elif (
-                variable.get("service") == "NOVUS"
-                and variable.get("type_variable") != "CAUDAL_PROMEDIO"
-            ):
-                token_novus = variable.get("token_service")
-                provider = variable.get("provider")
-
-                data = get_data_with_retry(
-
-                    get_data_tago,
-
-                    provider,
-
-                    token_novus,
-
-                    variable.get("str_variable")
-                )
-        else:
+        if variable.get("type_variable") != "CAUDAL_PROMEDIO":
+            token_service = variable.get("token_service") or token
+            provider = variable.get("provider")
             data = get_data_with_retry(
-                get_data_tago, token, variable.get("str_variable")
+                get_data_universal,
+                provider,
+                token_service,
+                variable.get("str_variable")
             )
-
         # Corregir error crítico: NO hacer continue, procesar con valor por defecto
         if data is None:
             if variable.get("type_variable") == "TOTALIZADO":

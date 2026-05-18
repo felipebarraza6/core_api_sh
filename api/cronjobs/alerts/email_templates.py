@@ -28,7 +28,7 @@ def get_email_template(alert_type, data):
         html_content = render_to_string(template_name, data)
         return html_content
     except Exception as e:
-        print(f"❌ Error renderizando template {template_name}: {e}")
+        print(f"Error renderizando template {template_name}: {e}")
         # Fallback: template genérico
         return get_generic_fallback_template(data)
 
@@ -49,7 +49,7 @@ def get_generic_fallback_template(data):
     </head>
     <body>
         <div class="alert">
-            <h2>⚠️ Alerta del Sistema</h2>
+            <h2>Alerta del Sistema</h2>
             <p>Se ha detectado una alerta en el sistema.</p>
         </div>
         <div class="info">

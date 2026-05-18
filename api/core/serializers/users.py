@@ -196,7 +196,7 @@ class UserProfile(serializers.ModelSerializer):
         """
         model = User
         fields = ('id','username', 'first_name', 'last_name',
-                  'email', 'catchment_points')
+                  'email', 'is_superuser', 'is_staff', 'is_client_admin', 'catchment_points')
 
 
 class CatchmentPointSerializer(serializers.ModelSerializer):

@@ -11,6 +11,16 @@ export LOCAL_DB_USER="${LOCAL_DB_USER:-smarthydro_user}"
 export LOCAL_DB_PASSWORD="${LOCAL_DB_PASSWORD:-}"
 export LOCAL_DB_PORT="${LOCAL_DB_PORT:-5432}"
 
+# Fallback: leer TDATA credentials de .env si no vienen por environment
+if [ -z "${TDATA_USERNAME:-}" ] && [ -f /app/.env ]; then
+    TDATA_USERNAME=$(grep '^TDATA_USERNAME=' /app/.env | cut -d= -f2- | tr -d "'\"" || true)
+    export TDATA_USERNAME
+fi
+if [ -z "${TDATA_PASSWORD:-}" ] && [ -f /app/.env ]; then
+    TDATA_PASSWORD=$(grep '^TDATA_PASSWORD=' /app/.env | cut -d= -f2- | tr -d "'\"" || true)
+    export TDATA_PASSWORD
+fi
+
 # Preparar logs
 mkdir -p /var/log/smarthydro
 if [ -d /tmp/smarthydro ] && [ ! -L /tmp/smarthydro ]; then
@@ -52,26 +62,51 @@ PY
 
 # Registrar cronjobs de Django limpiando primero para evitar duplicados
 echo "⚙️ Instalando cronjobs de Django (clean + add)..."
-/usr/local/bin/python manage.py crontab remove || true
+# ✅ FIX CRÍTICO: crontab -r borra TODO el crontab (incluyendo residuos de reinicios previos)
+# crontab remove solo borra los que django reconoce, dejando duplicados modificados
+crontab -r 2>/dev/null || true
 /usr/local/bin/python manage.py crontab add
 
-# ✅ FIX: Modificar crontab para incluir variables de entorno en cada línea
+# ✅ FIX: Escribir variables de entorno a archivo y usar source en crontab
+# (evita "command too long" que ocurre al inyectar variables inline)
 echo "📝 Configurando variables de entorno en crontab..."
 TEMP_CRON=$(mktemp)
 crontab -l > "$TEMP_CRON" 2>/dev/null || echo "" > "$TEMP_CRON"
 
-# Crear nuevo crontab con variables de entorno
+# Crear archivo de entorno compartido
+ENV_FILE="/app/.cron_env.sh"
+cat > "$ENV_FILE" <<EOF
+export LOCAL_DB_HOST='${LOCAL_DB_HOST}'
+export LOCAL_DB_NAME='${LOCAL_DB_NAME}'
+export LOCAL_DB_USER='${LOCAL_DB_USER}'
+export LOCAL_DB_PASSWORD='${LOCAL_DB_PASSWORD}'
+export LOCAL_DB_PORT='${LOCAL_DB_PORT}'
+export USE_CLUSTER='${USE_CLUSTER:-false}'
+export DJANGO_DEBUG='${DJANGO_DEBUG:-False}'
+export DJANGO_SETTINGS_MODULE='api.settings'
+export TDATA_USERNAME="${TDATA_USERNAME:-}"
+export TDATA_PASSWORD="${TDATA_PASSWORD:-}"
+EOF
+chmod 600 "$ENV_FILE"
+
+# Crear nuevo crontab con source del archivo de entorno
+# ⚠️ IMPORTANTE: solo agregar source si NO está ya presente (evita duplicados al reiniciar)
 NEW_CRON=$(mktemp)
-ENV_VARS="LOCAL_DB_HOST='${LOCAL_DB_HOST}' LOCAL_DB_NAME='${LOCAL_DB_NAME}' LOCAL_DB_USER='${LOCAL_DB_USER}' LOCAL_DB_PASSWORD='${LOCAL_DB_PASSWORD}' LOCAL_DB_PORT='${LOCAL_DB_PORT}' USE_CLUSTER='${USE_CLUSTER:-false}' DJANGO_DEBUG='${DJANGO_DEBUG:-False}' DJANGO_SETTINGS_MODULE='api.settings'"
+SOURCE_PREFIX=". /app/.cron_env.sh && "
 
 while IFS= read -r line; do
-    # Si la línea contiene "crontab run", agregar variables de entorno antes del comando
+    # Si la línea contiene "crontab run"
     if echo "$line" | grep -q "crontab run"; then
-        # Extraer schedule (primeros 5 campos) y el resto
-        SCHEDULE=$(echo "$line" | awk '{print $1, $2, $3, $4, $5}')
-        REST=$(echo "$line" | awk '{for(i=6;i<=NF;i++) printf "%s ", $i; print ""}')
-        # Reconstruir con variables de entorno
-        echo "${SCHEDULE} ${ENV_VARS} ${REST}" >> "$NEW_CRON"
+        # Si YA tiene source, mantenerla tal cual
+        if echo "$line" | grep -qE "source /app/.cron_env.sh|\. /app/.cron_env.sh"; then
+            echo "$line" >> "$NEW_CRON"
+        else
+            # Extraer schedule (primeros 5 campos) y el resto
+            SCHEDULE=$(echo "$line" | awk '{print $1, $2, $3, $4, $5}')
+            REST=$(echo "$line" | awk '{for(i=6;i<=NF;i++) printf "%s ", $i; print ""}')
+            # Reconstruir con source
+            echo "${SCHEDULE} ${SOURCE_PREFIX}${REST}" >> "$NEW_CRON"
+        fi
     elif echo "$line" | grep -q "rotate-cron-logs"; then
         # Mantener la línea de rotación sin modificar
         echo "$line" >> "$NEW_CRON"

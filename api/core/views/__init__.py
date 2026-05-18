@@ -11,3 +11,4 @@ from .catchment_points import (ClientSerializer, ProjectCatchmentsSerializer,
                                SchemesCatchmentSerializer, VariableSerializer,
                                RegisterPersonsSerializer)
 from .management import ManagementViewSet
+from .alerts import AlertRuleViewSet, AlertChannelViewSet, AlertTriggerViewSet, SystemEventViewSet

@@ -261,19 +261,15 @@ def process_nivel_variable(
         else:
             nivel_value = 0
 
-    # Caso especial para punto 149
-    if point_catchment["id"] == 149:
-        created_register["nivel"] = nivel_mt(
-            float(nivel_value) - 17.0,
-            variable.get("calculate_nivel"),
-            point_catchment["id"], point_catchment["profile_data_config"].get("d3", 0)
-        )
-    else:
-        created_register["nivel"] = nivel_mt(
-            nivel_value,
-            variable.get("calculate_nivel"),
-            point_catchment["id"], point_catchment["profile_data_config"].get("d3", 0)
-        )
+    # Aplicar offset configurable del profile (reemplaza hardcodeo punto 149)
+    nivel_offset = float(point_catchment.get("profile_data_config", {}).get("nivel_offset", 0) or 0)
+    nivel_con_offset = float(nivel_value) + nivel_offset
+    created_register["nivel"] = nivel_mt(
+        nivel_con_offset,
+        variable.get("calculate_nivel"),
+        point_catchment["id"],
+        point_catchment["profile_data_config"].get("d3", 0)
+    )
 
     # Validar d3 antes de calcular nivel freático
     d3 = point_catchment["profile_data_config"].get("d3", 0)
@@ -327,33 +323,85 @@ def process_caudal_promedio_variable(
     date_time_last_logger_total: str,
     created_register: Dict[str, Any],
     point_catchment: Dict[str, Any],
+    variable: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Procesar variable de tipo CAUDAL_PROMEDIO
-    
-    NOTA: Esta función NO guarda el flow en created_register.
-    El flow se calcula dinámicamente en serializers y cron_dga.
 
     Args:
         date_time_last_logger_total: Timestamp del último totalizado
         created_register: Registro en construcción
         point_catchment: Datos del punto de captación
+        variable: Configuración de la variable (opcional, para leer store_average_flow)
 
     Returns:
-        created_register actualizado (sin flow asignado)
+        created_register actualizado
     """
-    # ✅ NO GUARDAR: Se calcula dinámicamente en serializers y cron_dga
-    # Esto asegura que siempre use la lógica más actualizada
-    # y no haya que reprocesar datos históricos si cambia la escala
-    
+    store_flow = variable.get("store_average_flow", False) if variable else False
+
+    if store_flow and date_time_last_logger_total and created_register.get("total") is not None:
+        from .flow import average_flow
+        try:
+            dt_lg = datetime.strptime(date_time_last_logger_total, "%Y-%m-%dT%H:%M:%S")
+            created_register["flow"] = average_flow(
+                point_catchment,
+                created_register["total"],
+                dt_lg,
+            )
+        except Exception as e:
+            telemetry_logger.warning(f"Error calculando caudal promedio para punto {point_catchment['id']}: {e}")
+
     log_variable_processing(
         point_catchment["id"],
-        "CAUDAL_PROMEDIO",
+        variable.get("str_variable", "CAUDAL_PROMEDIO") if variable else "CAUDAL_PROMEDIO",
         "CAUDAL_PROMEDIO",
         True,
     )
 
     return created_register
+
+
+def _validate_variable_range(
+    variable: Dict[str, Any],
+    raw_value: float,
+    point_catchment: Dict[str, Any],
+    created_register: Dict[str, Any],
+) -> bool:
+    """
+    Valida que el valor crudo esté dentro del rango min/max configurado.
+    Si está fuera de rango, marca is_error=True en el registro y loguea.
+
+    Returns:
+        True si pasó validación (o no hay rango configurado), False si falló.
+    """
+    min_val = variable.get("min_value")
+    max_val = variable.get("max_value")
+
+    if min_val is None and max_val is None:
+        return True
+
+    try:
+        val = float(raw_value)
+    except (ValueError, TypeError):
+        return True  # No validamos si no es numérico
+
+    if min_val is not None and val < float(min_val):
+        telemetry_logger.warning(
+            f"[VALIDACION] Punto {point_catchment['id']} - {variable.get('str_variable')}: "
+            f"valor {val} < mínimo {min_val}"
+        )
+        created_register["is_error"] = True
+        return False
+
+    if max_val is not None and val > float(max_val):
+        telemetry_logger.warning(
+            f"[VALIDACION] Punto {point_catchment['id']} - {variable.get('str_variable')}: "
+            f"valor {val} > máximo {max_val}"
+        )
+        created_register["is_error"] = True
+        return False
+
+    return True
 
 
 def process_variable_safely(
@@ -378,6 +426,11 @@ def process_variable_safely(
     """
     type_variable = variable.get("type_variable")
 
+    # Validación de calidad: rango min/max
+    raw_value = data.get("value")
+    if raw_value is not None:
+        _validate_variable_range(variable, raw_value, point_catchment, created_register)
+
     try:
         if type_variable == "TOTALIZADO":
             date_time_last_logger_total, created_register = process_totalizado_variable(
@@ -396,7 +449,7 @@ def process_variable_safely(
 
         elif type_variable == "CAUDAL_PROMEDIO":
             created_register = process_caudal_promedio_variable(
-                date_time_last_logger_total, created_register, point_catchment
+                date_time_last_logger_total, created_register, point_catchment, variable
             )
 
         else:

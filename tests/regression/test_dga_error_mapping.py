@@ -90,9 +90,9 @@ class DgaErrorMappingTest(TestCase):
         self.assertIn("Usuario no es el informante", self.record.return_dga)
 
     @patch('api.cronjobs.dga.send_data_dga.requests.post')
-    def test_other_400_error_continues_retrying(self, mock_post):
-        """Test that other 400 errors do NOT stop retrying (send_dga remains True)."""
-        
+    def test_other_400_error_stops_after_retries(self, mock_post):
+        """Test that other 400 errors stop after 3 retries (send_dga=False)."""
+
         # Mock generic 400 error
         mock_response = MagicMock()
         mock_response.status_code = 400
@@ -102,11 +102,11 @@ class DgaErrorMappingTest(TestCase):
             "data": {}
         }
         mock_post.return_value = mock_response
-        
-         # Prepare valid payload
+
+        # Prepare valid payload
         response_data = {
-            "catchment_point": self.point.id, 
-            "code_dga": "TEST-CODE", 
+            "catchment_point": self.point.id,
+            "code_dga": "TEST-CODE",
             "date_time_medition": "2023-01-01T12:00:00",
             "total": 100, "flow": 10.5, "rut": "11111111-1", "password": "pass",
             "id_data": self.record.id, "type_dga": "SUBTERRANEO", "water_table": 0,
@@ -115,18 +115,13 @@ class DgaErrorMappingTest(TestCase):
 
         # Execute send
         result = send(response_data)
-        
+
         # Validations
         self.record.refresh_from_db()
-        
+
         # Should return False
         self.assertFalse(result)
-        
-        # Should still be pending retry (send_dga=True) unless max retries logic handles it separate,
-        # but our specific logic branch for unknown 400s is "continue", which eventually hits the end of function
-        # and sets send_dga=True (default behavior for failures)
-        
-        # In the code:
-        # Loop 3 times -> continue -> ... -> End loop -> Update with send_dga=True
-        
-        self.assertTrue(self.record.send_dga, "Should keep send_dga=True for generic errors to retry later")
+
+        # After 3 retries, send_dga=False to avoid queue saturation
+        self.assertFalse(self.record.send_dga, "Should set send_dga=False after max retries")
+        self.assertTrue(self.record.is_error, "Should mark as error after max retries")

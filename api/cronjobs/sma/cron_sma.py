@@ -6,21 +6,31 @@ from typing import Optional
 import pytz
 import requests
 
+from django.conf import settings
+
 from api.core.models import DgaDataConfigCatchment, InteractionDetail
+from api.core.utils.compliance import ComplianceConfig
+from api.cronjobs.utils.logging_config import sma_logger
 
 
 def run():
     """Ejecutar cronjob SMA"""
-    print("🚀 Iniciando cronjob SMA...")
+    sma_logger.info("Iniciando cronjob SMA...")
 
-    # Lista de IDs de puntos de captación para SMA
-    # Agregar aquí los IDs que quieres que envíen a SMA
-    sma_catchment_points = [1]  # Por ahora solo ID 1, agregar más según necesites
+    # Obtener IDs de puntos con envío SMA activo
+    sma_catchment_points = list(
+        DgaDataConfigCatchment.objects.filter(send_sma=True)
+        .values_list("point_catchment_id", flat=True)
+    )
+
+    if not sma_catchment_points:
+        sma_logger.info("No hay puntos configurados para envío SMA (send_sma=True)")
+        return
 
     # Obtener token de autenticación
     token = _get_sma_token()
     if not token:
-        print("❌ No se pudo obtener token de SMA")
+        sma_logger.error("No se pudo obtener token de SMA")
         return
 
     # Obtener registros recientes sin voucher (no enviados) para SMA
@@ -35,7 +45,6 @@ def run():
     data_for_send = InteractionDetail.objects.filter(
         catchment_point_id__in=sma_catchment_points,
         created__gte=hace_10_minutos,
-        # send_dga=True,  # REMOVIDO - SMA funciona independiente
         n_voucher__isnull=True,  # Solo registros sin voucher (no enviados aún)
     ).order_by("-created")[:10]
 
@@ -48,25 +57,17 @@ def run():
                 dt = register.date_time_medition if isinstance(register.date_time_medition, datetime) else datetime.strptime(register.date_time_medition, "%Y-%m-%dT%H:%M:%S")
                 if dt.minute % 5 == 0:  # Solo minutos múltiplos de 5 (0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)
                     filtered_data.append(register)
-                    print(
-                        f"✅ Registro {register.id} válido (minuto {dt.minute}): {register.date_time_medition}"
-                    )
+                    sma_logger.info(f"Registro {register.id} válido (minuto {dt.minute}): {register.date_time_medition}")
                 else:
-                    print(
-                        f"❌ Registro {register.id} descartado (minuto {dt.minute}): {register.date_time_medition}"
-                    )
+                    sma_logger.info(f"Registro {register.id} descartado (minuto {dt.minute}): {register.date_time_medition}")
         except Exception as e:
-            print(
-                f"❌ Error parseando date_time_medition del registro {register.id}: {e}"
-            )
+            sma_logger.error(f"❌ Error parseando date_time_medition del registro {register.id}: {e}")
 
-    print(f"📊 Registros con registros encontrados: {len(filtered_data)}")
+    sma_logger.info(f"📊 Registros con registros encontrados: {len(filtered_data)}")
 
     for register in filtered_data:
         try:
-            print(
-                f"📋 Procesando registro ID: {register.id} - Punto: {register.catchment_point_id}"
-            )
+            sma_logger.info(f"📋 Procesando registro ID: {register.id} - Punto: {register.catchment_point_id}")
 
             # Obtener configuración DGA para este punto
             dga_config = DgaDataConfigCatchment.objects.get(
@@ -75,13 +76,13 @@ def run():
 
             # Validar registro
             if not _validate_register(register):
-                print(f"❌ Registro {register.id} no válido, saltando...")
+                sma_logger.error(f"❌ Registro {register.id} no válido, saltando...")
                 continue
 
             # Preparar datos para SMA
             response_data = _prepare_response_data(register, dga_config)
             if not response_data:
-                print(f"❌ No se pudieron preparar datos para registro {register.id}")
+                sma_logger.error(f"❌ No se pudieron preparar datos para registro {register.id}")
                 continue
 
             # Enviar a SMA
@@ -96,23 +97,23 @@ def run():
             if success:
                 register.send_dga = False  # Ya enviado exitosamente
                 register.is_error = False
-                print(f"✅ Registro {register.id} enviado exitosamente a SMA")
+                sma_logger.info(f"Registro {register.id} enviado exitosamente a SMA")
             else:
                 register.send_dga = True  # Mantener en cola para reintento
                 register.is_error = True
-                print(f"❌ Error enviando registro {register.id} a SMA: {message}")
+                sma_logger.error(f"Error enviando registro {register.id} a SMA: {message}")
 
             register.save()
 
         except Exception as e:
-            print(f"❌ Error procesando registro {register.id}: {e}")
+            sma_logger.error(f"Error procesando registro {register.id}: {e}")
             # Marcar como error pero mantener en cola
             register.return_dga = f"Error: {e}"
             register.is_error = True
             register.send_dga = True
             register.save()
 
-    print("🏁 Cronjob SMA completado")
+    sma_logger.info("Cronjob SMA completado")
 
 
 def _get_sma_token() -> Optional[str]:
@@ -123,13 +124,21 @@ def _get_sma_token() -> Optional[str]:
         str: Token de autenticación o None si hay error
     """
     try:
-        url = "https://conexiones.sma.gob.cl/api/v1/auth"
+        sma_cfg = ComplianceConfig('sma')
+        base_url = sma_cfg.get('base_url', settings.SMA_BASE_URL) or "https://conexiones.sma.gob.cl/api/v1"
+        url = f"{base_url.rstrip('/')}/auth"
 
-        payload = {"usuario": "76006727-K", "password": "{O=+b_k_aD"}
+        username = sma_cfg.get('auth_username', settings.SMA_USERNAME) or ""
+        password = sma_cfg.get('auth_password', settings.SMA_PASSWORD) or ""
 
+        if not username or not password:
+            sma_logger.error("Credenciales SMA no configuradas (ComplianceProvider 'sma' o settings SMA_USERNAME/SMA_PASSWORD)")
+            return None
+
+        payload = {"usuario": username, "password": password}
         headers = {"Content-Type": "application/json"}
 
-        print("Obteniendo token de autenticación SMA...")
+        sma_logger.info("Obteniendo token de autenticación SMA...")
 
         response = requests.post(url, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
@@ -138,20 +147,20 @@ def _get_sma_token() -> Optional[str]:
         token = response_data.get("token")
 
         if token:
-            print("✅ Token obtenido exitosamente")
+            sma_logger.info("Token obtenido exitosamente")
             return token
         else:
-            print("❌ No se encontró token en la respuesta")
+            sma_logger.error("No se encontró token en la respuesta")
             return None
 
     except requests.RequestException as e:
-        print(f"Error obteniendo token SMA: {e}")
+        sma_logger.error(f"Error obteniendo token SMA: {e}")
         return None
     except json.JSONDecodeError as e:
-        print(f"Error parseando respuesta del token: {e}")
+        sma_logger.error(f"Error parseando respuesta del token: {e}")
         return None
     except Exception as e:
-        print(f"Error inesperado obteniendo token: {e}")
+        sma_logger.error(f"Error inesperado obteniendo token: {e}")
         return None
 
 
@@ -175,17 +184,14 @@ def _get_dga_config(register: InteractionDetail) -> Optional[DgaDataConfigCatchm
 
         # Validar que tenga los datos mínimos necesarios
         if not dga_config.code_dga or not dga_config.flow_granted_dga:
-            print(
-                f"Configuración DGA incompleta para punto "
-                f"{register.catchment_point.id}"
-            )
+            sma_logger.info(f"Configuración DGA incompleta para punto "
+                f"{register.catchment_point.id}")
             return None
 
         return dga_config
 
     except Exception as e:
-        print(
-            f"Error obteniendo configuración DGA para registro "
+        sma_logger.error(f"Error obteniendo configuración DGA para registro "
             f"{register.id}: {str(e)}"
         )
         return None
@@ -204,28 +210,24 @@ def _validate_register(register: InteractionDetail) -> bool:
     try:
         # Validar que tenga fecha de medición
         if not register.date_time_medition:
-            print(f"Error: Fecha de medición no disponible para registro {register.id}")
+            sma_logger.error(f"Fecha de medición no disponible para registro {register.id}")
             return False
 
         # Validar que tenga punto de captación
         if not register.catchment_point:
-            print(
-                f"Error: Punto de captación no disponible para registro {register.id}"
-            )
+            sma_logger.error(f"Error: Punto de captación no disponible para registro {register.id}")
             return False
 
         # Validar que tenga datos de caudal o total
         if not register.flow and not register.total:
-            print(
-                f"Error: No hay datos de caudal o total para enviar en registro "
-                f"{register.id}"
-            )
+            sma_logger.error(f"Error: No hay datos de caudal o total para enviar en registro "
+                f"{register.id}")
             return False
 
         return True
 
     except Exception as e:
-        print(f"Error validando registro {register.id}: {str(e)}")
+        sma_logger.error(f"Error validando registro {register.id}: {str(e)}")
         return False
 
 
@@ -276,12 +278,14 @@ def _prepare_response_data(
             )
 
         if not parametros:
-            print(f"Error: No hay parámetros válidos para registro {register.id}")
+            sma_logger.error(f"No hay parámetros válidos para registro {register.id}")
             return None
 
+        # Usar sma_device_id configurable, fallback al ID anterior por compatibilidad
+        device_id = dga_config.sma_device_id if dga_config and dga_config.sma_device_id else "12180"
         response_data = [
             {
-                "dispositivoId": "12180",  # ID fijo como especificaste
+                "dispositivoId": device_id,
                 "parametros": parametros,
             }
         ]
@@ -290,7 +294,7 @@ def _prepare_response_data(
 
     except Exception as e:
         error_msg = f"Error preparando datos para registro {register.id}: {str(e)}"
-        print(f"ERROR: {error_msg}")
+        sma_logger.error(f"ERROR: {error_msg}")
         return None
 
 
@@ -334,22 +338,24 @@ def _send_to_sma(
         # Usar flow_granted_dga como ID del proceso
         proceso_id = str(int(flow_granted_dga))
 
-        # Construir URL dinámica
-        url = f"https://conexiones.sma.gob.cl/api/v1/ufs/{uf_id}/procesos/{proceso_id}/registros"
+        # Obtener URL base SMA desde ComplianceProvider o settings
+        sma_cfg = ComplianceConfig('sma')
+        base_url = sma_cfg.get('base_url', settings.SMA_BASE_URL) or "https://conexiones.sma.gob.cl/api/v1"
+        url = f"{base_url.rstrip('/')}/ufs/{uf_id}/procesos/{proceso_id}/registros"
 
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {token}",
         }
 
-        print(f"Enviando datos a SMA: {json.dumps(data, indent=2)}")
-        print(f"URL: {url}")
+        sma_logger.info(f"Enviando datos a SMA: {json.dumps(data, indent=2)}")
+        sma_logger.info(f"URL: {url}")
 
         response = requests.post(url, headers=headers, json=data, timeout=30)
         response.raise_for_status()
 
-        print(f"Respuesta SMA: {response.status_code}")
-        print(f"Contenido: {response.text}")
+        sma_logger.info(f"Respuesta SMA: {response.status_code}")
+        sma_logger.debug(f"Contenido: {response.text}")
 
         # Verificar respuesta
         try:
@@ -359,7 +365,7 @@ def _send_to_sma(
                 mensaje = response_data.get("mensaje", "Datos enviados correctamente")
                 id_verificacion = response_data.get("IdVerificacion", "")
 
-                print("✅ Datos enviados correctamente a SMA")
+                sma_logger.info("Datos enviados correctamente a SMA")
                 return True, mensaje, id_verificacion
             else:
                 error_msg = f"Error enviando datos a SMA: {response_data}"

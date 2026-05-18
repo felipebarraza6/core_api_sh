@@ -19,12 +19,16 @@ from .cache import get_cached_response, cache_response, get_cache_ttl
 logger = logging.getLogger(__name__)
 
 # Intentar importar el SDK de Google Generative AI
-try:
-    import google.generativeai as genai
-    HAS_GEMINI = True
-except Exception as e:
-    HAS_GEMINI = False
-    logger.warning(f"Error al importar google-generativeai: {e}")
+# Suprimir FutureWarning del paquete deprecado hasta migrar a google.genai
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", FutureWarning)
+    try:
+        import google.generativeai as genai
+        HAS_GEMINI = True
+    except Exception as e:
+        HAS_GEMINI = False
+        logger.warning(f"Error al importar google-generativeai: {e}")
 
 
 def get_conversation_context(user_id):
@@ -65,7 +69,7 @@ def clear_conversation_context(user_id):
         logger.warning(f"Error limpiando contexto: {e}")
 
 
-def resolve_intent_and_respond(user_text, user_name="Usuario", user_id=None):
+def resolve_intent_and_respond(user_text, user_name="Usuario", user_id=None, user=None):
     """
     Usa Gemini con contexto conversacional para entender qué quiere el usuario.
     ✅ OPTIMIZACIÓN: Incluye caché de respuestas para queries repetidas.
@@ -96,6 +100,56 @@ def resolve_intent_and_respond(user_text, user_name="Usuario", user_id=None):
     import time
     start_time = time.time()
     
+    # ===== Tool Dispatcher (User Scope) =====
+    if user and not (user.is_staff or user.is_superuser):
+        from .tools_scoped import ScopedTools
+        _scoped = ScopedTools(user)
+        t = {
+            'search_points': _scoped.search_points,
+            'get_point_latest_data': _scoped.get_point_latest_data,
+            'get_client_summary': _scoped.get_client_summary,
+            'get_client_measurements': _scoped.get_client_measurements,
+            'get_point_status_summary': _scoped.get_point_status_summary,
+            'get_dga_compliance': _scoped.get_dga_compliance,
+            'get_project_measurements': _scoped.get_project_measurements,
+            'get_point_config': _scoped.get_point_config,
+            'get_client_alerts': _scoped.get_client_alerts,
+            'get_point_history': _scoped.get_point_history,
+            'get_client_errors': _scoped.get_client_errors,
+            'get_global_status': _scoped.get_global_status,
+            'get_recent_notifications': _scoped.get_recent_notifications,
+            'compare_points': _scoped.compare_points,
+            'get_client_stats': _scoped.get_client_stats,
+            'get_client_ranking': _scoped.get_client_ranking,
+            'get_stuck_points': _scoped.get_stuck_points,
+            'get_help_menu': _scoped.get_help_menu,
+            'get_timeseries_analysis': _scoped.get_timeseries_analysis,
+            'get_telemetry_audit': _scoped.get_telemetry_audit,
+        }
+    else:
+        t = {
+            'search_points': search_points,
+            'get_point_latest_data': get_point_latest_data,
+            'get_client_summary': get_client_summary,
+            'get_client_measurements': get_client_measurements,
+            'get_point_status_summary': get_point_status_summary,
+            'get_dga_compliance': get_dga_compliance,
+            'get_project_measurements': get_project_measurements,
+            'get_point_config': get_point_config,
+            'get_client_alerts': get_client_alerts,
+            'get_point_history': get_point_history,
+            'get_client_errors': get_client_errors,
+            'get_global_status': get_global_status,
+            'get_recent_notifications': get_recent_notifications,
+            'compare_points': compare_points,
+            'get_client_stats': get_client_stats,
+            'get_client_ranking': get_client_ranking,
+            'get_stuck_points': get_stuck_points,
+            'get_help_menu': get_help_menu,
+            'get_timeseries_analysis': get_timeseries_analysis,
+            'get_telemetry_audit': get_telemetry_audit,
+        }
+    
     # ===== CAPA 1: Intent Router (Pre-clasificación Determinista) =====
     routed_intent = get_routed_intent(user_text)
     
@@ -103,11 +157,11 @@ def resolve_intent_and_respond(user_text, user_name="Usuario", user_id=None):
         result = None
         
         if routed_intent == "GLOBAL_STATUS":
-            result = get_global_status()
+            result = t['get_global_status']()
         elif routed_intent == "NOTIFICATIONS":
-            result = get_recent_notifications()
+            result = t['get_recent_notifications']()
         elif routed_intent == "HELP":
-            result = get_help_menu()
+            result = t['get_help_menu']()
         elif routed_intent == "METRICS":
             result = get_metrics_summary()
         elif routed_intent == "CLEAR_CONTEXT":
@@ -115,66 +169,66 @@ def resolve_intent_and_respond(user_text, user_name="Usuario", user_id=None):
             result = "✅ Contexto limpiado. ¿En qué puedo ayudarte ahora?"
 
         elif routed_intent == "TELEMETRY_AUDIT":
-            result = get_telemetry_audit(days=30, show_all=True)
+            result = t['get_telemetry_audit'](days=30, show_all=True)
 
         elif routed_intent == "RANKING":
             # Intentar extraer param
             clean = re.sub(r'\b(ranking|top|consumo)\b', '', user_text, flags=re.IGNORECASE).strip()
             target = clean if clean else last_client
             if target and target != 'ninguno':
-                result = get_client_ranking(target, metric='CONSUME')
+                result = t['get_client_ranking'](target, metric='CONSUME')
                 
         elif routed_intent == "STATS":
             clean = re.sub(r'\b(stats|estadisticas|consumo)\b', '', user_text, flags=re.IGNORECASE).strip()
             target = clean if clean else last_client
             if target and target != 'ninguno':
-                result = get_client_stats(target)
+                result = t['get_client_stats'](target)
                 
         elif routed_intent == "ANOMALIES":
             clean = re.sub(r'\b(anomalias|pegados)\b', '', user_text, flags=re.IGNORECASE).strip()
             target = clean if clean else last_client
             if target and target != 'ninguno':
-                result = get_stuck_points(target)
+                result = t['get_stuck_points'](target)
                 
         elif routed_intent == "TRENDS":
             clean = re.sub(r'\b(tendencia|comportamiento|como viene)\b', '', user_text, flags=re.IGNORECASE).strip()
             target = clean if clean else last_point
             if target:
-                result = get_timeseries_analysis(target, context_client=last_client)
+                result = t['get_timeseries_analysis'](target, context_client=last_client)
                 
         elif routed_intent == "HISTORY":
             clean = re.sub(r'\b(ver|mostrar|traer|historial|datos|registros)\b', '', user_text, flags=re.IGNORECASE).strip()
             if clean:
-                result = get_point_history(clean, context_client=last_client)
+                result = t['get_point_history'](clean, context_client=last_client)
             elif last_point:
-                result = get_point_history(last_point, context_client=last_client)
+                result = t['get_point_history'](last_point, context_client=last_client)
             elif last_client and last_client != 'ninguno':
-                result = get_client_measurements(last_client)
+                result = t['get_client_measurements'](last_client)
 
         elif routed_intent == "CONFIG":
             clean = re.sub(r'\b(ver|mostrar|dame|configuracion|configuración|config|parametros)\b', '', user_text, flags=re.IGNORECASE).strip()
             target = clean if clean else last_point
             if target:
-                result = get_point_config(target, context_client=last_client)
+                result = t['get_point_config'](target, context_client=last_client)
 
         elif routed_intent == "DGA":
             clean = re.sub(r'\b(dga|normativa|cumplimiento|vouchers)\b', '', user_text, flags=re.IGNORECASE).strip()
             target = clean if clean else last_client
             if target and target != 'ninguno':
-                result = get_dga_compliance(target)
+                result = t['get_dga_compliance'](target)
 
         elif routed_intent == "MEASUREMENTS":
             clean = re.sub(r'\b(ver|mostrar|dame|mediciones|lecturas|datos|del dia|hoy|variables)\b', '', user_text, flags=re.IGNORECASE).strip()
             if clean:
                 # 1. Buscar como punto específico
-                pts = search_points(clean, context_client=last_client)
+                pts = t['search_points'](clean, context_client=last_client)
                 if len(pts) == 1:
                     # MATCH EXACTO PUNTO -> Guardar contexto
                     p_data = pts[0]
                     context['last_client'] = p_data['client']
                     context['last_point'] = p_data['title']
                     save_conversation_context(user_id, context)
-                    result = get_point_latest_data(p_data['id'])
+                    result = t['get_point_latest_data'](p_data['id'])
                 elif len(pts) > 1:
                     # Multiples puntos -> Listar para desambiguar
                     # INTELIGENCIA: Si todos son del mismo cliente, guardar contexto cliente
@@ -188,7 +242,7 @@ def resolve_intent_and_respond(user_text, user_name="Usuario", user_id=None):
                         result += f"• {p['title']} ({p['client']})\n"
                 else:
                     # 2. Si no es punto, probar como cliente
-                    result = get_client_measurements(clean)
+                    result = t['get_client_measurements'](clean)
                     # Si tuvo éxito (no error), actualizar contexto de cliente
                     if "No encontré" not in result:
                          context['last_client'] = clean # Aproximado, idealmente normalizar
@@ -196,11 +250,11 @@ def resolve_intent_and_respond(user_text, user_name="Usuario", user_id=None):
             
             elif last_point:
                  # Usar último punto en contexto
-                 pts = search_points(last_point, context_client=last_client)
+                 pts = t['search_points'](last_point, context_client=last_client)
                  if pts:
-                    result = get_point_latest_data(pts[0]['id'])
+                    result = t['get_point_latest_data'](pts[0]['id'])
             elif last_client and last_client != 'ninguno':
-                 result = get_client_measurements(last_client)
+                 result = t['get_client_measurements'](last_client)
         
         if result:
             # Registrar métrica de éxito del Router
@@ -218,13 +272,13 @@ def resolve_intent_and_respond(user_text, user_name="Usuario", user_id=None):
             context['last_client'] = client_obj.name
             elapsed_ms = (time.time() - start_time) * 1000
             log_query_metric(user_id, user_text, "ROUTER", elapsed_ms, intent="CLIENT_SEARCH")
-            return get_client_summary(client_obj.name)
+            return t['get_client_summary'](client_obj.name)
 
     # ===== CAPA 1.6: Búsqueda Determinista de Puntos (Selección Rápida) =====
     if len(user_text.strip()) < 20: 
         # Si es corto, puede ser una selección de punto (ej: "P4", "Pozo 1")
         # Buscamos coincidencias exactas o muy fuertes en el TÍTULO
-        pts_short = search_points(user_text.strip(), context_client=last_client)
+        pts_short = t['search_points'](user_text.strip(), context_client=last_client)
         # Filtramos para ver si hay un match de título exacto (case insensitive)
         exact_matches = [p for p in pts_short if p['title'].lower() == user_text.strip().lower()]
         
@@ -245,7 +299,7 @@ def resolve_intent_and_respond(user_text, user_name="Usuario", user_id=None):
             log_query_metric(user_id, user_text, "ROUTER", elapsed_ms, intent="POINT_SELECTION")
             
             # Devolvemos latest data (asumimos que es lo que quiere al nombrar el punto)
-            return get_point_latest_data(target_point['id'])
+            return t['get_point_latest_data'](target_point['id'])
         
         # Si hay múltiples exactos (ej: P4 en Iansa y P4 en FPC), listar para desambiguar
         if len(exact_matches) > 1:
@@ -264,11 +318,19 @@ def resolve_intent_and_respond(user_text, user_name="Usuario", user_id=None):
             system_instruction="""Asistente técnico SmartHydro especializado en telemetría de agua.
 Unidades: Caudal (L/s), Total (m³), Nivel (m).
 Jerga: Cliente→Proyecto→Punto. DGA=Fiscalización/Vouchers.
-Tono: Técnico, profesional, directo."""
+Tono: Técnico, profesional, directo.
+RESTRICCIÓN CRÍTICA: Solo puedes responder con datos de los puntos de captación asociados al usuario actual. Si no tienes acceso a la información solicitada, NO inventes datos. Emite exactamente [TICKET] para sugerir abrir un ticket de soporte.
+Regla de fallback: Si el usuario pregunta algo que no está en tus tags o no puedes responder con certeza, usa [TICKET]."""
         )
 
         # ✅ OPTIMIZACIÓN: Prompt compacto (de 350 a ~150 tokens, -57% costos)
-        prompt = f"""Contexto: Cliente='{last_client}', Punto='{context.get('last_point', 'ninguno')}'.
+        user_scope_hint = ""
+        if user and not (user.is_staff or user.is_superuser):
+            from api.core.chatbot.user_scope import get_allowed_clients
+            allowed = get_allowed_clients(user)
+            if allowed:
+                user_scope_hint = f" Alcance permitido: clientes {', '.join(allowed)}."
+        prompt = f"""Contexto: Cliente='{last_client}', Punto='{context.get('last_point', 'ninguno')}'.{user_scope_hint}
 Usuario: {user_name}. Query: "{user_text}"
 
 Tags disponibles:
@@ -300,7 +362,7 @@ Reglas:
 
         # 0. Despachar ayuda PRIORITARIO
         if "[HELP]" in ai_text:
-            return log_and_return(get_help_menu(), "HELP")
+            return log_and_return(t['get_help_menu'](), "HELP")
 
         if "[CLEAR_CONTEXT]" in ai_text:
             clear_conversation_context(user_id)
@@ -308,7 +370,7 @@ Reglas:
 
         # 1. Status Global y Notificaciones
         if "[NOTIFICATIONS]" in ai_text:
-            return log_and_return(get_recent_notifications(), "NOTIFICATIONS")
+            return log_and_return(t['get_recent_notifications'](), "NOTIFICATIONS")
 
         if "[TRENDS:" in ai_text:
             match = re.search(r'\[TRENDS:(.*?)\]', ai_text)
@@ -317,10 +379,10 @@ Reglas:
                 # Guardar contexto de punto
                 context['last_point'] = point_name
                 save_conversation_context(user_id, context)
-                return log_and_return(get_timeseries_analysis(point_name, context_client=last_client), "TRENDS")
+                return log_and_return(t['get_timeseries_analysis'](point_name, context_client=last_client), "TRENDS")
         
         if "[GLOBAL_STATUS]" in ai_text:
-            return log_and_return(get_global_status(), "GLOBAL_STATUS")
+            return log_and_return(t['get_global_status'](), "GLOBAL_STATUS")
 
         # 2. Rankings
         if "[RANKING:" in ai_text:
@@ -330,14 +392,14 @@ Reglas:
                 metric = match.group(2).strip()
                 if cl_name.lower() in ('ninguno', 'actual', '', 'null'): cl_name = last_client
                 m_code = 'CONSUME' if 'CONSUMO' in metric.upper() else 'FLOW'
-                return log_and_return(get_client_ranking(cl_name, metric=m_code), "RANKING")
+                return log_and_return(t['get_client_ranking'](cl_name, metric=m_code), "RANKING")
 
         # 3. Búsqueda de punto específico
         if "[SEARCH:" in ai_text:
             match = re.search(r'\[SEARCH:(.*?)\]', ai_text)
             if match:
                 point_query = match.group(1).strip()
-                found_points = search_points(point_query, context_client=last_client)
+                found_points = t['search_points'](point_query, context_client=last_client)
                 
                 if not found_points:
                     return log_and_return(f"No encontré ningún punto que coincida con '{point_query}'. ¿Podrías verificar el nombre?", "SEARCH_EMPTY")
@@ -348,7 +410,7 @@ Reglas:
                     context['last_point'] = p_data['title']
                     context['last_client'] = p_data['client']
                     save_conversation_context(user_id, context)
-                    return log_and_return(get_point_latest_data(p_data['id']), "SEARCH_POINT")
+                    return log_and_return(t['get_point_latest_data'](p_data['id']), "SEARCH_POINT")
                 else:
                     res = "Encontré varios puntos similares. ¿A cuál te refieres?\n"
                     for p in found_points[:8]:
@@ -365,7 +427,7 @@ Reglas:
                 project_name = match.group(2).strip()
                 context['last_client'] = client_name
                 save_conversation_context(user_id, context)
-                return log_and_return(get_project_measurements(client_name, project_name), "PROJECT_MEASUREMENTS")
+                return log_and_return(t['get_project_measurements'](client_name, project_name), "PROJECT_MEASUREMENTS")
 
         # 5. Mediciones de cliente completo
         if "[MEASUREMENTS:" in ai_text:
@@ -374,7 +436,7 @@ Reglas:
                 client_name = match.group(1).strip()
                 context['last_client'] = client_name
                 save_conversation_context(user_id, context)
-                return log_and_return(get_client_measurements(client_name), "MEASUREMENTS")
+                return log_and_return(t['get_client_measurements'](client_name), "MEASUREMENTS")
 
         # 6. DGA compliance
         if "[DGA:" in ai_text:
@@ -383,7 +445,7 @@ Reglas:
                 client_name = match.group(1).strip()
                 context['last_client'] = client_name
                 save_conversation_context(user_id, context)
-                return log_and_return(get_dga_compliance(client_name), "DGA")
+                return log_and_return(t['get_dga_compliance'](client_name), "DGA")
 
         # 7. Configuración de punto
         if "[CONFIG:" in ai_text:
@@ -392,7 +454,7 @@ Reglas:
                 point_name = match.group(1).strip()
                 context['last_point'] = point_name
                 save_conversation_context(user_id, context)
-                return log_and_return(get_point_config(point_name, context_client=last_client), "CONFIG")
+                return log_and_return(t['get_point_config'](point_name, context_client=last_client), "CONFIG")
 
         # 8. Historial de punto
         if "[HISTORY:" in ai_text:
@@ -401,7 +463,7 @@ Reglas:
                 point_name = match.group(1).strip()
                 context['last_point'] = point_name
                 save_conversation_context(user_id, context)
-                return log_and_return(get_point_history(point_name, context_client=last_client), "HISTORY")
+                return log_and_return(t['get_point_history'](point_name, context_client=last_client), "HISTORY")
 
         # 9. Alertas de cliente
         if "[ALERTS:" in ai_text:
@@ -409,7 +471,7 @@ Reglas:
             if match:
                 cl_name = match.group(1).strip()
                 if cl_name.lower() in ('ninguno', 'actual', ''): cl_name = last_client
-                return log_and_return(get_client_alerts(cl_name), "ALERTS")
+                return log_and_return(t['get_client_alerts'](cl_name), "ALERTS")
 
         # 10. Estadísticas de cliente
         if "[STATS:" in ai_text:
@@ -417,7 +479,7 @@ Reglas:
             if match:
                 cl_name = match.group(1).strip()
                 if cl_name.lower() in ('ninguno', 'actual', ''): cl_name = last_client
-                return log_and_return(get_client_stats(cl_name), "STATS")
+                return log_and_return(t['get_client_stats'](cl_name), "STATS")
 
         # 11. Comparación entre puntos
         if "[COMPARE:" in ai_text:
@@ -425,7 +487,7 @@ Reglas:
             if match:
                 p1 = match.group(1).strip()
                 p2 = match.group(2).strip()
-                return log_and_return(compare_points(p1, p2, context_client=last_client), "COMPARE")
+                return log_and_return(t['compare_points'](p1, p2, context_client=last_client), "COMPARE")
 
         # 12. Anomalías / Puntos pegados
         if "[ANOMALIES:" in ai_text:
@@ -433,7 +495,7 @@ Reglas:
             if match:
                 cl_name = match.group(1).strip()
                 if cl_name.lower() in ('ninguno', 'actual', ''): cl_name = last_client
-                return log_and_return(get_stuck_points(cl_name), "ANOMALIES")
+                return log_and_return(t['get_stuck_points'](cl_name), "ANOMALIES")
 
         # 13. Lista de puntos de cliente
         if "[CLIENT:" in ai_text:
@@ -442,7 +504,17 @@ Reglas:
                 client_name = match.group(1).strip()
                 context['last_client'] = client_name
                 save_conversation_context(user_id, context)
-                return log_and_return(get_client_summary(client_name), "CLIENT")
+                return log_and_return(t['get_client_summary'](client_name), "CLIENT")
+
+        # Fallback a ticket de soporte
+        if "[TICKET]" in ai_text:
+            ticket_msg = (
+                "🎫 No tengo acceso a esa información en tus puntos asociados, "
+                "o la consulta requiere revisión manual por parte del equipo de soporte.\n\n"
+                "¿Te gustaría abrir un ticket? Puedes hacerlo desde el menú de soporte de la app "
+                "o contactarnos directamente."
+            )
+            return log_and_return(ticket_msg, "TICKET_SUGGESTION")
 
         # Si no hay tags, es una respuesta directa
         return log_and_return(ai_text, "LLM_DIRECT")

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# DEPRECATED: Este script fue reemplazado por api/cronjobs/space_backup.py
+# Última función: backup dual al cluster PostgreSQL.
+# Se mantiene en disco solo como referencia de rollback de emergencia.
 set -e -o pipefail
 
 # Cargar tu .env (único archivo de config)

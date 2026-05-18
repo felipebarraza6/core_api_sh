@@ -25,6 +25,7 @@ urlpatterns = [
     path('health/', health_check, name='health'),
     path('status/', status_json, name='status_json'),
     path('status/dashboard/', status_dashboard, name='status_dashboard'),
+
     # Rutas del admin personalizadas (deben ir ANTES de admin.site.urls)
     path('admin/dashboard/', admin_dashboard_view, name='admin_dashboard'),
     path('admin/telemetry-monitoring/', telemetry_monitoring_view, name='telemetry_monitoring'),
@@ -32,7 +33,7 @@ urlpatterns = [
     path('admin/telemetry-monitoring/api/point/<int:point_id>/records/', telemetry_point_records_api, name='telemetry_point_records_api'),
     # Admin de Django (debe ir al final para no interceptar las rutas personalizadas)
     path('admin/', admin.site.urls),
-    
+
     # Reports
     path('reports/active-points/', ActiveCatchmentPointsReportView.as_view(), name='active_points_report'),
     # API Original (sin cambios)

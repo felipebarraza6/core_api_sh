@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """
-RESPALDO DUAL SIMPLIFICADO
-==========================
+DEPRECATED: Este script fue reemplazado por api.cronjobs.space_backup.py
+Última función: respaldo dual al cluster PostgreSQL (telemetry_api + data_store_telemetry).
+Se mantiene en disco solo como referencia de rollback de emergencia.
+
+RESPALDO DUAL SIMPLIFICADO (LEGACY)
+====================================
 telemetry_api      → Solo datos operativos (config)
 data_store_telemetry → Solo mediciones (InteractionDetail)
 """
+
+# flake8: noqa
 
 import os
 import time

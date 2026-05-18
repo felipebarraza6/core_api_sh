@@ -12,10 +12,10 @@ bind = "0.0.0.0:8000"
 
 # Workers auto-detectados: (2 * CPU_COUNT) + 1
 # Esto permite manejar requests concurrentes eficientemente
-workers = 5  # Optimizado para gthread (5 workers * 4 threads = 20 concurrente)
+workers = 3  # Optimizado para gthread (5 workers * 4 threads = 20 concurrente)
 
 # Threads por worker (opcional, para I/O bound operations)
-threads = 4  # Habilitar Multi-threading para mejor I/O handling
+threads = 2  # Habilitar Multi-threading para mejor I/O handling
 
 # Worker class: sync (default) o gevent/eventlet para async
 worker_class = "gthread"  # Cambiar sync por gthread

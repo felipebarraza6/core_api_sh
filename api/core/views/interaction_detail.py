@@ -62,46 +62,34 @@ class InteractionDetailViewSet(mixins.CreateModelMixin,
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
-        
-        # ✅ Optimización para grandes volúmenes de datos (ej. Productos Fernandez)
-        # Si NO se especifica un filtro de fecha, limitar a las últimas 24 horas por defecto
-        # para evitar traer cientos de miles de registros.
+
+        # ✅ Optimización para grandes volúmenes de datos
+        # Si NO se especifica un filtro de fecha, filtrar a las últimas 24h por defecto
+        # para evitar traer cientos de miles de registros y mantener paginación funcional.
         date_param_keys = ['date_time_medition', 'hour', 'year', 'month', 'day', 'daily']
         has_date_filter = any(
-            key.startswith('date_time_medition') or key in date_param_keys 
+            key.startswith('date_time_medition') or key in date_param_keys
             for key in request.query_params.keys()
         )
-        
-        if not has_date_filter:
-            queryset = queryset[:100]  # Hard limit de seguridad por si el filtro falla
-            # Idealmente filtraríamos por fecha, pero el slicing es más seguro y rápido aquí como default
 
-        
-        # ✅ Limit for high frequency points (User Request)
-        # If frequency is '1' or '5' (minutes), limit to last 50 records to improve load time.
-        limit_applied = False
+        if not has_date_filter:
+            from django.utils import timezone
+            from datetime import timedelta
+            cutoff = timezone.now() - timedelta(hours=24)
+            queryset = queryset.filter(date_time_medition__gte=cutoff)
+
+        # ✅ Limit for high frequency points (1 or 5 min): filter to last 12h
         point_id = request.query_params.get('catchment_point')
         if point_id:
             try:
-                # Optimized field lookup
                 point = CatchmentPoint.objects.only('frecuency').get(id=point_id)
-                # '1' = 1 min, '5' = 5 min, '60' = 60 min (default)
-                if point.frecuency in ['1', '5']: 
-                    # View uses order_by('-date_time_medition'), so [:50] takes the LATEST 50.
-                    queryset = queryset[:50]
-                    limit_applied = True
+                if point.frecuency in ['1', '5']:
+                    from django.utils import timezone
+                    from datetime import timedelta
+                    cutoff = timezone.now() - timedelta(hours=12)
+                    queryset = queryset.filter(date_time_medition__gte=cutoff)
             except Exception:
                 pass
-
-        if limit_applied:
-            serializer = self.get_serializer(queryset, many=True)
-            # Maintain structure expected by frontend (pagination format)
-            return Response({
-                'count': 50, # Fixed count for limited view
-                'next': None,
-                'previous': None,
-                'results': serializer.data
-            })
 
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -185,6 +173,25 @@ class InteractionDetailOverrideViewSet(mixins.CreateModelMixin,
 
     filterset_class = InteractionFilter
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # ✅ Seguridad: si no hay filtro de fecha, limitar a últimos 7 días
+        date_param_keys = ['date_time_medition', 'hour', 'year', 'month', 'day', 'daily']
+        has_date_filter = any(
+            key.startswith('date_time_medition') or key in date_param_keys
+            for key in request.query_params.keys()
+        )
+
+        if not has_date_filter:
+            from django.utils import timezone
+            from datetime import timedelta
+            cutoff = timezone.now() - timedelta(days=7)
+            queryset = queryset.filter(date_time_medition__gte=cutoff)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
 
 class InteractionDetailOverrideMonthViewSet(mixins.CreateModelMixin,
                                             mixins.RetrieveModelMixin,
@@ -217,7 +224,26 @@ class InteractionDetailOverrideMonthViewSet(mixins.CreateModelMixin,
             }
 
     filterset_class = InteractionFilter
-    
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # ✅ Seguridad: si no hay filtro de fecha, limitar a últimos 90 días
+        date_param_keys = ['date_time_medition', 'hour', 'year', 'month', 'day', 'daily']
+        has_date_filter = any(
+            key.startswith('date_time_medition') or key in date_param_keys
+            for key in request.query_params.keys()
+        )
+
+        if not has_date_filter:
+            from django.utils import timezone
+            from datetime import timedelta
+            cutoff = timezone.now() - timedelta(days=90)
+            queryset = queryset.filter(date_time_medition__gte=cutoff)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def get_queryset(self):
         """
         Optimización: Obtener solo el último registro por día para cada punto de captación.

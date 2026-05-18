@@ -287,9 +287,11 @@ class DgaCronSerializer(serializers.ModelSerializer):
 class TelemetryProviderSerializer(serializers.ModelSerializer):
     class Meta:
         model = TelemetryProvider
-        fields = ('id', 'name', 'provider_type', 'base_url', 'auth_type',
-                  'auth_username', 'auth_password', 'auth_token', 'auth_header_name',
-                  'is_active')
+        fields = (
+            'id', 'name', 'handler_name', 'protocol', 'base_url', 'endpoint_template',
+            'auth_type', 'auth_username', 'auth_password', 'auth_token', 'auth_header_name',
+            'parser_config', 'timeout_seconds', 'retry_attempts', 'is_active',
+        )
 
 
 class VariableCronSerializer(serializers.ModelSerializer):
@@ -298,7 +300,8 @@ class VariableCronSerializer(serializers.ModelSerializer):
     class Meta:
         model = Variable
         fields = ('id', 'str_variable', 'type_variable', 'token_service', 'service',
-                  'pulses_factor', 'convert_to_lt', 'calculate_nivel', 'provider',)
+                  'pulses_factor', 'convert_to_lt', 'calculate_nivel', 'store_average_flow',
+                  'min_value', 'max_value', 'display_key', 'provider',)
 
 
 class SchemesCatchmentCronSerializer(serializers.ModelSerializer):
@@ -339,7 +342,7 @@ class ProfileDataConfigCatchmentRetrieveCronSerializer(serializers.ModelSerializ
 
     class Meta:
         model = ProfileDataConfigCatchment
-        fields = ('token_service', "d3", 'scheme',)
+        fields = ('token_service', 'd3', 'nivel_offset', 'replicate_on_missing', 'use_transaction_atomic', 'scheme',)
 
 
 class DgaDataConfigCatchmentSerializer(serializers.ModelSerializer):

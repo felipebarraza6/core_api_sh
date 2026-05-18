@@ -14,8 +14,9 @@ from api.core.models import (
     InteractionDetail, User, Client, ProjectCatchments, CatchmentPoint,
     ProfileDataConfigCatchment, ProfileIkoluCatchment, DgaDataConfigCatchment,
     SchemesCatchment, Variable, RegisterPersons, NotificationsCatchment,
-    TelemetryProvider,
-    ResponseNotificationsCatchment, TypeFileCatchment, FileCatchment
+    TelemetryProvider, ComplianceProvider,
+    ResponseNotificationsCatchment, TypeFileCatchment, FileCatchment,
+    AlertRule, AlertChannel, AlertTrigger, SystemEvent,
 )
 from import_export.admin import ImportExportModelAdmin, ExportActionMixin
 
@@ -1210,8 +1211,8 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
             'description': 'Datos principales del punto: nombre, proyecto asociado, propietario y frecuencia de lectura.'
         }),
         ('Proveedores de Telemetría', {
-            'fields': ('is_tdata', 'is_thethings', 'is_novus'),
-            'description': 'Selecciona los proveedores activos para este punto'
+            'fields': ('telemetry_provider', ('is_tdata', 'is_thethings', 'is_novus')),
+            'description': 'Proveedor configurable (nuevo). Los booleanos legacy se mantienen por compatibilidad.'
         }),
         ('Ubicación', {
             'fields': ('lat', 'lon'),
@@ -1237,6 +1238,7 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
     list_filter = (
         HasDisconnectionFilter,
         'frecuency',
+        'telemetry_provider',
         'is_novus',
         'is_thethings',
         'is_tdata',
@@ -1246,14 +1248,18 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
     )
 
     def get_providers_badge(self, obj):
-        """Badge con proveedores activos"""
+        """Badge con proveedores activos (nuevo: telemetry_provider, legacy: booleanos)"""
         providers = []
+        if obj.telemetry_provider:
+            color = '#007bff' if obj.telemetry_provider.handler_name == 'tdata' else '#28a745' if obj.telemetry_provider.handler_name == 'thethings' else '#17a2b8'
+            providers.append(f'<span style="background: {color}; color: white; padding: 2px 6px; border-radius: 3px; margin: 2px;">{obj.telemetry_provider.name}</span>')
+        # Fallback a booleanos legacy
         if obj.is_tdata:
-            providers.append('<span style="background: #007bff; color: white; padding: 2px 6px; border-radius: 3px; margin: 2px;">Twin</span>')
+            providers.append('<span style="background: #6c757d; color: white; padding: 2px 6px; border-radius: 3px; margin: 2px;">Twin (legacy)</span>')
         if obj.is_thethings:
-            providers.append('<span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; margin: 2px;">Nettra</span>')
+            providers.append('<span style="background: #6c757d; color: white; padding: 2px 6px; border-radius: 3px; margin: 2px;">Nettra (legacy)</span>')
         if obj.is_novus:
-            providers.append('<span style="background: #17a2b8; color: white; padding: 2px 6px; border-radius: 3px; margin: 2px;">Novus</span>')
+            providers.append('<span style="background: #6c757d; color: white; padding: 2px 6px; border-radius: 3px; margin: 2px;">Novus (legacy)</span>')
         if not providers:
             return mark_safe('<span style="color: #6c757d;">Sin proveedores</span>')
         return mark_safe(' '.join(providers))
@@ -1407,8 +1413,8 @@ class ProfileDataConfigCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin,
     Define parámetros físicos (dimensiones del pozo), tokens de servicio y estado de telemetría.
     """
     list_per_page = ADMIN_LIST_PER_PAGE
-    list_display = ('id', 'point_catchment', 'is_telemetry', 'token_service', 'd3', 'date_start_telemetry')
-    list_filter = ('is_telemetry', 'point_catchment__project__name',)
+    list_display = ('id', 'point_catchment', 'is_telemetry', 'token_service', 'd3', 'nivel_offset', 'replicate_on_missing', 'date_start_telemetry')
+    list_filter = ('is_telemetry', 'replicate_on_missing', 'use_transaction_atomic', 'point_catchment__project__name',)
     search_fields = ('point_catchment__title', 'token_service')
     autocomplete_fields = ['point_catchment']
     fieldsets = (
@@ -1427,6 +1433,10 @@ class ProfileDataConfigCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin,
                 ('d5', 'd6'),
             ),
             'description': 'Dimensiones físicas del pozo utilizadas para validaciones de nivel y caudal.'
+        }),
+        ('Reglas de procesamiento', {
+            'fields': ('nivel_offset', 'replicate_on_missing', 'use_transaction_atomic'),
+            'description': 'Reglas configurables para el runner unificado: offset de nivel, replicación de datos faltantes, y transacción atómica.'
         }),
         ('Reset y Ajustes', {
             'fields': ('addition',),
@@ -1482,7 +1492,7 @@ class DgaDataConfigCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
     """
     list_per_page = ADMIN_LIST_PER_PAGE
     list_display = (
-        'id', 'point_catchment', 'send_dga', 'standard', 'code_dga',
+        'id', 'point_catchment', 'send_dga', 'send_sma', 'standard', 'code_dga',
         'flow_granted_dga', 'total_granted_dga', 'date_start_compliance'
     )
     list_filter = ('standard', 'send_dga', 'point_catchment__project__name', 'type_dga')
@@ -1503,6 +1513,11 @@ class DgaDataConfigCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
         }),
         ('Fechas', {
             'fields': ('date_start_compliance', 'date_created_code')
+        }),
+        ('SMA', {
+            'fields': ('send_sma', 'sma_device_id'),
+            'description': 'Configuración para el envío de datos al SMA (Superintendencia del Medio Ambiente).',
+            'classes': ('collapse',)
         }),
         ('Informante', {
             'fields': ('name_informant', 'rut_report_dga'),
@@ -1819,15 +1834,44 @@ class TelemetryProviderAdmin(admin.ModelAdmin):
     Proveedores de telemetría configurables desde el admin.
     Permite cambiar URLs, credenciales y tokens sin tocar código.
     """
-    list_display = ('id', 'name', 'provider_type', 'auth_type', 'is_active', 'created')
-    list_filter = ('provider_type', 'auth_type', 'is_active')
+    list_display = ('id', 'name', 'handler_name', 'protocol', 'auth_type', 'is_active', 'created')
+    list_filter = ('handler_name', 'protocol', 'auth_type', 'is_active')
     search_fields = ('name', 'base_url')
     fieldsets = (
         ('General', {
-            'fields': ('name', 'provider_type', 'base_url', 'is_active'),
+            'fields': ('name', 'handler_name', 'protocol', 'base_url', 'endpoint_template', 'is_active'),
         }),
         ('Autenticación', {
             'fields': ('auth_type', 'auth_username', 'auth_password', 'auth_token', 'auth_header_name'),
+            'classes': ('collapse',),
+        }),
+        ('Parser de datos', {
+            'fields': ('parser_config', 'timeout_seconds', 'retry_attempts'),
+            'classes': ('collapse',),
+            'description': 'Solo aplica para handler "JSON Genérico". Los handlers específicos (tdata/thethings/tago) ignoran esta sección.',
+        }),
+    )
+
+
+@admin.register(ComplianceProvider)
+class ComplianceProviderAdmin(admin.ModelAdmin):
+    """
+    Proveedores de cumplimiento regulatorio configurables desde el admin.
+    DGA, SMA, SEA, SISS, etc.
+    """
+    list_display = ('id', 'code', 'name', 'protocol', 'auth_type', 'is_active', 'created')
+    list_filter = ('protocol', 'auth_type', 'is_active')
+    search_fields = ('name', 'code', 'base_url')
+    fieldsets = (
+        ('General', {
+            'fields': ('code', 'name', 'protocol', 'base_url', 'auth_url', 'is_active'),
+        }),
+        ('Autenticación', {
+            'fields': ('auth_type', 'auth_username', 'auth_password', 'auth_token', 'auth_header_name'),
+            'classes': ('collapse',),
+        }),
+        ('Configuración del protocolo', {
+            'fields': ('protocol_config', 'timeout_seconds', 'retry_attempts'),
             'classes': ('collapse',),
         }),
     )
@@ -1844,8 +1888,8 @@ class VariableAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin)
     Define qué datos se capturan (caudal, nivel, totalizado) y cómo se procesan.
     """
     list_per_page = ADMIN_LIST_PER_PAGE
-    list_display = ('id', 'scheme_catchment', 'str_variable', 'label', 'type_variable', 'service', 'pulses_factor')
-    list_filter = ('scheme_catchment__name', 'service', 'type_variable')
+    list_display = ('id', 'scheme_catchment', 'str_variable', 'label', 'type_variable', 'service', 'pulses_factor', 'store_average_flow', 'min_value', 'max_value', 'display_key')
+    list_filter = ('scheme_catchment__name', 'service', 'type_variable', 'store_average_flow')
     search_fields = ('str_variable', 'label', 'scheme_catchment__name')
     autocomplete_fields = ['scheme_catchment']
     fieldsets = (
@@ -1858,8 +1902,16 @@ class VariableAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin)
             'description': 'Identificación de la variable: nombre técnico, etiqueta, tipo y proveedor de servicio.'
         }),
         ('Configuración', {
-            'fields': ('pulses_factor', 'convert_to_lt', 'calculate_nivel', 'token_service'),
-            'description': 'Parámetros de cálculo: factor de pulsos, conversiones y token de servicio.'
+            'fields': ('pulses_factor', 'convert_to_lt', 'calculate_nivel', 'token_service', 'store_average_flow'),
+            'description': 'Parámetros de cálculo: factor de pulsos, conversiones, token de servicio y si se guarda caudal promedio.'
+        }),
+        ('Validación de calidad', {
+            'fields': ('min_value', 'max_value'),
+            'description': 'Rango permitido para esta variable. Si el valor ingresado está fuera de rango, se marcará como error (is_error=True).'
+        }),
+        ('Visualización', {
+            'fields': ('display_key',),
+            'description': 'Clave usada por la app para mostrar esta variable en el payload dinámico (ej: caudal, nivel, total, custom_1).'
         }),
         ('Proveedor CRUD', {
             'fields': ('provider',),
@@ -2534,3 +2586,77 @@ ProjectCatchmentsAdmin.actions = [
     generar_excel_por_proyecto,
     generar_excel_ultimo_mes_proyecto,
 ]
+
+
+# ========================================
+# SUBSISTEMA DE ALERTAS
+# ========================================
+
+class AlertChannelInline(admin.TabularInline):
+    model = AlertChannel
+    extra = 1
+    fields = ("channel_type", "destination", "is_active")
+    autocomplete_fields = ["alert_rule"]
+
+
+@admin.register(AlertRule)
+class AlertRuleAdmin(admin.ModelAdmin):
+    list_display = (
+        "id", "name", "severity", "point_catchment", "target_type",
+        "variable_type", "threshold_value", "check_frequency_minutes",
+        "cooldown_minutes", "is_active", "created",
+    )
+    list_filter = ("severity", "target_type", "variable_type", "is_active", "check_frequency_minutes")
+    search_fields = ("name", "point_catchment__title")
+    autocomplete_fields = ["point_catchment"]
+    filter_horizontal = ["points"]
+    inlines = [AlertChannelInline]
+    fieldsets = (
+        ("General", {
+            "fields": ("name", "severity", "description", "point_catchment", "points", "target_type", "variable_type", "is_active"),
+        }),
+        ("Umbral", {
+            "fields": ("threshold_value",),
+        }),
+        ("Sin datos", {
+            "fields": ("no_data_minutes",),
+        }),
+        ("Tasa de cambio", {
+            "fields": ("rate_change_value", "rate_change_window"),
+        }),
+        ("Frecuencia y vigencia", {
+            "fields": ("check_frequency_minutes", "cooldown_minutes", "start_date", "end_date"),
+        }),
+        ("Reporte programado", {
+            "fields": ("report_schedule", "report_hour"),
+        }),
+    )
+
+
+@admin.register(AlertChannel)
+class AlertChannelAdmin(admin.ModelAdmin):
+    list_display = ("id", "alert_rule", "channel_type", "destination", "is_active", "created")
+    list_filter = ("channel_type", "is_active")
+    search_fields = ("destination", "alert_rule__name")
+    autocomplete_fields = ["alert_rule"]
+
+
+@admin.register(AlertTrigger)
+class AlertTriggerAdmin(admin.ModelAdmin):
+    list_display = (
+        "id", "alert_rule", "point_catchment", "triggered_at", "value_at_trigger",
+        "threshold_breached", "notification_sent", "is_acknowledged",
+    )
+    list_filter = ("alert_rule", "notification_sent", "is_acknowledged", "triggered_at")
+    search_fields = ("alert_rule__name", "point_catchment__title")
+    readonly_fields = ("triggered_at", "notification_sent_at", "acknowledged_at", "ai_diagnosis")
+    autocomplete_fields = ["alert_rule", "interaction_detail", "point_catchment"]
+
+
+@admin.register(SystemEvent)
+class SystemEventAdmin(admin.ModelAdmin):
+    list_display = ("id", "event_type", "point_catchment", "title", "severity", "created")
+    list_filter = ("event_type", "severity", "created")
+    search_fields = ("title", "message", "point_catchment__title")
+    readonly_fields = ("created", "modified")
+    autocomplete_fields = ["point_catchment"]

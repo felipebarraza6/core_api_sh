@@ -6,6 +6,8 @@ el servicio de telemetría, incluyendo estadísticas, control de
 cronjobs, y gestión de puntos de captación.
 """
 
+from django.apps import apps
+from django.conf import settings
 from django.db.models import Count, Q, Max, Min, Avg, Sum
 from django.db.models.functions import TruncDate, TruncHour
 from django.utils import timezone
@@ -21,11 +23,11 @@ from api.core.models import (
     InteractionDetail,
     NotificationsCatchment,
     ProfileDataConfigCatchment,
-    DgaDataConfigCatchment,
     Client,
     ProjectCatchments,
+    User,
 )
-from api.core.serializers.catchment_points import CatchmentPointSerializer
+from api.core.permissions import IsStaffOrSuperUser
 
 
 class ManagementViewSet(viewsets.ViewSet):
@@ -147,12 +149,29 @@ class ManagementViewSet(viewsets.ViewSet):
                 ).distinct()
             
             # Obtener último registro de cada punto
+            # ✅ OPTIMIZACIÓN: Precalcular en 2 queries en vez de N+1
+            point_ids = list(queryset.values_list('id', flat=True))
+
+            # Precalcular última interacción por punto (una sola query con DISTINCT ON)
+            last_interactions = {
+                interaction.catchment_point_id: interaction
+                for interaction in InteractionDetail.objects.filter(
+                    catchment_point_id__in=point_ids
+                ).order_by('catchment_point_id', '-date_time_medition').distinct('catchment_point_id')
+            }
+
+            # Precalcular puntos con telemetría activa (una sola query)
+            telemetry_active_ids = set(
+                ProfileDataConfigCatchment.objects.filter(
+                    point_catchment_id__in=point_ids,
+                    is_telemetry=True
+                ).values_list('point_catchment_id', flat=True)
+            )
+
             points_data = []
             for point in queryset.select_related('project', 'project__client', 'owner_user'):
-                last_interaction = InteractionDetail.objects.filter(
-                    catchment_point=point
-                ).order_by('-date_time_medition').first()
-                
+                last_interaction = last_interactions.get(point.id)
+
                 point_data = {
                     'id': point.id,
                     'title': point.title,
@@ -160,17 +179,16 @@ class ManagementViewSet(viewsets.ViewSet):
                     'client': point.project.client.name if point.project and point.project.client else None,
                     'frecuency': point.frecuency,
                     'provider': {
+                        'handler': point.telemetry_provider.handler_name if point.telemetry_provider else None,
+                        'name': point.telemetry_provider.name if point.telemetry_provider else None,
                         'twin': point.is_tdata,
                         'nettra': point.is_thethings,
                         'novus': point.is_novus,
                     },
-                    'telemetry_active': ProfileDataConfigCatchment.objects.filter(
-                        point_catchment=point,
-                        is_telemetry=True
-                    ).exists(),
+                    'telemetry_active': point.id in telemetry_active_ids,
                     'last_interaction': None,
                 }
-                
+
                 if last_interaction:
                     point_data['last_interaction'] = {
                         'date_time': last_interaction.date_time_medition.isoformat() if last_interaction.date_time_medition else None,
@@ -180,7 +198,7 @@ class ManagementViewSet(viewsets.ViewSet):
                         'nivel': float(last_interaction.nivel) if last_interaction.nivel else 0,
                         'is_error': last_interaction.is_error,
                     }
-                
+
                 points_data.append(point_data)
             
             return Response({
@@ -528,3 +546,516 @@ class ManagementViewSet(viewsets.ViewSet):
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+
+    @action(detail=False, methods=['get'], permission_classes=[IsStaffOrSuperUser])
+    def system_map(self, request):
+        """
+        Devuelve el mapa completo del sistema para administradores.
+        Incluye modelos, endpoints, cronjobs y estado del sistema.
+        Solo accesible para staff o superusers.
+        """
+        try:
+            # 1. Modelos del proyecto
+            project_models = []
+            for model in apps.get_models():
+                app_label = model._meta.app_label
+                # Solo modelos del proyecto (excluir auth, sessions, admin, etc.)
+                if app_label in ['core']:
+                    fields = []
+                    relations = []
+                    for field in model._meta.get_fields():
+                        field_info = {
+                            'name': field.name,
+                            'type': field.get_internal_type() if hasattr(field, 'get_internal_type') else type(field).__name__,
+                        }
+                        if field.is_relation:
+                            field_info['relation_type'] = type(field).__name__
+                            field_info['related_model'] = field.related_model.__name__ if field.related_model else None
+                            relations.append(field_info)
+                        else:
+                            fields.append(field_info)
+                    
+                    try:
+                        record_count = model.objects.count()
+                    except Exception:
+                        record_count = 0
+                    
+                    project_models.append({
+                        'name': model.__name__,
+                        'app': app_label,
+                        'table': model._meta.db_table,
+                        'record_count': record_count,
+                        'fields': fields,
+                        'relations': relations,
+                    })
+
+            # 2. Endpoints registrados
+            endpoints = [
+                {'namespace': 'api', 'url': '/api/users/', 'methods': ['GET','POST','PUT','PATCH','DELETE'], 'viewset': 'UserViewSet'},
+                {'namespace': 'api', 'url': '/api/users/login/', 'methods': ['POST'], 'description': 'Login con email/password'},
+                {'namespace': 'api', 'url': '/api/users/signup/', 'methods': ['POST'], 'description': 'Registro de usuario'},
+                {'namespace': 'api', 'url': '/api/interaction_detail/', 'methods': ['GET'], 'description': 'Telemetría con export XLSX'},
+                {'namespace': 'api', 'url': '/api/interaction_detail_dga/', 'methods': ['GET'], 'description': 'Telemetría DGA sin procesamiento'},
+                {'namespace': 'api', 'url': '/api/interaction_detail_override/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/interaction_detail_override_month/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/interaction_detail_json/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/client/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/client/all/', 'methods': ['GET'], 'description': 'Todos los clientes sin paginación'},
+                {'namespace': 'api', 'url': '/api/client/with-projects/', 'methods': ['GET'], 'description': 'Clientes con proyectos anidados'},
+                {'namespace': 'api', 'url': '/api/project_catchments/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/project_catchments/all/', 'methods': ['GET'], 'description': 'Proyectos sin paginación'},
+                {'namespace': 'api', 'url': '/api/catchment_point/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/catchment_point/all/', 'methods': ['GET'], 'description': 'Puntos sin paginación'},
+                {'namespace': 'api', 'url': '/api/profile_ikolu_catchment/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/notifications_catchment/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/response_notifications_catchment/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/type_file_catchment/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/file_catchment/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/profile_data_config_catchment/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/dga_data_config_catchment/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/schemes_catchment/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/variable/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/register_persons/', 'methods': ['GET','POST','PUT','PATCH','DELETE']},
+                {'namespace': 'api', 'url': '/api/management/system_status/', 'methods': ['GET']},
+                {'namespace': 'api', 'url': '/api/management/points_status/', 'methods': ['GET']},
+                {'namespace': 'api', 'url': '/api/management/telemetry_metrics/', 'methods': ['GET']},
+                {'namespace': 'api', 'url': '/api/management/toggle_telemetry/', 'methods': ['POST']},
+                {'namespace': 'api', 'url': '/api/management/dga_queue_status/', 'methods': ['GET']},
+                {'namespace': 'api', 'url': '/api/management/clear_dga_queue/', 'methods': ['POST']},
+                {'namespace': 'api', 'url': '/api/management/requeue_dga/', 'methods': ['POST']},
+                {'namespace': 'api', 'url': '/api/management/update_point_frequency/', 'methods': ['POST']},
+                {'namespace': 'api', 'url': '/api/management/notifications_summary/', 'methods': ['GET']},
+                {'namespace': 'api', 'url': '/api/management/system_map/', 'methods': ['GET'], 'description': 'Mapa completo del sistema (este endpoint)'},
+                {'namespace': 'api', 'url': '/api/management/resources_status/', 'methods': ['GET'], 'description': 'Estado de recursos del servidor'},
+                {'namespace': 'api_ik', 'url': '/api/ik/batch/telemetry/', 'methods': ['POST']},
+                {'namespace': 'api_ik', 'url': '/api/ik/batch/stats/', 'methods': ['POST']},
+                {'namespace': 'api_ik', 'url': '/api/ik/login/', 'methods': ['POST']},
+                {'namespace': 'root', 'url': '/health/', 'methods': ['GET']},
+                {'namespace': 'root', 'url': '/status/', 'methods': ['GET']},
+                {'namespace': 'root', 'url': '/status/dashboard/', 'methods': ['GET']},
+                {'namespace': 'root', 'url': '/admin/dashboard/', 'methods': ['GET']},
+                {'namespace': 'root', 'url': '/admin/telemetry-monitoring/', 'methods': ['GET']},
+                {'namespace': 'root', 'url': '/reports/active-points/', 'methods': ['GET']},
+                {'namespace': 'root', 'url': '/api/password_reset/', 'methods': ['POST']},
+                {'namespace': 'root', 'url': '/api/chat-bot/', 'methods': ['POST']},
+            ]
+
+            # 3. Cronjobs desde settings
+            cronjobs = []
+            for job in getattr(settings, 'CRONJOBS', []):
+                cronjobs.append({
+                    'schedule': job[0],
+                    'function': job[1],
+                    'log': job[2] if len(job) > 2 else None,
+                })
+
+            # 4. Estado del sistema
+            system_status = {
+                'django_version': getattr(settings, 'VERSION', 'unknown'),
+                'debug': getattr(settings, 'DEBUG', False),
+                'database_engine': settings.DATABASES.get('default', {}).get('ENGINE', 'unknown'),
+                'database_host': settings.DATABASES.get('default', {}).get('HOST', 'unknown'),
+                'redis_location': settings.CACHES.get('default', {}).get('LOCATION', 'unknown'),
+                'timestamp': timezone.now().isoformat(),
+            }
+
+            return Response({
+                'models': project_models,
+                'endpoints': endpoints,
+                'cronjobs': cronjobs,
+                'system_status': system_status,
+                'total_models': len(project_models),
+                'total_endpoints': len(endpoints),
+                'total_cronjobs': len(cronjobs),
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsStaffOrSuperUser])
+    def resources_status(self, request):
+        """
+        Devuelve estado completo del sistema: servidor, servicios externos, cronjobs, DB, Redis.
+        Solo accesible para staff o superusers.
+        """
+        import subprocess
+        import os
+        import shutil
+        import urllib.request
+        import urllib.error
+        import time
+
+        data = {
+            'server': {},
+            'external_services': {},
+            'cronjobs': {},
+            'database': {},
+            'redis': {},
+            'django': {},
+            'timestamp': timezone.now().isoformat(),
+        }
+
+        # 1. CPU Usage via /proc/stat (no psutil needed, works inside containers)
+        def get_cpu_times():
+            with open('/proc/stat', 'r') as f:
+                line = f.readline()
+            fields = list(map(int, line.split()[1:8]))
+            return sum(fields), fields[0] + fields[1] + fields[2] + fields[5] + fields[6]
+
+        try:
+            total1, busy1 = get_cpu_times()
+            time.sleep(0.5)
+            total2, busy2 = get_cpu_times()
+            cpu_percent = ((busy2 - busy1) / (total2 - total1)) * 100 if (total2 - total1) > 0 else 0
+            data['server']['cpu_percent'] = round(cpu_percent, 2)
+        except Exception as e:
+            data['server']['cpu_percent'] = f'Error: {str(e)}'
+
+        # 2. Memory Usage via /proc/meminfo
+        try:
+            meminfo = {}
+            with open('/proc/meminfo', 'r') as f:
+                for line in f:
+                    key, value = line.split(':', 1)
+                    meminfo[key.strip()] = int(value.strip().split()[0]) * 1024  # convert kB to bytes
+            mem_total = meminfo.get('MemTotal', 0)
+            mem_available = meminfo.get('MemAvailable', meminfo.get('MemFree', 0) + meminfo.get('Buffers', 0) + meminfo.get('Cached', 0))
+            mem_used = mem_total - mem_available
+            mem_percent = (mem_used / mem_total) * 100 if mem_total > 0 else 0
+
+            def human_bytes(b):
+                for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                    if abs(b) < 1024.0:
+                        return f"{b:.2f} {unit}"
+                    b /= 1024.0
+                return f"{b:.2f} PB"
+
+            data['server']['memory_percent'] = round(mem_percent, 2)
+            data['server']['memory_total'] = human_bytes(mem_total)
+            data['server']['memory_used'] = human_bytes(mem_used)
+            data['server']['memory_available'] = human_bytes(mem_available)
+        except Exception as e:
+            data['server']['memory_percent'] = f'Error: {str(e)}'
+
+        # 3. Disk Usage
+        try:
+            disk = shutil.disk_usage('/')
+            data['server']['disk_total_gb'] = round(disk.total / (1024**3), 2)
+            data['server']['disk_used_gb'] = round(disk.used / (1024**3), 2)
+            data['server']['disk_free_gb'] = round(disk.free / (1024**3), 2)
+            data['server']['disk_percent'] = round((disk.used / disk.total) * 100, 2)
+        except Exception as e:
+            data['server']['disk'] = f'Error: {str(e)}'
+
+        # 4. Uptime via /proc/uptime
+        try:
+            with open('/proc/uptime', 'r') as f:
+                uptime_seconds = float(f.readline().split()[0])
+            days = int(uptime_seconds // 86400)
+            hours = int((uptime_seconds % 86400) // 3600)
+            minutes = int((uptime_seconds % 3600) // 60)
+            data['server']['uptime'] = f"{days}d {hours}h {minutes}m"
+            data['server']['uptime_seconds'] = round(uptime_seconds, 1)
+        except Exception as e:
+            data['server']['uptime'] = f'Error: {str(e)}'
+
+        # 5. Docker Containers (only if docker socket/cmd available)
+        try:
+            docker_path = shutil.which('docker')
+            if docker_path and os.path.exists('/var/run/docker.sock'):
+                docker_result = subprocess.run(
+                    [docker_path, "ps", "--format", "{{.Names}}|{{.Status}}|{{.Image}}"],
+                    capture_output=True, text=True, timeout=10
+                )
+                containers = []
+                for line in docker_result.stdout.strip().split('\n'):
+                    if line:
+                        parts = line.split('|')
+                        containers.append({
+                            'name': parts[0],
+                            'status': parts[1] if len(parts) > 1 else 'unknown',
+                            'image': parts[2] if len(parts) > 2 else 'unknown',
+                        })
+                data['docker'] = {
+                    'containers': containers,
+                    'total': len(containers),
+                    'running': sum(1 for c in containers if 'Up' in c['status'])
+                }
+            else:
+                data['docker'] = {
+                    'note': 'Docker no disponible desde este contenedor (requiere socket o grupo docker)',
+                    'containers': [],
+                    'total': 0,
+                    'running': 0
+                }
+        except Exception as e:
+            data['docker'] = {'error': str(e), 'note': 'Docker no disponible desde este contenedor'}
+
+        # ========================================
+        # 6. ESTADO DE SERVICIOS EXTERNOS (HEALTH CHECKS)
+        # ========================================
+        def check_url(url, timeout=10):
+            """Helper para verificar si una URL responde."""
+            try:
+                req = urllib.request.Request(url, method='HEAD')
+                req.add_header('User-Agent', 'SmartHydro-HealthCheck/1.0')
+                with urllib.request.urlopen(req, timeout=timeout) as response:
+                    return {
+                        'status': 'up',
+                        'http_status': response.status,
+                    }
+            except urllib.error.HTTPError as e:
+                if e.code in [401, 403, 404, 405]:
+                    return {
+                        'status': 'up',
+                        'http_status': e.code,
+                        'note': 'Servicio responde pero requiere auth/método diferente'
+                    }
+                return {'status': 'down', 'error': f'HTTP {e.code}'}
+            except Exception as e:
+                return {'status': 'down', 'error': str(e)}
+
+        # Twin / TData
+        data['external_services']['twin_tdata'] = check_url('https://api.twindimension.com/tdata/v1/login')
+        data['external_services']['twin_tdata']['name'] = 'Twin / TData'
+
+        # Nettra / TheThingsIO
+        data['external_services']['nettra_thethings'] = check_url('https://api.thethings.io/v2/things/')
+        data['external_services']['nettra_thethings']['name'] = 'Nettra / TheThingsIO'
+
+        # Tago
+        # Usamos /analysis porque devuelve 200 con {"status":true,"result":"Authorization denied"}
+        # mientras que /data/ devuelve 400 por falta de parámetros obligatorios
+        data['external_services']['tago'] = check_url('https://api.tago.io/analysis')
+        data['external_services']['tago']['name'] = 'Tago IO'
+
+        # DGA (Ministerio de Obras Públicas)
+        data['external_services']['dga'] = check_url('https://apimee.mop.gob.cl/api/v1')
+        data['external_services']['dga']['name'] = 'DGA (MOP)'
+
+        # SMA
+        data['external_services']['sma'] = check_url('https://conexiones.sma.gob.cl/api/v1/auth')
+        data['external_services']['sma']['name'] = 'SMA'
+
+        # Resumen de servicios externos
+        ext_services = {k: v for k, v in data['external_services'].items()}
+        data['external_services_summary'] = {
+            'total': len(ext_services),
+            'up': sum(1 for v in ext_services.values() if v.get('status') == 'up'),
+            'down': sum(1 for v in ext_services.values() if v.get('status') == 'down'),
+        }
+
+        # ========================================
+        # 7. ESTADO DE CRONJOBS (basado en logs)
+        # ========================================
+        log_dir = '/app/cron_logs/'
+        cronjobs_config = [
+            {'name': 'twin_60', 'schedule': '0 * * * *', 'log': 'twin_60.log', 'description': 'Telemetría Twin 60 min'},
+            {'name': 'twin_1', 'schedule': '* * * * *', 'log': 'twin_1.log', 'description': 'Telemetría Twin 1 min'},
+            {'name': 'twin_5', 'schedule': '*/5 * * * *', 'log': 'twin_5.log', 'description': 'Telemetría Twin 5 min'},
+            {'name': 'twin_10', 'schedule': '*/10 * * * *', 'log': 'twin_10.log', 'description': 'Telemetría Twin 10 min'},
+            {'name': 'nettra_60', 'schedule': '0 * * * *', 'log': 'nettra_60.log', 'description': 'Telemetría Nettra 60 min'},
+            {'name': 'nettra_5', 'schedule': '*/5 * * * *', 'log': 'nettra_5.log', 'description': 'Telemetría Nettra 5 min'},
+            {'name': 'novus_60', 'schedule': '0 * * * *', 'log': 'novus_60.log', 'description': 'Telemetría Novus 60 min'},
+            {'name': 'dga', 'schedule': '*/3 * * * *', 'log': 'dga.log', 'description': 'Cola DGA'},
+            {'name': 'sma', 'schedule': '*/5 * * * *', 'log': 'sma.log', 'description': 'Cola SMA'},
+            {'name': 'alerts', 'schedule': '*/10 * * * *', 'log': 'alerts.log', 'description': 'Alertas'},
+            {'name': 'space_backup', 'schedule': '0 * * * *', 'log': 'space_backup.log', 'description': 'Backup cluster'},
+            {'name': 'daily_bulletin', 'schedule': '0 1 * * *', 'log': 'daily_bulletin.log', 'description': 'Boletín diario'},
+            {'name': 'daily_chat_report', 'schedule': '0 12 * * *', 'log': 'daily_chat_report.log', 'description': 'Reporte chat diario'},
+            {'name': 'daily_active_tickets', 'schedule': '0 13 * * *', 'log': 'daily_active_tickets.log', 'description': 'Tickets activos diarios'},
+            {'name': 'dga_mayor_hourly', 'schedule': '5 * * * *', 'log': 'dga_mayor_hourly.log', 'description': 'Reporte DGA MAYOR horario'},
+        ]
+
+        def human_bytes(b):
+            for unit in ['B', 'KB', 'MB', 'GB']:
+                if abs(b) < 1024.0:
+                    return f"{b:.2f} {unit}"
+                b /= 1024.0
+            return f"{b:.2f} TB"
+
+        cronjob_statuses = []
+        now = timezone.now()
+
+        for cron in cronjobs_config:
+            status_info = {
+                'name': cron['name'],
+                'description': cron['description'],
+                'schedule': cron['schedule'],
+                'log_file': cron['log'],
+            }
+
+            log_path = os.path.join(log_dir, cron['log'])
+            if os.path.exists(log_path):
+                try:
+                    # --- info del archivo ---
+                    stat = os.stat(log_path)
+                    status_info['log_size_bytes'] = stat.st_size
+                    status_info['log_size_human'] = human_bytes(stat.st_size)
+                    status_info['log_modified'] = timezone.datetime.fromtimestamp(
+                        stat.st_mtime, tz=timezone.get_default_timezone()
+                    ).isoformat()
+
+                    mtime = stat.st_mtime
+                    from datetime import datetime
+                    last_run = datetime.fromtimestamp(mtime, tz=timezone.get_default_timezone())
+                    minutes_since = (now - last_run).total_seconds() / 60
+
+                    status_info['last_run'] = last_run.isoformat()
+                    status_info['minutes_since_last_run'] = round(minutes_since, 1)
+
+                    # --- frecuencia esperada más precisa ---
+                    sched = cron['schedule']
+                    parts = sched.split()
+                    minute_field = parts[0] if len(parts) == 5 else '*'
+                    if minute_field == '*':
+                        expected_minutes = 5
+                    elif minute_field.startswith('*/'):
+                        step = int(minute_field.replace('*/', ''))
+                        expected_minutes = step * 3 + 2  # e.g. */5 -> 17 min buffer
+                    elif minute_field.isdigit() and parts[1] == '*':
+                        # Ej: "0 * * * *" o "5 * * * *"  -> cada hora
+                        expected_minutes = 90
+                    elif parts[1].startswith('*/') or parts[1] == '*':
+                        # Cada X horas o diario con minuto fijo
+                        expected_minutes = 180
+                    else:
+                        # Diarios (ej: "0 1 * * *")
+                        expected_minutes = 1620  # 27h buffer
+
+                    # --- leer log ---
+                    try:
+                        with open(log_path, 'r', encoding='utf-8', errors='replace') as f:
+                            lines = f.readlines()
+                        status_info['log_lines_total'] = len(lines)
+                        status_info['log_is_empty'] = len(lines) == 0 or all(l.strip() == '' for l in lines)
+
+                        # Últimas 10 líneas no vacías
+                        non_empty = [l.rstrip('\n') for l in lines if l.strip()]
+                        status_info['last_log_lines'] = non_empty[-10:] if len(non_empty) >= 10 else non_empty
+
+                        # Contar errores en TODO el log (últimas 500 líneas como máximo)
+                        sample = lines[-500:] if len(lines) > 500 else lines
+                        error_keywords = ('error', 'exception', 'traceback', 'critical', 'failed')
+                        error_count = sum(
+                            1 for line in sample
+                            if any(kw in line.lower() for kw in error_keywords)
+                        )
+                        status_info['errors_in_log'] = error_count
+                        status_info['recent_errors'] = error_count > 0
+
+                        # Determinar estado final
+                        if minutes_since <= expected_minutes:
+                            base_status = 'healthy'
+                        elif minutes_since <= expected_minutes * 2:
+                            base_status = 'warning'
+                        else:
+                            base_status = 'error'
+
+                        # Si hay errores recientes, empeorar un healthy a warning
+                        if error_count > 0 and base_status == 'healthy':
+                            base_status = 'warning'
+
+                        status_info['status'] = base_status
+                        status_info['expected_minutes'] = expected_minutes
+
+                    except Exception as e:
+                        status_info['last_log_lines'] = []
+                        status_info['recent_errors'] = False
+                        status_info['errors_in_log'] = 0
+                        status_info['log_lines_total'] = 0
+                        status_info['status'] = 'unknown'
+                        status_info['log_read_error'] = str(e)
+
+                except Exception as e:
+                    status_info['status'] = 'unknown'
+                    status_info['error'] = str(e)
+            else:
+                status_info['status'] = 'no_log'
+                status_info['last_run'] = None
+                status_info['log_size_bytes'] = 0
+                status_info['log_size_human'] = '0.00 B'
+                status_info['log_lines_total'] = 0
+                status_info['log_is_empty'] = True
+
+            cronjob_statuses.append(status_info)
+
+        data['cronjobs'] = {
+            'jobs': cronjob_statuses,
+            'healthy': sum(1 for c in cronjob_statuses if c.get('status') == 'healthy'),
+            'warning': sum(1 for c in cronjob_statuses if c.get('status') == 'warning'),
+            'error': sum(1 for c in cronjob_statuses if c.get('status') == 'error'),
+            'no_log': sum(1 for c in cronjob_statuses if c.get('status') == 'no_log'),
+            'unknown': sum(1 for c in cronjob_statuses if c.get('status') == 'unknown'),
+            'total': len(cronjob_statuses),
+        }
+
+        # ========================================
+        # 8. Database Status
+        # ========================================
+        try:
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+            data['database']['status'] = 'connected'
+            data['database']['engine'] = settings.DATABASES['default'].get('ENGINE', 'unknown')
+            data['database']['host'] = settings.DATABASES['default'].get('HOST', 'unknown')
+            data['database']['name'] = settings.DATABASES['default'].get('NAME', 'unknown')
+
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT pg_database.datname, pg_database_size(pg_database.datname)
+                        FROM pg_database WHERE datname = current_database();
+                    """)
+                    row = cursor.fetchone()
+                    if row:
+                        db_size_mb = round(row[1] / (1024 * 1024), 2)
+                        data['database']['size_mb'] = db_size_mb
+            except Exception:
+                data['database']['size_mb'] = 'N/A'
+        except Exception as e:
+            data['database']['status'] = 'error'
+            data['database']['error'] = str(e)
+
+        # ========================================
+        # 9. Redis Status
+        # ========================================
+        try:
+            from django_redis import get_redis_connection
+            redis_conn = get_redis_connection("default")
+            redis_info = redis_conn.info()
+            data['redis']['status'] = 'connected'
+            data['redis']['version'] = redis_info.get('redis_version', 'unknown')
+            data['redis']['used_memory_human'] = redis_info.get('used_memory_human', 'unknown')
+            data['redis']['connected_clients'] = redis_info.get('connected_clients', 0)
+        except Exception as e:
+            data['redis']['status'] = 'error'
+            data['redis']['error'] = str(e)
+
+        # ========================================
+        # 10. Django Info
+        # ========================================
+        data['django']['version'] = getattr(settings, 'VERSION', 'unknown')
+        data['django']['debug'] = getattr(settings, 'DEBUG', False)
+        data['django']['time_zone'] = getattr(settings, 'TIME_ZONE', 'unknown')
+        data['django']['allowed_hosts'] = getattr(settings, 'ALLOWED_HOSTS', [])
+        data['django']['installed_apps_count'] = len(getattr(settings, 'INSTALLED_APPS', []))
+
+        try:
+            data['django']['model_counts'] = {
+                'users': User.objects.count(),
+                'clients': Client.objects.count(),
+                'projects': ProjectCatchments.objects.count(),
+                'catchment_points': CatchmentPoint.objects.count(),
+                'interaction_details': InteractionDetail.objects.count(),
+                'notifications': NotificationsCatchment.objects.count(),
+            }
+        except Exception as e:
+            data['django']['model_counts_error'] = str(e)
+
+        return Response(data, status=status.HTTP_200_OK)

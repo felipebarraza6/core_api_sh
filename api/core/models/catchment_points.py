@@ -75,6 +75,17 @@ class CatchmentPoint(ModelApi):
     is_tdata = models.BooleanField(default=False, verbose_name="Twin", db_index=True)
     is_novus = models.BooleanField(default=False, verbose_name="Novus", db_index=True)
 
+    # ✅ NUEVO: Proveedor de telemetría configurable (reemplaza booleanos estáticos)
+    telemetry_provider = models.ForeignKey(
+        "TelemetryProvider",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="points",
+        verbose_name="Proveedor de telemetría",
+        help_text="Proveedor configurable. Reemplaza los campos booleanos legacy (is_tdata, is_thethings, is_novus).",
+    )
+
     lat = models.CharField(
         max_length=300, blank=True, null=True, verbose_name="latitud"
     )
@@ -104,6 +115,49 @@ class CatchmentPoint(ModelApi):
 
         verbose_name = "Punto de captacion"
         verbose_name_plural = "Puntos de captacion"
+
+    @property
+    def input_mode(self):
+        """
+        Determina el modo de entrada del punto:
+        - TELEMETRY: telemetría automática (sensores)
+        - FORM: ingreso manual por formulario
+        - MIXED: ambos (raro, pero posible)
+        - NONE: sin configuración
+        """
+        has_telemetry = self.data_config_profiles.filter(is_telemetry=True).exists()
+        has_form = self.ikolu_profiles.filter(entry_by_form=True).exists()
+
+        if has_telemetry and has_form:
+            return "MIXED"
+        elif has_telemetry:
+            return "TELEMETRY"
+        elif has_form:
+            return "FORM"
+        return "NONE"
+
+    def clean(self):
+        """Validaciones de consistencia del punto."""
+        from django.core.exceptions import ValidationError
+
+        super().clean()
+
+        # 1. No puede ser telemetría y formulario al mismo tiempo
+        has_telemetry = self.data_config_profiles.filter(is_telemetry=True).exists()
+        has_form = self.ikolu_profiles.filter(entry_by_form=True).exists()
+
+        if has_telemetry and has_form:
+            raise ValidationError(
+                "Un punto no puede ser simultáneamente telemetría automática y formulario. "
+                "Desactive 'is_telemetry' o 'entry_by_form'."
+            )
+
+        # 2. Si es telemetría, debe tener al menos un tipo definido (legacy) o provider (nuevo)
+        has_provider_legacy = self.is_tdata or self.is_thethings or self.is_novus
+        has_provider_new = self.telemetry_provider_id is not None
+        if has_telemetry and not (has_provider_legacy or has_provider_new):
+            # Advertencia suave: puntos sin tipo pueden ser nuevos o en configuración
+            pass
 
     def __str__(self):
         return f"{self.title} - {self.owner_user}"
@@ -427,6 +481,23 @@ class ProfileDataConfigCatchment(ModelApi):
         verbose_name="Adicion (Reset)",
         help_text="Valor acumulado automáticamente cuando el sensor se reinicia (glitch/reset)."
     )
+    nivel_offset = models.DecimalField(
+        default=0.0,
+        max_digits=10,
+        decimal_places=3,
+        verbose_name="Offset nivel (m)",
+        help_text="Desfase a aplicar al nivel antes de calcular (ej: -17.0 para punto 149).",
+    )
+    replicate_on_missing = models.BooleanField(
+        default=False,
+        verbose_name="Replicar último registro si no hay datos",
+        help_text="Si no llegan datos del sensor, replica el último registro válido en vez de crear ceros.",
+    )
+    use_transaction_atomic = models.BooleanField(
+        default=True,
+        verbose_name="Usar transacción atómica al guardar",
+        help_text="Envuelve el guardado en transaction.atomic() para prevenir duplicados.",
+    )
 
     class Meta:
         """Meta data profile data config"""
@@ -514,6 +585,20 @@ class DgaDataConfigCatchment(ModelApi):
         blank=True,
         verbose_name="clave DGA",
         help_text='Contraseña software DGA. Dejar vacío para usar default del sistema.'
+    )
+
+    # SMA — campos configurables (antes hardcodeados en cron_sma.py)
+    send_sma = models.BooleanField(
+        default=False,
+        verbose_name="Activar envío SMA",
+        help_text="Si está activo, este punto enviará datos al sistema SMA.",
+    )
+    sma_device_id = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="ID dispositivo SMA",
+        help_text="Identificador del dispositivo en el sistema SMA (ej: 12180).",
     )
 
     class Meta:
@@ -627,6 +712,34 @@ class Variable(ModelApi):
     # Nivel
     calculate_nivel = models.IntegerField(
         blank=True, null=True, verbose_name="Base Calculo nivel(n/base calculo)"
+    )
+
+    store_average_flow = models.BooleanField(
+        default=True,
+        verbose_name="Guardar caudal promedio en BD",
+        help_text="Si es True, CAUDAL_PROMEDIO guarda flow en InteractionDetail. Si es False, se calcula dinámicamente.",
+    )
+
+    # Validación de calidad de datos en ingesta
+    min_value = models.DecimalField(
+        max_digits=15, decimal_places=4,
+        blank=True, null=True,
+        verbose_name="Valor mínimo permitido",
+        help_text="Si el valor ingresado es menor, se marca como error. Dejar vacío para no validar.",
+    )
+    max_value = models.DecimalField(
+        max_digits=15, decimal_places=4,
+        blank=True, null=True,
+        verbose_name="Valor máximo permitido",
+        help_text="Si el valor ingresado es mayor, se marca como error. Dejar vacío para no validar.",
+    )
+
+    # Clave de visualización para el frontend (payload dinámico)
+    display_key = models.CharField(
+        max_length=100,
+        blank=True, null=True,
+        verbose_name="Clave de visualización",
+        help_text="Cómo se muestra esta variable en la app (ej: caudal, nivel, total, custom_1). Si está vacío, usa type_variable.",
     )
 
     class Meta:

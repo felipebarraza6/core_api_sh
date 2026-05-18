@@ -5,7 +5,7 @@ IMPORTANTE: Estos tests validan el comportamiento de los cronjobs sin ejecutarlo
 Validan la lógica de procesamiento.
 """
 from django.test import TestCase
-from api.core.models import CatchmentPoint, InteractionDetail, ProfileDataConfigCatchment
+from api.core.models import CatchmentPoint, InteractionDetail, ProfileDataConfigCatchment, User, Client, ProjectCatchments
 from api.cronjobs.telemetry.controllers.unified_processing import (
     process_totalizado_variable,
     process_nivel_variable,
@@ -23,14 +23,25 @@ class CronjobLogicRegressionTests(TestCase):
     def setUp(self):
         """Configurar datos de prueba."""
         self.chile_tz = pytz.timezone("America/Santiago")
-        self.point = CatchmentPoint.objects.create(title="Test Point")
+        self.user = User.objects.create(username="testuser", email="test@example.com")
+        self.client_obj = Client.objects.create(name="Test Client")
+        self.project = ProjectCatchments.objects.create(name="Test Project", client=self.client_obj)
+        self.point = CatchmentPoint.objects.create(title="Test Point", owner_user=self.user, project=self.project)
         self.profile = ProfileDataConfigCatchment.objects.create(
             point_catchment=self.point,
             is_telemetry=True,
             d5=100.0,
             d6=50.0
         )
-        self.point_catchment_dict = {"id": self.point.id}
+        self.point_catchment_dict = {
+            "id": self.point.id,
+            "profile_data_config": {
+                "d3": 10.0,
+                "d5": 100.0,
+                "d6": 50.0,
+                "nivel_offset": 0,
+            }
+        }
 
     def test_process_totalizado_variable(self):
         """Validar que procesamiento de TOTALIZADO funciona correctamente."""
@@ -110,10 +121,10 @@ class CronjobLogicRegressionTests(TestCase):
     def test_validate_frequency_mayor(self):
         """Validar frecuencia para estándar MAYOR."""
         from api.core.models import DgaDataConfigCatchment
-        dga_config = DgaDataConfigCatchment.objects.create(
-            point_catchment=self.point,
-            standard="MAYOR"
-        )
+        # El signal create_related_profiles ya creó una config DGA por defecto
+        dga_config = DgaDataConfigCatchment.objects.get(point_catchment=self.point)
+        dga_config.standard = "MAYOR"
+        dga_config.save()
         
         # Hora con minuto 0 debe retornar True
         current_time = datetime(2025, 1, 1, 10, 0, 0, tzinfo=self.chile_tz)
@@ -128,10 +139,10 @@ class CronjobLogicRegressionTests(TestCase):
     def test_validate_frequency_medio(self):
         """Validar frecuencia para estándar MEDIO."""
         from api.core.models import DgaDataConfigCatchment
-        dga_config = DgaDataConfigCatchment.objects.create(
-            point_catchment=self.point,
-            standard="MEDIO"
-        )
+        # El signal create_related_profiles ya creó una config DGA por defecto
+        dga_config = DgaDataConfigCatchment.objects.get(point_catchment=self.point)
+        dga_config.standard = "MEDIO"
+        dga_config.save()
         
         # Medianoche debe retornar True
         current_time = datetime(2025, 1, 1, 0, 0, 0, tzinfo=self.chile_tz)

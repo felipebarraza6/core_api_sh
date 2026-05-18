@@ -13,7 +13,10 @@ from api.core.models import (
     InteractionDetail,
     CatchmentPoint,
     DgaDataConfigCatchment,
-    ProfileDataConfigCatchment
+    ProfileDataConfigCatchment,
+    User,
+    Client,
+    ProjectCatchments
 )
 from api.cronjobs.dga.caudal_calculations import (
     calculate_daily_average_flow,
@@ -27,7 +30,10 @@ class CaudalCalculationsTests(TestCase):
     def setUp(self):
         """Configurar datos de prueba."""
         self.chile_tz = pytz.timezone("America/Santiago")
-        self.point = CatchmentPoint.objects.create(title="Test Point")
+        self.user = User.objects.create(username="testuser", email="test@example.com")
+        self.client_obj = Client.objects.create(name="Test Client")
+        self.project = ProjectCatchments.objects.create(name="Test Project", client=self.client_obj)
+        self.point = CatchmentPoint.objects.create(title="Test Point", owner_user=self.user, project=self.project)
         self.profile = ProfileDataConfigCatchment.objects.create(
             point_catchment=self.point,
             is_telemetry=True

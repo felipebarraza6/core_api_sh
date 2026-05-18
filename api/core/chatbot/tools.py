@@ -786,9 +786,11 @@ def get_global_status():
         grouped_notifs = {}
         for n in notifs:
             clean_title = n.title.strip()
-            key = (n.point_catchment.id, clean_title)
+            point_id = n.point_catchment.id if n.point_catchment else 'global'
+            point_name = n.point_catchment.title if n.point_catchment else 'Global'
+            key = (point_id, clean_title)
             if key not in grouped_notifs:
-                grouped_notifs[key] = {'title': clean_title, 'point': n.point_catchment.title, 'count': 1, 'type': n.type_notification}
+                grouped_notifs[key] = {'title': clean_title, 'point': point_name, 'count': 1, 'type': n.type_notification}
             else:
                 grouped_notifs[key]['count'] += 1
         
@@ -822,12 +824,15 @@ def get_recent_notifications(limit=10):
     # Agrupar por (Punto, Título)
     grouped = {}
     for n in notifs:
-        key = (n.point_catchment.id, n.title)
+        point_id = n.point_catchment.id if n.point_catchment else 'global'
+        point_name = n.point_catchment.title if n.point_catchment else 'Global'
+        client_name = n.point_catchment.project.client.name if n.point_catchment and n.point_catchment.project else "N/A"
+        key = (point_id, n.title)
         if key not in grouped:
             grouped[key] = {
                 'title': n.title,
-                'point': n.point_catchment.title,
-                'client': n.point_catchment.project.client.name if n.point_catchment.project else "N/A",
+                'point': point_name,
+                'client': client_name,
                 'type': n.type_notification,
                 'count': 1,
                 'message': n.message

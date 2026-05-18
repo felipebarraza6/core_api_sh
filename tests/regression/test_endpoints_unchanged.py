@@ -8,7 +8,7 @@ import json
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
-from api.core.models import InteractionDetail, CatchmentPoint
+from api.core.models import InteractionDetail, CatchmentPoint, Client, ProjectCatchments
 
 User = get_user_model()
 
@@ -68,7 +68,9 @@ class EndpointStructureRegressionTests(TestCase):
     def test_flow_calculation_consistency(self):
         """Validar que el cálculo de flow es consistente."""
         # Crear punto de prueba con CAUDAL_PROMEDIO
-        point = CatchmentPoint.objects.create(title="Test Point")
+        client_obj = Client.objects.create(name="Test Client")
+        project = ProjectCatchments.objects.create(name="Test Project", client=client_obj)
+        point = CatchmentPoint.objects.create(title="Test Point", owner_user=self.user, project=project)
         
         # Crear registros de prueba
         from django.utils import timezone

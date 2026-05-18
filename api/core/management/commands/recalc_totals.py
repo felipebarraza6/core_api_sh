@@ -8,7 +8,7 @@ from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 
 from api.core.models import InteractionDetail, CatchmentPoint
-from api.core.models.catchment_points import SchemesCatchment, Variable
+from api.core.models.catchment_points import SchemesCatchment, Variable, ProfileDataConfigCatchment
 
 
 def get_pulses_factor_for_point(point_id: int) -> int:
@@ -30,15 +30,15 @@ def get_pulses_factor_for_point(point_id: int) -> int:
         return 1000
 
 
-def recalc_for_point(point_id: int, dry_run: bool = True, use_created: bool = True, 
-                     start_datetime: Optional[datetime] = None, 
+def recalc_for_point(point_id: int, dry_run: bool = True, use_created: bool = True,
+                     start_datetime: Optional[datetime] = None,
                      end_datetime: Optional[datetime] = None) -> dict:
     """Recalculate totals for a given point.
 
-    - total = (pulses * pulses_factor) / 1000
+    - total = (pulses * pulses_factor) / 1000 + addition
     - total_diff = max(0, total - total_prev)
       (if reset detected because total < total_prev, uses total as diff)
-    - total_today_diff = sum(total_diff of the day)
+    - total_today_diff = total - first_total_of_day
 
     Args:
         point_id: CatchmentPoint id
@@ -52,16 +52,20 @@ def recalc_for_point(point_id: int, dry_run: bool = True, use_created: bool = Tr
     ordering = "created" if use_created else "date_time_medition"
     pf = get_pulses_factor_for_point(point_id)
 
+    # Obtener addition (offset por resets acumulados) del perfil
+    profile = ProfileDataConfigCatchment.objects.filter(point_catchment_id=point_id).first()
+    addition = int(profile.addition or 0) if profile else 0
+
     # Base queryset
     qs = InteractionDetail.objects.filter(catchment_point_id=point_id)
-    
+
     # Apply date filters
     date_field = ordering
     if start_datetime:
         qs = qs.filter(**{f"{date_field}__gte": start_datetime})
     if end_datetime:
         qs = qs.filter(**{f"{date_field}__lte": end_datetime})
-    
+
     qs = qs.order_by(ordering, "id")
 
     # If we have date filters, we need to get the previous total to calculate diffs correctly
@@ -84,7 +88,7 @@ def recalc_for_point(point_id: int, dry_run: bool = True, use_created: bool = Tr
 
     processed = 0
     updated = 0
-    day_acc = {}  # date -> sum of diffs
+    first_total_of_day = {}  # date -> first total value of the day
 
     def day_for_row(row):
         from django.utils import timezone
@@ -101,8 +105,8 @@ def recalc_for_point(point_id: int, dry_run: bool = True, use_created: bool = Tr
             processed += 1
 
             pulses = int(row.pulses or 0)
-            # Compute total as int
-            total_val = int(round((float(pulses) * float(pf)) / 1000.0))
+            # Compute total as int: (pulses * factor) / 1000 + addition
+            total_val = int(round((float(pulses) * float(pf)) / 1000.0 + addition))
 
             # Compute diff against previous total (from recomputed sequence)
             if prev_total is None:
@@ -117,29 +121,17 @@ def recalc_for_point(point_id: int, dry_run: bool = True, use_created: bool = Tr
             if diff_val < 0:
                 diff_val = 0
 
-            # Accumulate by day for today diff
+            # Calculate today diff: total - first_total_of_day
+            # Consistent with the live cron's total_day() logic
             d = day_for_row(row)
-            if d not in day_acc:
-                # Start the day's accumulator. If recalculating a subrange within the same day,
-                # seed with diffs strictly before start_datetime; otherwise 0.
-                base = 0
-                if start_datetime and d == (timezone.localtime(start_datetime).date() if timezone.is_aware(start_datetime) else start_datetime.date()):
-                    qs_base = InteractionDetail.objects.filter(
-                        catchment_point_id=point_id,
-                        **{f"{date_field}__date": d}
-                    )
-                    if date_field == 'created':
-                        qs_base = qs_base.filter(created__lt=start_datetime)
-                    else:
-                        qs_base = qs_base.filter(date_time_medition__lt=start_datetime)
-                    base = sum(v for v in qs_base.exclude(total_diff__isnull=True).values_list('total_diff', flat=True) if v and v > 0)
-                day_acc[d] = base
-                # First record of the day: show current base (0 or seeded) and then add current diff for next rows
-                today_diff_val = day_acc[d]
-                day_acc[d] += diff_val
-            else:
-                day_acc[d] += diff_val
-                today_diff_val = day_acc[d]
+            if d not in first_total_of_day:
+                first_total_of_day[d] = total_val
+
+            today_diff_val = max(0, total_val - first_total_of_day[d])
+
+            # Cap extreme daily values
+            if today_diff_val > 10000:
+                today_diff_val = 0
 
             # Determine if row needs update
             try:
@@ -157,7 +149,7 @@ def recalc_for_point(point_id: int, dry_run: bool = True, use_created: bool = Tr
                 row.total = str(total_val)
                 row.total_diff = int(diff_val)
                 row.total_today_diff = int(today_diff_val)
-                row.save(update_fields=["total", "total_diff", "total_today_diff"]) 
+                row.save(update_fields=["total", "total_diff", "total_today_diff"])
                 updated += 1
             elif needs:
                 updated += 1
@@ -170,6 +162,7 @@ def recalc_for_point(point_id: int, dry_run: bool = True, use_created: bool = Tr
     return {
         "point": point_id,
         "pulses_factor": pf,
+        "addition": addition,
         "processed": processed,
         "would_update": updated if dry_run else None,
         "updated": None if dry_run else updated,
@@ -224,7 +217,7 @@ class Command(BaseCommand):
         # Parse datetime filters
         start_datetime = None
         end_datetime = None
-        
+
         if from_dt_str:
             # Try with time first, then date only
             start_datetime = parse_datetime(from_dt_str)
@@ -235,7 +228,7 @@ class Command(BaseCommand):
                     )
                 except ValueError:
                     raise CommandError(f"Formato de fecha inválido en --from-datetime: {from_dt_str}")
-        
+
         if to_dt_str:
             end_datetime = parse_datetime(to_dt_str)
             if not end_datetime:
@@ -253,14 +246,14 @@ class Command(BaseCommand):
             if not CatchmentPoint.objects.filter(id=pid).exists():
                 self.stderr.write(self.style.WARNING(f"Punto {pid} no existe, se omite"))
                 continue
-            
+
             self.stdout.write(f"Recalculando punto {pid}...")
             if start_datetime or end_datetime:
                 self.stdout.write(f"  Rango: {start_datetime or 'inicio'} - {end_datetime or 'fin'}")
-            
+
             summary = recalc_for_point(
-                pid, 
-                dry_run=dry_run, 
+                pid,
+                dry_run=dry_run,
                 use_created=not use_medicion,
                 start_datetime=start_datetime,
                 end_datetime=end_datetime

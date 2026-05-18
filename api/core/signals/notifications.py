@@ -9,7 +9,6 @@ from api.core.utils.google_chat import send_google_chat_message
 
 logger = logging.getLogger(__name__)
 
-SUPPORT_EMAILS = ['sporte@smarthydro.cl', 'felipebarraza@smarthydro.cl']
 
 def send_async_notifications(instance_id):
     """
@@ -17,14 +16,17 @@ def send_async_notifications(instance_id):
     """
     try:
         instance = NotificationsCatchment.objects.get(id=instance_id)
-        
+
         # 1. Prepare Message for Google Chat
         client_name = "N/A"
         point_name = "N/A"
+        owner_email = None
         if instance.point_catchment:
             point_name = instance.point_catchment.title
             if instance.point_catchment.project and instance.point_catchment.project.client:
                 client_name = instance.point_catchment.project.client.name
+            if instance.point_catchment.owner_user and instance.point_catchment.owner_user.email:
+                owner_email = instance.point_catchment.owner_user.email
 
         chat_msg = (
             f"🎫 **NUEVO TICKET DE SOPORTE**\n\n"
@@ -39,34 +41,49 @@ def send_async_notifications(instance_id):
         # 2. Send to Google Chat
         send_google_chat_message(chat_msg)
 
-        # 3. Send Email (TEMPORARILY DISABLED DUE TO SMTP BLOCK)
-        # We comment this out because even with fail_silently=True, 
-        # it can cause delays or overhead until the connection times out.
-        """
-        subject = f"Nuevo Ticket de Soporte: {instance.title}"
-        email_body = (
-            f"Se ha creado un nuevo ticket en el sistema:\n\n"
-            f"ID: {instance.id}\n"
-            f"Título: {instance.title}\n"
-            f"Cliente: {client_name}\n"
-            f"Punto: {point_name}\n"
-            f"Tipo: {instance.get_type_notification_display()}\n"
-            f"Mensaje: {instance.message}\n\n"
-            f"Fecha: {instance.created}\n"
-            f"Link: https://api.smarthydro.app/admin/core/notificationscatchment/{instance.id}/change/"
-        )
+        # 3. Build recipient list for ticket email
+        recipient_list = []
 
-        send_mail(
-            subject=subject,
-            message=email_body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=SUPPORT_EMAILS,
-            fail_silently=True
-        )
-        """
+        # 3a. Emails configurados en la notificación (nuevo campo, prioridad)
+        if instance.emails:
+            import re
+            EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+            for raw in instance.emails:
+                raw = str(raw).strip() if raw else ''
+                if raw and EMAIL_REGEX.match(raw):
+                    recipient_list.append(raw)
+
+        # 3b. Fallback: email del owner del punto (compatibilidad legacy)
+        if not recipient_list and owner_email:
+            recipient_list.append(owner_email)
+
+        # 3c. Send email if we have recipients
+        if recipient_list:
+            subject = f"Nuevo Ticket de Soporte: {instance.title}"
+            email_body = (
+                f"Se ha creado un nuevo ticket en el sistema:\n\n"
+                f"ID: {instance.id}\n"
+                f"Título: {instance.title}\n"
+                f"Cliente: {client_name}\n"
+                f"Punto: {point_name}\n"
+                f"Tipo: {instance.get_type_notification_display()}\n"
+                f"Mensaje: {instance.message}\n\n"
+                f"Fecha: {instance.created}\n"
+                f"Link: https://api.smarthydro.app/admin/core/notificationscatchment/{instance.id}/change/"
+            )
+
+            send_mail(
+                subject=subject,
+                message=email_body,
+                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
+                recipient_list=recipient_list,
+                fail_silently=True,
+            )
+            logger.info(f"Email de ticket enviado a {', '.join(recipient_list)}")
 
     except Exception as e:
         logger.error(f"Error in send_async_notifications: {e}")
+
 
 @receiver(post_save, sender=NotificationsCatchment)
 def notify_new_ticket(sender, instance, created, **kwargs):

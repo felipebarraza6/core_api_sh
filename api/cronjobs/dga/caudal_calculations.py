@@ -11,8 +11,10 @@ from typing import Optional
 import pytz
 
 from django.db.models import Avg, Q
+from django.core.cache import cache
 from api.core.models import InteractionDetail, DgaDataConfigCatchment
 from api.cronjobs.telemetry.controllers.flow import average_flow
+from api.cronjobs.utils.logging_config import dga_logger
 
 
 def calculate_daily_average_flow(
@@ -54,47 +56,70 @@ def calculate_daily_average_flow(
             hour=23, minute=59, second=59, microsecond=999999
         )
         
+        # Cache key: punto + fecha del día anterior
+        cache_key = f"dga_daily_flow:{register.catchment_point_id}:{dia_anterior_inicio.date().isoformat()}"
+        cached_value = cache.get(cache_key)
+        if cached_value is not None:
+            return cached_value
+        
         # Obtener todos los registros del día anterior
-        yesterday_records = InteractionDetail.objects.filter(
+        yesterday_records = list(InteractionDetail.objects.filter(
             catchment_point=register.catchment_point,
             date_time_medition__gte=dia_anterior_inicio,
             date_time_medition__lte=dia_anterior_fin
-        ).order_by('date_time_medition')
+        ).order_by('date_time_medition').select_related('catchment_point'))
         
-        if not yesterday_records.exists():
-            # No hay registros del día anterior, retornar 0.0
+        if not yesterday_records:
+            # No hay registros del día anterior, cachear 0.0 y retornar
+            cache.set(cache_key, 0.0, timeout=86400)
             return 0.0
         
+        # Precargar todos los registros previos necesarios en una sola query
+        # para eliminar N+1 dentro del loop
+        prev_timestamps = [r.date_time_medition for r in yesterday_records if r.date_time_medition]
+        if prev_timestamps:
+            earliest = min(prev_timestamps)
+            all_prev_records = list(InteractionDetail.objects.filter(
+                catchment_point=register.catchment_point,
+                date_time_medition__lt=max(prev_timestamps),
+                date_time_medition__gte=earliest - timedelta(days=1)
+            ).order_by('date_time_medition').only('date_time_medition', 'total'))
+        else:
+            all_prev_records = []
+        
+        # Crear lookup de registro anterior por timestamp
+        prev_lookup = {}
+        for i, record in enumerate(yesterday_records):
+            if i > 0:
+                prev_lookup[record.id] = yesterday_records[i - 1]
+            else:
+                # Buscar en precargados
+                for prev in reversed(all_prev_records):
+                    if prev.date_time_medition < record.date_time_medition:
+                        prev_lookup[record.id] = prev
+                        break
+        
         # Calcular caudal para cada registro del día anterior
-        # Para un promedio diario real de 24 horas, debemos incluir los periodos sin consumo (0.0 L/s)
         caudales_del_dia = []
         
         for record in yesterday_records:
-            # Si tiene consumo, calcular caudal basado en el registro anterior
             if record.total_diff and record.total_diff > 0:
-                # Buscar registro anterior a este
-                previous_record = InteractionDetail.objects.filter(
-                    catchment_point=record.catchment_point,
-                    date_time_medition__lt=record.date_time_medition
-                ).order_by('-date_time_medition').first()
+                previous_record = prev_lookup.get(record.id)
                 
                 if previous_record and previous_record.total and record.total:
                     try:
-                        # Calcular diferencia de tiempo
                         curr_ts = record.date_time_medition.astimezone(chile_tz)
                         prev_ts = previous_record.date_time_medition.astimezone(chile_tz)
                         dt = (curr_ts - prev_ts).total_seconds()
                         
                         if dt > 0:
-                            # Calcular diferencia de total
                             curr_total = float(record.total)
                             prev_total = float(previous_record.total)
                             diff = curr_total - prev_total
                             
                             if diff > 0:
-                                # Calcular caudal: (diff m³ / dt seg) * 1000 = L/s
                                 caudal = (diff / dt) * 1000.0
-                                if 0 <= abs(caudal) < 1000:  # Validar rango (permite 0)
+                                if 0 <= abs(caudal) < 1000:
                                     caudales_del_dia.append(caudal)
                             else:
                                 caudales_del_dia.append(0.0)
@@ -103,20 +128,18 @@ def calculate_daily_average_flow(
                     except (ValueError, TypeError, AttributeError):
                         caudales_del_dia.append(0.0)
             else:
-                # Si no hay consumo (total_diff = 0), el caudal es 0.0
-                # Pero lo incluimos en el promedio diario para que sea representativo de las 24h
                 caudales_del_dia.append(0.0)
         
-        # Calcular promedio de todos los registros del día (representativo de las 24 horas)
         if caudales_del_dia:
-            promedio_diario = sum(caudales_del_dia) / len(caudales_del_dia)
-            return round(promedio_diario, 2)
+            promedio_diario = round(sum(caudales_del_dia) / len(caudales_del_dia), 2)
         else:
-            return 0.0
+            promedio_diario = 0.0
+        
+        cache.set(cache_key, promedio_diario, timeout=86400)
+        return promedio_diario
             
     except Exception as e:
-        # En caso de error, retornar 0.0 (no romper el proceso)
-        print(f"Error calculando caudal medio diario para registro {register.id}: {e}")
+        dga_logger.error(f"Error calculando caudal medio diario para registro {register.id}: {e}")
         return 0.0
 
 

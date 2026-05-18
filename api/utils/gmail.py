@@ -60,7 +60,7 @@ class GmailApiBackend:
         for message in email_messages:
             try:
                 # Convertir mensaje a bytes y codificar en base64
-                raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+                raw = base64.urlsafe_b64encode(message.message().as_bytes()).decode()
                 body = {'raw': raw}
 
                 # Enviar a través de Gmail API

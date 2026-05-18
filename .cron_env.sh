@@ -1,0 +1,10 @@
+export LOCAL_DB_HOST='postgres'
+export LOCAL_DB_NAME='smarthydro_prod'
+export LOCAL_DB_USER='smarthydro_user'
+export LOCAL_DB_PASSWORD='smarthydro_password_2025'
+export LOCAL_DB_PORT='5432'
+export USE_CLUSTER='false'
+export DJANGO_DEBUG='False'
+export DJANGO_SETTINGS_MODULE='api.settings'
+export TDATA_USERNAME="sadmin.smarthydro@twindimension.io"
+export TDATA_PASSWORD="Smart.1238"

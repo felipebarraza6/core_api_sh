@@ -104,6 +104,7 @@ class BatchTelemetryView(APIView):
                     "is_error": record.is_error,
                     "send_dga": record.send_dga,
                     "n_voucher": record.n_voucher or "-",
+                    "variable_values": record.variable_values or {},
                 }
             }
         

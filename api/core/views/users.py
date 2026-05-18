@@ -21,10 +21,10 @@ from rest_framework.permissions import (
 from api.core.permissions import IsAccountOwner
 
 # Models
-from api.core.models import User, ProfileIkoluCatchment
+from api.core.models import User
 
 # Serializers
-from api.core.serializers.users import UserProfile, UserLoginSerializer, UserModelSerializer, UserSignUpSerializer, CatchmentPointSerializerDetailCron
+from api.core.serializers.users import UserProfile, UserLoginSerializer, UserModelSerializer, UserSignUpSerializer
 
 logger = logging.getLogger(__name__)
 

@@ -5,13 +5,16 @@ WORKDIR /app
 
 ADD api/requirements.txt /app/
 RUN pip install -r requirements.txt
+RUN pip install boto3
 
 RUN apt-get update
 RUN apt-get install -y \
     gettext \
     nginx \
     vim \
-    cron && touch /var/log/cron.log
+    cron \
+    postgresql-client \
+    && touch /var/log/cron.log
 
 RUN echo "daemon off;" >> /etc/nginx/nginx.conf
 # ✅ FIX: Modificar nginx.conf para usar logs en /app/logs/nginx

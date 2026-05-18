@@ -3,7 +3,11 @@ import time
 
 import requests
 
+from django.conf import settings
+
 from api.core.models import InteractionDetail
+from api.core.utils.compliance import ComplianceConfig
+from api.cronjobs.utils.logging_config import dga_logger
 
 
 def send(response):
@@ -26,8 +30,9 @@ def send(response):
             except ValueError:
                 return 0
 
-    # URL base para la API REST de DGA
-    base_url = "https://apimee.mop.gob.cl/api/v1"
+    # Obtener configuración DGA desde ComplianceProvider (BD) o settings (fallback)
+    dga_config_sys = ComplianceConfig('dga')
+    base_url = dga_config_sys.get('base_url', settings.DGA_BASE_URL) or "https://apimee.mop.gob.cl/api/v1"
 
     codigo_obra = response["code_dga"]
     time_stamp_origen = response["date_time_medition"]  # Sin Z - formato DGA
@@ -55,14 +60,20 @@ def send(response):
     if nivel_freatico_del_pozo is None or nivel_freatico_del_pozo < 0:
         nivel_freatico_del_pozo = 0.0
 
-    print(
+    dga_logger.info(
         f"Enviando datos a DGA: {catchment_point}: {codigo_obra} - "
         f"{fecha_medicion} {hora_medicion} - {totalizador} - "
         f"{caudal} - {nivel_freatico_del_pozo}"
     )
 
-    # Obtener rutEmpresa desde la configuración DGA (nuevo campo)
-    rut_empresa = getattr(response.get("dga_config", {}), "rut_empresa", "76944359-2")
+    # Obtener rutEmpresa desde ComplianceProvider → protocol_config → settings
+    dga_cfg = response.get("dga_config", {})
+    if hasattr(dga_cfg, 'rut_empresa') and dga_cfg.rut_empresa:
+        rut_empresa = dga_cfg.rut_empresa
+    else:
+        rut_empresa = dga_config_sys.get_protocol_config(
+            'default_rut_empresa', settings.DGA_DEFAULT_RUT_EMPRESA
+        ) or ""
 
     if type_dga == "SUBTERRANEO":
         url = f"{base_url}/mediciones/subterraneas"
@@ -134,7 +145,7 @@ def send(response):
                         comprobante_match = re.search(r'Comprobante: ([a-zA-Z0-9]+)', error_message)
                         numero_comprobante = comprobante_match.group(1) if comprobante_match else "Duplicado"
                         
-                        print(f"REGISTRO DUPLICADO - Ya enviado: {numero_comprobante}")
+                        dga_logger.info(f"REGISTRO DUPLICADO - Ya enviado: {numero_comprobante}")
                         
                         # Marcar como enviado exitosamente
                         InteractionDetail.objects.filter(id=id_interaction).update(
@@ -144,13 +155,13 @@ def send(response):
                             is_error=False,  # Es éxito (ya estaba enviado)
                         )
                         
-                        time.sleep(12)  # Rate limit
-                        print("DEBUG: Retornando True por duplicado exitoso")
+                        time.sleep(2)  # Rate limit reducido para evitar acumulación
+                        dga_logger.debug("Retornando True por duplicado exitoso")
                         return True
                     else:
                         # 🔴 ERRORES ESPECÍFICOS PARA NO REINTENTAR
                         if "Usuario no es el informante registrado en la Obra" in error_message:
-                            print(f"ERROR IRRECUPERABLE: {error_message}")
+                            dga_logger.error(f"ERROR IRRECUPERABLE: {error_message}")
                             InteractionDetail.objects.filter(id=id_interaction).update(
                                 return_dga=f"Error DGA Irrecuperable: {error_message}",
                                 send_dga=False,  # 🛑 Detener envíos para este registro
@@ -158,22 +169,22 @@ def send(response):
                             )
                             return False
 
-                        print(f"ERROR 400 REAL: {error_message}")
+                        dga_logger.warning(f"ERROR 400 REAL: {error_message}")
                         # Continuar con reintentos para errores 400 reales
                         continue
                         
                 except json.JSONDecodeError:
-                    print("Error 400 sin JSON válido")
+                    dga_logger.warning("Error 400 sin JSON válido")
                     continue
             
             # Si llegamos aquí y no es código 200, continuar con reintentos
             elif response_api.status_code != 200:
-                print(f"Error HTTP {response_api.status_code}: {response_api.text}")
+                dga_logger.error(f"Error HTTP {response_api.status_code}: {response_api.text}")
                 continue
 
 
-            print(f"Respuesta DGA: {response_api.status_code}")
-            print(f"Contenido: {response_api.text}")
+            dga_logger.info(f"Respuesta DGA: {response_api.status_code}")
+            dga_logger.debug(f"Contenido: {response_api.text}")
 
             # Parsear respuesta JSON
             try:
@@ -189,10 +200,10 @@ def send(response):
                 if status == "00":  # Éxito
                     is_send = True
                     numero_comprobante = data.get("numeroComprobante")
-                    print(f"Éxito: {message} - Comprobante: {numero_comprobante}")
+                    dga_logger.info(f"Éxito: {message} - Comprobante: {numero_comprobante}")
                 else:
                     is_error = True
-                    print(f"Error: {message}")
+                    dga_logger.error(f"Error: {message}")
 
                 # Actualizar registro en la base de datos
                 InteractionDetail.objects.filter(id=id_interaction).update(
@@ -204,12 +215,12 @@ def send(response):
                 )
 
                 if is_send:
-                    time.sleep(12)  # Esperar 12 segundos antes de continuar (rate limit DGA)
-                print(f"DEBUG: Retornando is_send={is_send}")
+                    time.sleep(2)  # Espera reducida para evitar acumulación de procesos
+                dga_logger.debug(f"Retornando is_send={is_send}")
                 return is_send
 
             except json.JSONDecodeError as e:
-                print(f"Error al parsear respuesta JSON: {e}")
+                dga_logger.error(f"Error al parsear respuesta JSON: {e}")
                 error_msg = (
                     f"Error: Respuesta inválida del servidor DGA - "
                     f"{response_api.text}"
@@ -217,25 +228,25 @@ def send(response):
                 InteractionDetail.objects.filter(id=id_interaction).update(
                     return_dga=error_msg,
                     n_voucher="No se pudo obtener el comprobante",
-                    send_dga=True,
+                    send_dga=False,  # Ya no reintentar
                     is_error=True,
                 )
-                print("DEBUG: Retornando False por error JSON")
+                dga_logger.debug("Retornando False por error JSON")
                 return False
 
         except requests.RequestException as e:
-            print(f"ERROR de conexión - Exception: {e}")
-            time.sleep(12)  # Esperar 12 segundos antes de reintentar (rate limit DGA)
+            dga_logger.error(f"ERROR de conexión - Exception: {e}")
+            time.sleep(2)  # Espera reducida para evitar acumulación de procesos
         except Exception as e:
-            print(f"Error inesperado: {e}")
+            dga_logger.error(f"Error inesperado: {e}")
             break
 
     # Si llegamos aquí, es porque fallaron los 3 intentos
     InteractionDetail.objects.filter(id=id_interaction).update(
-        return_dga="Error: El servidor DGA no está respondiendo.",
+        return_dga="Error: El servidor DGA no está respondiendo tras 3 intentos.",
         n_voucher="No se pudo obtener el comprobante",
-        send_dga=True,
+        send_dga=False,  # Ya no reintentar para no saturar la cola
         is_error=True,
     )
-    print("DEBUG: Retornando False por fallos en intentos")
-    return False  # MODIFICADO: Retornar False cuando fallan todos los intentos
+    dga_logger.debug("Retornando False por fallos en intentos")
+    return False

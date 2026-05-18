@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alerta Umbral - SmartHydro</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 640px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #f9a825 0%, #f57f17 100%);
+            color: #212529;
+            padding: 24px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        .header p {
+            margin: 8px 0 0 0;
+            font-size: 13px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 24px;
+        }
+        .alert-summary {
+            background-color: #fff8e1;
+            border-left: 4px solid #f9a825;
+            padding: 16px;
+            margin-bottom: 20px;
+            border-radius: 0 6px 6px 0;
+        }
+        .alert-summary h2 {
+            margin: 0 0 8px 0;
+            font-size: 16px;
+            color: #e65100;
+        }
+        .alert-summary p {
+            margin: 0;
+            color: #424242;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .info-item {
+            background-color: #f8f9fa;
+            padding: 14px;
+            border-radius: 6px;
+        }
+        .info-label {
+            font-weight: 600;
+            color: #6c757d;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 6px;
+        }
+        .info-value {
+            font-size: 15px;
+            color: #212529;
+        }
+        .info-value.big {
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .comparison {
+            background-color: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .comparison h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            color: #1565c0;
+        }
+        .comparison-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #bbdefb;
+        }
+        .comparison-row:last-child {
+            border-bottom: none;
+        }
+        .comparison-label {
+            color: #424242;
+            font-size: 14px;
+        }
+        .comparison-value {
+            font-weight: 600;
+            color: #212529;
+            font-size: 14px;
+        }
+        .excess {
+            color: #e65100;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 16px;
+            text-align: center;
+            color: #6c757d;
+            font-size: 12px;
+        }
+        .footer a {
+            color: #1565c0;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>ALERTA UMBRAL</h1>
+            <p>SmartHydro - Sistema de Monitoreo Hidrologico</p>
+        </div>
+
+        <div class="content">
+            <div class="alert-summary">
+                <h2>Se ha superado el umbral configurado</h2>
+                <p>El punto <strong>{{ point_name }}</strong> ha registrado un valor que supera la condicion de alerta configurada.</p>
+            </div>
+
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Proyecto</div>
+                    <div class="info-value">{{ project_name }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Punto de Captacion</div>
+                    <div class="info-value">{{ point_name }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Variable</div>
+                    <div class="info-value">{{ type_variable }}</div>
+                </div>
+            </div>
+
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Fecha de Medicion</div>
+                    <div class="info-value">{{ medition_time }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Ultima Sincronizacion Datalogger</div>
+                    <div class="info-value">{{ logger_time }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Dias sin Conexion</div>
+                    <div class="info-value">{{ days_offline }}</div>
+                </div>
+            </div>
+
+            <div class="comparison">
+                <h3>Detalle de la Comparacion</h3>
+                <div class="comparison-row">
+                    <span class="comparison-label">Condicion configurada</span>
+                    <span class="comparison-value">{{ type_alert }} {{ threshold }}</span>
+                </div>
+                <div class="comparison-row">
+                    <span class="comparison-label">Valor medido</span>
+                    <span class="comparison-value">{{ current_value }}</span>
+                </div>
+                <div class="comparison-row">
+                    <span class="comparison-label">Diferencia / Exceso</span>
+                    <span class="comparison-value excess">{{ excess }}</span>
+                </div>
+            </div>
+
+
+        </div>
+
+        <div class="footer">
+            <p>SmartHydro - Alerta generada automaticamente</p>
+            <p>Si necesitas ayuda, contacta a <a href="mailto:soporte@smarthydro.cl">soporte@smarthydro.cl</a></p>
+        </div>
+    </div>
+</body>
+</html>

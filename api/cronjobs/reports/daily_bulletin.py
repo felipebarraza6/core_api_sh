@@ -7,6 +7,7 @@ from datetime import timedelta
 from collections import defaultdict
 from django.utils import timezone
 from django.conf import settings
+from django.core.mail import send_mail
 from django.db.models import Q
 
 from api.core.models import (
@@ -707,10 +708,6 @@ def generate_text_bulletin(data):
 
 def run():
     """Ejecutar el cronjob del boletín diario"""
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    
     logger.info("📧 Iniciando generación de boletín diario...")
     
     try:
@@ -741,44 +738,17 @@ def run():
             logger.warning("⚠️ No hay destinatarios configurados")
             return
         
-        host = settings.EMAIL_HOST
-        port = settings.EMAIL_PORT
-        use_ssl = settings.EMAIL_USE_SSL
-        user = settings.EMAIL_HOST_USER
-        password = settings.EMAIL_HOST_PASSWORD
-
         now = timezone.now()
         subject = f"📊 Boletín Telemetría SmartHydro - {now.strftime('%d/%m/%Y')} - Salud: {data['health']['health_pct']}%"
 
-        # Usar SMTP_SSL para puerto 465, SMTP + starttls para puerto 587
-        if use_ssl and port == 465:
-            server = smtplib.SMTP_SSL(host, port, timeout=30)
-            server.login(user, password)
-        else:
-            server = smtplib.SMTP(host, port, timeout=30)
-            server.starttls()
-            server.login(user, password)
-
-        # Nombre amigable del remitente
-        from_header = f"SmartHydro Telemetría <{user}>"
-
-        for recipient in recipients:
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = subject
-            msg['From'] = from_header
-            msg['To'] = recipient
-            msg['Reply-To'] = user
-
-            # Headers adicionales para evitar spam
-            msg['X-Mailer'] = 'SmartHydro Telemetry System'
-            msg['X-Priority'] = '3'
-
-            msg.attach(MIMEText(text_content, 'plain'))
-            msg.attach(MIMEText(html_content, 'html'))
-
-            server.sendmail(user, recipient, msg.as_string())
-        
-        server.quit()
+        send_mail(
+            subject=subject,
+            message=text_content,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
+            recipient_list=recipients,
+            html_message=html_content,
+            fail_silently=False,
+        )
         
         logger.info(f"✅ Boletín enviado a {len(recipients)} destinatarios")
         print(f"✅ Boletín enviado a: {', '.join(recipients)}")

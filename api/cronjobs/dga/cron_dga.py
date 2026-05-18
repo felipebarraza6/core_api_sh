@@ -6,12 +6,15 @@ from typing import Optional
 
 import pytz
 
+from django.conf import settings
+
 from api.core.models import (
-    DgaDataConfigCatchment, 
-    InteractionDetail, 
-    Variable, 
+    DgaDataConfigCatchment,
+    InteractionDetail,
+    Variable,
     SchemesCatchment
 )
+from api.core.utils.compliance import ComplianceConfig
 
 # Importar función de cálculo de caudal promedio
 from api.cronjobs.telemetry.controllers.flow import average_flow
@@ -93,17 +96,25 @@ def run():
     """
     try:
         # Obtener registros pendientes de envío
-        data_for_send = InteractionDetail.objects.filter(send_dga=True).exclude(catchment_point=1).order_by(
-            "created"
+        # Solo puntos que ACTUALMENTE tienen DGA activo en su configuración
+        puntos_con_dga_activo = DgaDataConfigCatchment.objects.filter(
+            send_dga=True
+        ).values_list('point_catchment_id', flat=True)
+
+        data_for_send = InteractionDetail.objects.filter(
+            send_dga=True,
+            catchment_point_id__in=puntos_con_dga_activo
+        ).exclude(catchment_point=1).order_by(
+            "-created"
         )
 
         if not data_for_send.exists():
             dga_logger.info("No hay registros pendientes de envío a DGA")
             return
 
-        # Aumentado a 30 registros por ejecución para procesar backlog más rápido
-        # Con rate limit de 12s, son ~6 min por batch (aceptable para cron de 3 min)
-        data_for_send = data_for_send[:30]
+        # Batch reducido a 15 registros para evitar acumulación de procesos.
+        # Con rate limit de 2s, son ~30s por batch (aceptable para cron cada 3 min)
+        data_for_send = data_for_send[:15]
 
         dga_logger.info(f"Procesando {len(data_for_send)} registros para envío a DGA")
 
@@ -291,7 +302,7 @@ def _prepare_response_data(
             # Si hay offset, restarlo del total guardado para obtener el valor RAW
             if offset > 0 and register.total:
                 total_con_offset = float(register.total)
-                total_sin_offset = total_con_offset - offset
+                total_sin_offset = total_con_offset - float(offset)
                 total_para_dga = str(int(total_sin_offset))
                 dga_logger.info(
                     f"Total corregido para DGA (punto {register.catchment_point.id}): "
@@ -320,7 +331,12 @@ def _prepare_response_data(
             "rut": dga_config.rut_report_dga,
             "password": dga_config.get_dga_password(),  # Usa método que fallback a settings
             "dga_config": {
-                "rut_empresa": getattr(dga_config, "rut_empresa", "76944359-2")
+                "rut_empresa": getattr(
+                    dga_config, "rut_empresa",
+                    ComplianceConfig('dga').get_protocol_config(
+                        'default_rut_empresa', settings.DGA_DEFAULT_RUT_EMPRESA
+                    ) or ""
+                )
             },
         }
 

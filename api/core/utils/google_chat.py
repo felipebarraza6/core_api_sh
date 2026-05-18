@@ -6,22 +6,19 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Webhook para alertas de conexión/desconexión
-WEBHOOK_URL = "https://chat.googleapis.com/v1/spaces/AAQAm9y1FaI/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=IMIDu11REWEYRywIk-zC_QFo5tPi04IqvY1ToNuk9Vo"
-
-# Webhook para reportes DGA (cumplimiento)
-WEBHOOK_DGA_URL = "https://chat.googleapis.com/v1/spaces/AAQAuNyVmJc/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vGilyWJuJR8AKXYSobhQYLYNalVAqtUwyiEpm6iLGhU"
+# LEGACY: Las URLs de webhook ahora se configuran en settings/env.
+# Los canales configurables usan AlertChannel desde la BD (ver alert_dispatcher.py).
 
 def send_google_chat_message(text, webhook_url=None):
     """
     Envía un mensaje simple a Google Chat.
     Args:
         text: Mensaje a enviar
-        webhook_url: URL del webhook (opcional, usa WEBHOOK_URL por defecto)
+        webhook_url: URL del webhook (opcional, usa settings.GOOGLE_CHAT_WEBHOOK_URL)
     """
-    url = webhook_url or WEBHOOK_URL
+    url = webhook_url or settings.GOOGLE_CHAT_WEBHOOK_URL
     if not url:
-        logger.warning("Google Chat Webhook URL not configured.")
+        logger.warning("Google Chat Webhook URL not configured (settings.GOOGLE_CHAT_WEBHOOK_URL).")
         return False
 
     try:
@@ -41,7 +38,7 @@ def send_dga_chat_message(text):
     """
     Envía un mensaje al canal de reportes DGA.
     """
-    return send_google_chat_message(text, webhook_url=WEBHOOK_DGA_URL)
+    return send_google_chat_message(text, webhook_url=settings.GOOGLE_CHAT_DGA_WEBHOOK_URL)
 
 def check_and_notify_reconnection(point_id, new_days_not_conection, point_name="Unknown", client_name="Unknown",
                                    flow=None, nivel=None, total=None, date_time_medition=None, date_time_last_logger=None,
@@ -50,15 +47,15 @@ def check_and_notify_reconnection(point_id, new_days_not_conection, point_name="
     Verifica si un punto se ha reconectado (estaba desconectado y ahora tiene 0 días sin conexión).
     Si es así, envía una alerta CON DEDUPLICACIÓN (solo 1 vez cada 24h).
 
-    Args:
-        point_id (int): ID del punto.
-        new_days_not_conection (int): Valor calculado de días sin conexión (0 significa conectado).
-        point_name (str): Nombre del punto.
-        client_name (str): Nombre del cliente.
-        flow, nivel, total: Valores actuales del sensor.
-        date_time_medition: Fecha/hora de la medición (cuando se tomó el dato).
-        date_time_last_logger: Fecha/hora del logger (cuando transmitió).
+    ⚠️ DESACTIVADA (2026-05-17): Migrada al subsistema configurable de alertas.
+    Usar AlertRule con target_type='RECONNECTION' en /api/alert_rules/
     """
+    logger.info(f"[MIGRADO] check_and_notify_reconnection desactivado para punto {point_id}. "
+                f"Use el nuevo subsistema de alertas (AlertRule RECONNECTION).")
+    return
+
+    # Código legacy preservado abajo para referencia histórica:
+    # pylint: skip-file
     # Solo nos interesa si ahora está conectado
     if new_days_not_conection != 0:
         return
@@ -152,7 +149,16 @@ def check_and_notify_disconnection(point_id, new_days_not_conection, point_name=
     """
     Verifica si un punto se ha desconectado o tiene variables desfasadas.
     Envía una alerta CON DEDUPLICACIÓN (solo 1 vez cada 24h).
+
+    ⚠️ DESACTIVADA (2026-05-17): Migrada al subsistema configurable de alertas.
+    Usar AlertRule con target_type='DISCONNECTION' en /api/alert_rules/
     """
+    logger.info(f"[MIGRADO] check_and_notify_disconnection desactivado para punto {point_id}. "
+                f"Use el nuevo subsistema de alertas (AlertRule DISCONNECTION).")
+    return
+
+    # Código legacy preservado abajo para referencia histórica:
+    # pylint: skip-file
     try:
         from api.core.models import InteractionDetail
         from django_redis import get_redis_connection
@@ -274,17 +280,26 @@ def check_and_notify_error(point_id, error_msg, point_name="Unknown", client_nam
     Verifica si hay un error y envía alerta si es un caso nuevo (no reportado hoy).
     Usa Redis para de-duplicar.
     También guarda el detalle del error para el reporte diario.
-    
+
+    ⚠️ DESACTIVADA (2026-05-17): Migrada al subsistema configurable de alertas.
+    Usar AlertRule con target_type='PROCESSING_ERROR' en /api/alert_rules/
+
     Args:
         point_id (int): ID del punto.
         error_msg (str): Mensaje de error / descripción del problema.
         point_name (str): Nombre del punto.
         client_name (str): Nombre del cliente.
     """
+    logger.info(f"[MIGRADO] check_and_notify_error desactivado para punto {point_id}. "
+                f"Use el nuevo subsistema de alertas (AlertRule PROCESSING_ERROR).")
+    return
+
+    # Código legacy preservado abajo para referencia histórica:
+    # pylint: skip-file
     try:
         from django.core.cache import cache
         import hashlib
-        
+
         # Generar hash único para este error específico en este punto
         error_hash = hashlib.md5(f"{point_id}:{error_msg}".encode()).hexdigest()
         cache_key = f"alert:error:{point_id}:{error_hash}"

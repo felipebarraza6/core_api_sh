@@ -2,10 +2,13 @@ from .users import UserProfile, UserModelSerializer, UserLoginSerializer, UserSi
 
 from .interaction_detail import InteractionDetailModelSerializer, InteractionDetailModelSerializerNoProcessing
 from .catchment_points import (ClientSerializer,
+                               ClientWithProjectsSerializer,
                                ProjectCatchmentsSerializer,
+                               ProjectMiniSerializer,
                                CatchmentPointSerializer,
                                ProfileIkoluCatchmentSerializer,
                                NotificationsCatchmentSerializer,
+                               NotificationsCatchmentDetailSerializer,
                                ResponseNotificationsCatchmentSerializer,
                                TypeFileCatchmentSerializer,
                                ResponseDepthNotificationsCatchmentSerializer,
@@ -15,3 +18,11 @@ from .catchment_points import (ClientSerializer,
                                SchemesCatchmentSerializer,
                                VariableSerializer,
                                RegisterPersonsSerializer, CatchmentPointSerializerDetailCron, CatchmentPointIkoluSerializer,)
+from .alerts import (
+    AlertRuleListSerializer,
+    AlertRuleDetailSerializer,
+    AlertRuleWriteSerializer,
+    AlertChannelSerializer,
+    AlertTriggerSerializer,
+    SystemEventSerializer,
+)

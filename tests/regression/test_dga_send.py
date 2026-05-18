@@ -4,7 +4,7 @@ Tests de regresión para validar envío DGA no se rompe.
 IMPORTANTE: Estos tests validan que el envío DGA funciona correctamente
 tanto con el cálculo actual como con el nuevo cálculo (si flag activo).
 """
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
@@ -14,7 +14,10 @@ from api.core.models import (
     InteractionDetail,
     CatchmentPoint,
     DgaDataConfigCatchment,
-    ProfileDataConfigCatchment
+    ProfileDataConfigCatchment,
+    User,
+    Client,
+    ProjectCatchments
 )
 from api.cronjobs.dga.cron_dga import _prepare_response_data
 
@@ -25,7 +28,10 @@ class DgaSendRegressionTests(TestCase):
     def setUp(self):
         """Configurar datos de prueba."""
         self.chile_tz = pytz.timezone("America/Santiago")
-        self.point = CatchmentPoint.objects.create(title="Test Point")
+        self.user = User.objects.create(username="testuser", email="test@example.com")
+        self.client_obj = Client.objects.create(name="Test Client")
+        self.project = ProjectCatchments.objects.create(name="Test Project", client=self.client_obj)
+        self.point = CatchmentPoint.objects.create(title="Test Point", owner_user=self.user, project=self.project)
         self.profile = ProfileDataConfigCatchment.objects.create(
             point_catchment=self.point,
             is_telemetry=True
@@ -91,11 +97,10 @@ class DgaSendRegressionTests(TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result['flow'], 0.0)
 
-    @patch('api.cronjobs.dga.cron_dga.settings')
-    def test_prepare_response_data_with_new_calculation_flag(self, mock_settings):
+    @override_settings(USE_NEW_CAUDAL_CALCULATION_MEDIO=True)
+    def test_prepare_response_data_with_new_calculation_flag(self):
         """Validar que funciona con flag de nuevo cálculo activo."""
-        # Simular flag activo
-        mock_settings.USE_NEW_CAUDAL_CALCULATION_MEDIO = True
+        # Flag activo vía override_settings
         
         dga_config = DgaDataConfigCatchment.objects.create(
             point_catchment=self.point,

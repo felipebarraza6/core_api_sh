@@ -34,6 +34,11 @@ class User(ModelApi, AbstractUser):
         help_text='Se establece en verdadero cuando el usuario ha verificado su dirección de correo electrónico'
     )
 
+    is_client_admin = models.BooleanField(
+        default=False,
+        help_text='Administrador de clientes. Puede editar datos asociados a sus clientes asignados.'
+    )
+
     class Meta:
         verbose_name = 'Usuario'
         verbose_name_plural = 'Usuarios'

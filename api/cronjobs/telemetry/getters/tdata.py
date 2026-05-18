@@ -1,9 +1,13 @@
 """Script TDATA."""
+import base64
+import hashlib
 import json
 import os
 import requests
 from datetime import datetime
 import time
+
+from django.core.cache import cache
 
 
 def _provider_val(provider, key, default=None):
@@ -12,8 +16,54 @@ def _provider_val(provider, key, default=None):
     return provider.get(key, default) if isinstance(provider, dict) else getattr(provider, key, default)
 
 
+def _cache_key(provider):
+    """Generar clave de caché única por proveedor para el token TDATA."""
+    provider_id = _provider_val(provider, 'id')
+    if provider_id:
+        return f"tdata:token:{provider_id}"
+    base_url = _provider_val(provider, 'base_url') or 'default'
+    username = _provider_val(provider, 'auth_username') or 'default'
+    key = hashlib.md5(f"{base_url}:{username}".encode()).hexdigest()
+    return f"tdata:token:{key}"
+
+
+TOKEN_CACHE_TTL_FALLBACK = 3300  # Fallback si no podemos decodificar el JWT
+TOKEN_CACHE_MARGIN = 60  # Segundos de margen antes del exp para evitar race conditions
+
+
+def _jwt_expiry_ttl(token):
+    """Extraer el campo 'exp' del payload JWT y calcular TTL restante en segundos."""
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return TOKEN_CACHE_TTL_FALLBACK
+        payload_b64 = parts[1]
+        # Agregar padding base64url si falta
+        padding = 4 - len(payload_b64) % 4
+        if padding != 4:
+            payload_b64 += "=" * padding
+        payload_json = base64.urlsafe_b64decode(payload_b64)
+        payload = json.loads(payload_json)
+        exp = payload.get("exp")
+        if not exp:
+            return TOKEN_CACHE_TTL_FALLBACK
+        ttl = int(exp) - int(time.time()) - TOKEN_CACHE_MARGIN
+        return max(ttl, 300)  # Mínimo 5 minutos de cache
+    except Exception:
+        return TOKEN_CACHE_TTL_FALLBACK
+
+
 def get_token(provider=None):
-    """Obtener token de autenticación."""
+    """Obtener token de autenticación con cache en Redis (TTL según expiración JWT)."""
+    cache_key = _cache_key(provider)
+    try:
+        cached_token = cache.get(cache_key)
+        if cached_token:
+            return cached_token
+    except Exception:
+        # Si Redis falla, continuar sin cache
+        pass
+
     username = _provider_val(provider, 'auth_username') or os.environ.get("TDATA_USERNAME")
     password = _provider_val(provider, 'auth_password') or os.environ.get("TDATA_PASSWORD")
     if not username or not password:
@@ -33,7 +83,16 @@ def get_token(provider=None):
     response = requests.request(
         "POST", url, headers=headers, data=payload, timeout=5)
     response_data = response.json()
-    return response_data["token"]
+    token = response_data["token"]
+
+    ttl = _jwt_expiry_ttl(token)
+    try:
+        cache.set(cache_key, token, timeout=ttl)
+    except Exception:
+        # Si Redis falla, devolver token igual pero no cachear
+        pass
+
+    return token
 
 
 def get_data_tdata(provider, token_service, str_variable):
