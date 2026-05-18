@@ -79,7 +79,7 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
         # VALIDACIÓN ANTI-SALTO MASIVO (NORMAlIZADA POR TIEMPO)
         # ====================================================================
         max_diff_m3 = float(profile.max_diff_m3_per_hour) if profile and profile.max_diff_m3_per_hour else 500.0
-        RECONNECTION_THRESHOLD_HOURS = 2  # Si pasaron >2h, es reconexión
+        reconnection_threshold = float(profile.reconnection_threshold_hours) if profile and profile.reconnection_threshold_hours else 2.0
 
         if last_interaction and last_interaction.total is not None:
             last_total = float(last_interaction.total)
@@ -99,7 +99,7 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
             # Sin esta lógica, el total queda congelado PARA SIEMPRE.
             # ================================================================
             is_reconnection = (
-                time_diff_hours > RECONNECTION_THRESHOLD_HOURS
+                time_diff_hours > reconnection_threshold
                 or last_interaction.days_not_conection > 0
             )
 

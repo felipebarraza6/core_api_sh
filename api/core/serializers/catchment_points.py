@@ -815,10 +815,9 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
                 # Default to 0 if we can't calculate
                 flow_val = 0.0
                 
-                # CONSTANTES DE PROTECCIÓN
-                MAX_FLOW_LS = 150.0
-                MAX_TIME_GAP_SECONDS = 2 * 3600  # 2 horas
-                MAX_DIFF_M3_PER_HOUR = 500
+                # CONSTANTES DE PROTECCIÓN (importadas desde flow.py para evitar duplicación)
+                from api.cronjobs.telemetry.controllers.flow import MAX_FLOW_LS, MAX_TIME_GAP_HOURS, MAX_DIFF_M3_PER_HOUR
+                MAX_TIME_GAP_SECONDS = MAX_TIME_GAP_HOURS * 3600
                 
                 # We need the 'next' item in the list (which is chronologically previous)
                 if i + 1 < len_records:

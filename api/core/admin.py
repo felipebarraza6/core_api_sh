@@ -1435,8 +1435,8 @@ class ProfileDataConfigCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin,
             'description': 'Dimensiones físicas del pozo utilizadas para validaciones de nivel y caudal.'
         }),
         ('Reglas de procesamiento', {
-            'fields': ('nivel_offset', 'replicate_on_missing', 'use_transaction_atomic', 'max_diff_m3_per_hour', 'max_flow_ls'),
-            'description': 'Reglas configurables para el runner unificado: offset de nivel, replicación de datos faltantes, transacción atómica, y límites de caudal/consumo.'
+            'fields': ('nivel_offset', 'replicate_on_missing', 'use_transaction_atomic', 'max_diff_m3_per_hour', 'max_flow_ls', 'max_time_gap_hours', 'reconnection_threshold_hours'),
+            'description': 'Reglas configurables para el runner unificado: offset de nivel, replicación, transacción atómica, límites de caudal/consumo, y umbrales de tiempo.'
         }),
         ('Reset y Ajustes', {
             'fields': ('addition',),

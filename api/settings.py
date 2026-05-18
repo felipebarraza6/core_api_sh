@@ -160,8 +160,9 @@ CRONJOBS = [
     #     ">> /tmp/smarthydro/twin_60.log 2>&1",
     # ),
     # (
-    #     "* * * * *",
-    #     "api.cronjobs.telemetry.twin_f1.run",
+    # UNIFICADO: novus 60 minutos
+    (
+        "2 * * * *",
         "api.cronjobs.telemetry.telemetry_unified.run_novus_60",
         ">> /tmp/smarthydro/unified_novus_60.log 2>&1",
     ),

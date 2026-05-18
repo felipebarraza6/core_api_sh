@@ -514,6 +514,20 @@ class ProfileDataConfigCatchment(ModelApi):
         verbose_name="Máx caudal L/s",
         help_text="Caudal máximo razonable. Si supera este valor, se pone en 0.",
     )
+    max_time_gap_hours = models.DecimalField(
+        default=2.0,
+        max_digits=5,
+        decimal_places=2,
+        verbose_name="Máx gap horas",
+        help_text="Si hay más horas sin datos que este valor, no se calcula caudal promedio (trata como reconexión).",
+    )
+    reconnection_threshold_hours = models.DecimalField(
+        default=2.0,
+        max_digits=5,
+        decimal_places=2,
+        verbose_name="Umbral reconexión (horas)",
+        help_text="Si pasan más horas entre registros, se asume que el sensor se reconectó y el salto es legítimo.",
+    )
 
     class Meta:
         """Meta data profile data config"""

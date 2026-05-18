@@ -24,6 +24,14 @@ def _get_profile_limits(point_catchment: dict):
         float(profile.get("max_time_gap_hours", MAX_TIME_GAP_HOURS) or MAX_TIME_GAP_HOURS),
     )
 
+
+def _get_reconnection_threshold(point_catchment: dict):
+    """Lee umbral de reconexión del profile, o retorna default."""
+    profile = point_catchment.get("profile_data_config") if isinstance(point_catchment, dict) else None
+    if not profile:
+        return 2.0
+    return float(profile.get("reconnection_threshold_hours", 2.0) or 2.0)
+
 def instantaneous_flow_calculate(value, convert_to_lt, n_base):
     """
     Calculate the instantaneous flow based on the given value.
