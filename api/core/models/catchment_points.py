@@ -94,20 +94,13 @@ class CatchmentPoint(ModelApi):
         max_length=300, blank=True, null=True, verbose_name="longitud"
     )
 
-    FRECUENCY_OPTIONS = [
-        ("1", "1 minuto"),
-        ("5", "5 minutos"),
-        ("10", "10 minutos"),
-        ("60", "60 minutos"),
-    ]
-
     frecuency = models.CharField(
         blank=True,
         null=True,
         max_length=300,
-        choices=FRECUENCY_OPTIONS,
         verbose_name="Frecuencia",
         default="60",
+        help_text="Frecuencia de telemetría en minutos. Valores comunes: 1, 5, 10, 15, 30, 60.",
     )
 
     class Meta:
@@ -699,18 +692,15 @@ class Variable(ModelApi):
         ("NETTRA", "nettra"),
         ("TWIN", "twin"),
     ]
-    VARIABLES_CHOICES = [
-        ("NIVEL", "nivel"),
-        ("CAUDAL", "caudal"),
-        ("CAUDAL_PROMEDIO", "caudal_promedio((diff/3600)*1000)"),
-        ("TOTALIZADO", "totalizado"),
-    ]
 
     str_variable = models.CharField(max_length=400, verbose_name="Variable (str)")
     label = models.CharField(max_length=400, verbose_name="Etiqueta")
 
     type_variable = models.CharField(
-        max_length=1200, choices=VARIABLES_CHOICES, verbose_name="Tipo variable"
+        max_length=1200,
+        verbose_name="Tipo variable",
+        help_text="Tipo semántico: CAUDAL, NIVEL, TOTALIZADO, CAUDAL_PROMEDIO, o cualquier nuevo tipo. "
+                  "El procesador unificado aplica lógica específica solo a los tipos conocidos.",
     )
 
     token_service = models.CharField(

@@ -68,12 +68,12 @@ class AlertRule(ModelApi):
 
     variable_type = models.CharField(
         max_length=50,
-        choices=Variable.VARIABLES_CHOICES,
         verbose_name="Variable a monitorear",
         blank=True,
         null=True,
-        help_text="Requerido para THRESHOLD_MAX, THRESHOLD_MIN, RATE_OF_CHANGE, DEVIATION."
-                  " Ignorado para NO_DATA y SCHEDULED_REPORT.",
+        help_text="Requerido para THRESHOLD_MAX, THRESHOLD_MIN, RATE_OF_CHANGE, DEVIATION. "
+                  "Valores conocidos: CAUDAL, NIVEL, TOTALIZADO, CAUDAL_PROMEDIO. "
+                  "Ignorado para NO_DATA y SCHEDULED_REPORT.",
     )
 
     # Umbral numérico
