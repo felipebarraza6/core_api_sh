@@ -1,6 +1,7 @@
 """Settings API Django - PRODUCCIÓN SEGURA"""
 
 import os
+import sys
 from pathlib import Path
 
 # Try to load dotenv, but don't fail if not available
@@ -50,7 +51,12 @@ CSRF_COOKIE_SECURE = True          # ✅ Solo enviar CSRF cookie por HTTPS
 SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = "DENY"
 SECURE_CONTENT_TYPE_NOSNIFF = True
-# SECURE_SSL_REDIRECT = True       # ⚠️ PENDIENTE: requiere validar que nginx-proxy envíe X-Forwarded-Proto correctamente en TODAS las rutas antes de activar
+# ✅ ACTIVADO: Lee de variable de entorno (docker-compose pasa DJANGO_SECURE_SSL_REDIRECT=True)
+# En tests se desactiva porque el test client WSGI no simula nginx-proxy (sin X-Forwarded-Proto)
+TESTING = len(sys.argv) > 1 and sys.argv[1] == "test"
+SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "False") == "True" and not TESTING
+# Exención crítica: health checks internos de Docker van por HTTP directo a Gunicorn
+SECURE_REDIRECT_EXEMPT = [r'^health/$']
 SECURE_HSTS_SECONDS = 31536000  # 1 año
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
@@ -62,11 +68,11 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # Content Security Policy (CSP) - Security Headers
 # Configuración balanceada: API restrictiva + Admin funcional
 CSP_DEFAULT_SRC = ("'none'",)  # Bloquear todo por defecto
-CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "'unsafe-eval'", "https://*.smarthydro.app", "https://smarthydro.cl", "https://static.cloudflareinsights.com", "blob:")  # Admin + subdominios + Cloudflare + Workers
-CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://*.smarthydro.app", "https://smarthydro.cl", "https://www.smarthydro.cl")  # Estilos de subdominios y sitio principal
-CSP_IMG_SRC = ("'self'", "data:", "https://*.smarthydro.app", "https://smarthydro.cl", "https://www.smarthydro.cl")  # Imágenes de subdominios y sitio principal
-CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "data:")  # Fuentes de Google + data URIs
-CSP_CONNECT_SRC = ("'self'", "https://*.smarthydro.app", "https://smarthydro.cl", "https://static.cloudflareinsights.com")  # AJAX + Cloudflare
+CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "'unsafe-eval'", "https://*.smarthydro.app", "https://smarthydro.cl", "https://static.cloudflareinsights.com", "https://cdn.jsdelivr.net", "blob:")  # Admin + subdominios + Cloudflare + CDN swagger/redoc + Workers
+CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net", "https://*.smarthydro.app", "https://smarthydro.cl", "https://www.smarthydro.cl")  # Estilos de subdominios + Google Fonts + CDN swagger/redoc
+CSP_IMG_SRC = ("'self'", "data:", "https://cdn.jsdelivr.net", "https://*.smarthydro.app", "https://smarthydro.cl", "https://www.smarthydro.cl")  # Imágenes de subdominios + CDN swagger/redoc
+CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net", "data:")  # Fuentes de Google + CDN swagger/redoc + data URIs
+CSP_CONNECT_SRC = ("'self'", "https://*.smarthydro.app", "https://smarthydro.cl", "https://static.cloudflareinsights.com", "https://cdn.jsdelivr.net")  # AJAX + Cloudflare + CDN swagger/redoc
 CSP_WORKER_SRC = ("'self'", "blob:")  # Permitir Web Workers
 CSP_OBJECT_SRC = ("'none'",)  # Bloquear objetos (Flash, etc.)
 CSP_BASE_URI = ("'self'",)  # Restringir base URI
@@ -92,6 +98,7 @@ THIRD_PARTY_APPS = [
     "corsheaders",
     "django_filters",
     "django_rest_passwordreset",
+    "drf_spectacular",
 ]
 
 LOCAL_APPS = ["api.core.apps.CoreAppConfig", "django_crontab", "import_export"]
@@ -190,9 +197,9 @@ CRONJOBS = [
         "api.cronjobs.telemetry.telemetry_unified.run_twin_10",
         ">> /tmp/smarthydro/unified_twin_10.log 2>&1",
     ),
-    # UNIFICADO: twin 1 minuto (paralelo a legacy, cada 2 min para evitar colisión)
+    # UNIFICADO: twin 1 minuto (corre cada 1 min, alineado con frecuency=1)
     (
-        "1-59/2 * * * *",
+        "* * * * *",
         "api.cronjobs.telemetry.telemetry_unified.run_twin_1",
         ">> /tmp/smarthydro/unified_twin_1.log 2>&1",
     ),
@@ -214,12 +221,14 @@ CRONJOBS = [
         "api.cronjobs.space_backup.run",
         ">> /tmp/smarthydro/space_backup.log 2>&1",
     ),
-    # alertas legacy (monolito NotificationsCatchment)
-    (
-        "*/10 * * * *",
-        "api.cronjobs.alerts.cron_alerts.run",
-        ">> /tmp/smarthydro/alerts.log 2>&1",
-    ),
+    # alertas legacy (monolito NotificationsCatchment) — APAGADO
+    # Las alertas umbral ahora se evalúan vía alert_engine.py (AlertRule).
+    # Solo quedan activos tickets de soporte (SUPPORT) en el modelo legacy.
+    # (
+    #     "*/10 * * * *",
+    #     "api.cronjobs.alerts.cron_alerts.run",
+    #     ">> /tmp/smarthydro/alerts.log 2>&1",
+    # ),
     # motor de alertas nuevo (AlertRule / AlertTrigger)
     (
         "* * * * *",
@@ -327,6 +336,21 @@ REST_FRAMEWORK = {
         "anon": "100/hour",
         "user": "1000/hour",
     },
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "SmartHydro API",
+    "DESCRIPTION": "API de monitoreo hidrológico — Telemetría, alertas, reportes DGA/SMA y gestión de puntos de captación.",
+    "VERSION": "2.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": r"/api/",
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
+    "SERVE_AUTHENTICATION": [
+        "rest_framework.authentication.TokenAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.BasicAuthentication",
+    ],
 }
 
 ROOT_URLCONF = "api.urls"
@@ -376,10 +400,18 @@ DATABASES = {
     }
 }
 
+# Redis: construir URL dinámicamente para soportar both con y sin password
+_redis_password = os.environ.get("REDIS_PASSWORD", "")
+_redis_url = (
+    f"redis://:{_redis_password}@redis_secure:6379/1"
+    if _redis_password
+    else "redis://redis_secure:6379/1"
+)
+
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://redis_secure:6379/1",
+        "LOCATION": _redis_url,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "IGNORE_EXCEPTIONS": True,  # Fallback gracefully if Redis is down
@@ -500,14 +532,9 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 # Se usa el admin por defecto de Django con CSS personalizado
 # en admin_improvements.css para un aspecto profesional y estable.
 # Jazzmin fue removido por inestabilidad en tabs y layout.
-# Configuración temporal para debug de CORS
-if not DEBUG:
-    # Permitir X-Frame-Options para CORS
-    X_FRAME_OPTIONS = 'SAMEORIGIN'  # Cambiar de DENY a SAMEORIGIN
-
-    # Configuraciones CORS adicionales para producción
-    CORS_PREFLIGHT_MAX_AGE = 86400
-    CORS_EXPOSE_HEADERS = [
+# Configuraciones CORS adicionales para producción
+CORS_PREFLIGHT_MAX_AGE = 86400
+CORS_EXPOSE_HEADERS = [
         'accept',
         'accept-encoding',
         'authorization',
