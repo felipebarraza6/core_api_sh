@@ -1,5 +1,6 @@
 from datetime import datetime
 from api.core.models import InteractionDetail
+from api.cronjobs.telemetry.utils.audit import emit_system_event
 import pytz
 import logging
 
@@ -68,32 +69,27 @@ def instantaneous_flow_calculate(value, convert_to_lt, n_base):
         # Manejo de n_base para evitar ZeroDivisionError y posibles errores de tipo si n_base es None
         if not isinstance(n_base, (int, float)):
             # Si n_base no es un número, o si es None (is None ya es cubierto por not isinstance)
-            print(f"Error: n_base '{n_base}' no es un número válido. Retornando 0.0.")
+            logger.warning(f"Error: n_base '{n_base}' no es un número válido. Retornando 0.0.")
             return 0.0
         elif n_base == 0:
             # Si n_base es cero, evitamos la división por cero.
-            print("Error: n_base es cero. No se puede dividir por cero. Retornando 0.0.")
+            logger.warning("Error: n_base es cero. No se puede dividir por cero. Retornando 0.0.")
             return 0.0
 
         # Si n_base es válido y no cero, procedemos con la división.
         value = float(value / n_base)
-
-        # Ensure the value is within the required precision and scale
-        if abs(value) >= 1000:
-            print("Calculated value exceeds the allowed precision and scale")
-            return 0.0
 
         # Formatear el float a 2 decimales y devolverlo como float
         return float(f"{value:.2f}")
 
     except ValueError as e:
         # Este except captura específicamente errores de conversión a float (ej. value = "not_a_number")
-        print(f"Error de conversión: {e}")
+        logger.error(f"Error de conversión: {e}")
         return 0.0
     except Exception as e:
         # Este except captura cualquier otro error inesperado que pueda surgir en la lógica
         # (aunque con las verificaciones añadidas, es menos probable).
-        print(f"Error inesperado: {e}")
+        logger.error(f"Error inesperado: {e}")
         return 0.0
 
 
@@ -117,22 +113,18 @@ def instantaneous_flow(value, convert_to_lt, scale_divisor=None):
         # APLICAR DIVISOR DE ESCALA PARA CAUDAL usando calculate_nivel
         # Si scale_divisor tiene un valor válido, dividir el caudal por ese valor
         if scale_divisor and isinstance(scale_divisor, (int, float)) and scale_divisor > 0:
-            print(f"Aplicando divisor de escala para caudal: {value} / {scale_divisor}")
+            logger.info(f"Aplicando divisor de escala para caudal: {value} / {scale_divisor}")
             value = value / float(scale_divisor)
             
         if convert_to_lt:
             value /= 3.6
             
-        # Ensure the value is within the required precision and scale
-        if abs(value) >= 1000:
-            print("Calculated value exceeds the allowed precision and scale")
-            return 0.0
         return float(f"{value:.2f}")
     except ValueError as e:
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
         return 0.0
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        logger.error(f"Unexpected error: {e}")
         return 0.0
 
 
@@ -167,8 +159,8 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
         )
         if exclude_id:
             query = query.exclude(pk=exclude_id)
-            
-        get_last = query.order_by('-date_time_medition').first()
+
+        get_last = query.exclude(is_error=True).order_by('-date_time_medition').first()
         
         if not get_last or get_last.total is None:
             return 0.0
@@ -198,7 +190,7 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
                     time_difference = diff_log
                     used_logger_diff = True
             except Exception as e:
-                print(f"Warning: Error calculating logger diff: {e}")
+                logger.warning(f"Error calculating logger diff: {e}")
 
         # Si no se pudo usar logger (o dio <= 0), usar date_time_medition (Ingesta)
         if time_difference <= 0:
@@ -247,9 +239,12 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
         last_total = float(get_last.total)
         diff_cubics = float(total) - last_total
 
-        # Detector de reseteo
+        # Detector de reseteo no detectado por total_m3
+        # Si diff_cubics < 0, el contador bajó (reset no detectado).
+        # NO usar el total histórico como volumen del intervalo (bug anterior).
+        # Forzar a 0.0 para evitar caudal ficticio basado en volumen acumulado.
         if diff_cubics < 0:
-            diff_cubics = float(total)
+            diff_cubics = 0.0
 
         if diff_cubics <= 0:
             return 0.0
@@ -260,6 +255,25 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
             logger.warning(
                 f"🚨 Punto {point_catchment['id']}: Consumo por hora excesivo "
                 f"({consumption_per_hour:.0f} m³/h > {max_diff}) - Caudal = 0"
+            )
+            emit_system_event(
+                event_type="MASSIVE_JUMP_BLOCKED",
+                point_id=point_catchment["id"],
+                title="Consumo por hora excesivo",
+                message=f"Consumo por hora excesivo ({consumption_per_hour:.0f} m³/h > {max_diff}). Caudal forzado a 0.",
+                severity="WARNING",
+                extra_data={
+                    "decision": "RECHAZAR",
+                    "reason": "El consumo por hora calculado a partir del diff de totales supera el límite de seguridad. Se fuerza caudal a 0 para evitar picos falsos en reportes.",
+                    "actual_value": round(consumption_per_hour, 2),
+                    "threshold_value": max_diff,
+                    "expected_range": [None, max_diff],
+                    "consumption_m3_per_hour": consumption_per_hour,
+                    "limit": max_diff,
+                    "diff_cubics": diff_cubics,
+                    "time_difference_s": time_difference,
+                    "source": "api.cronjobs.telemetry.controllers.flow:average_flow",
+                },
             )
             return 0.0
 
@@ -272,10 +286,23 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
                 f"🚨 Punto {point_catchment['id']}: Caudal excesivo "
                 f"({value:.2f} L/s > {max_flow}) - Caudal = 0"
             )
-            return 0.0
-
-        # Protección contra valores fuera de rango para la BD (max 999.99)
-        if abs(value) >= 1000:
+            emit_system_event(
+                event_type="MEASUREMENT_ERROR",
+                point_id=point_catchment["id"],
+                title="Caudal excesivo",
+                message=f"Caudal excesivo ({value:.2f} L/s > {max_flow}). Caudal forzado a 0.",
+                severity="WARNING",
+                extra_data={
+                    "decision": "RECHAZAR",
+                    "reason": "El caudal instantáneo reportado por el sensor supera el máximo físicamente razonable configurado. Se fuerza a 0 para evitar distorsiones.",
+                    "actual_value": round(value, 2),
+                    "threshold_value": max_flow,
+                    "expected_range": [None, max_flow],
+                    "flow_ls": value,
+                    "max_flow_ls": max_flow,
+                    "source": "api.cronjobs.telemetry.controllers.flow:instantaneous_flow",
+                },
+            )
             return 0.0
 
         return value

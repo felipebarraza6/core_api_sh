@@ -1,0 +1,506 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .report-container {
+        padding: 20px;
+        background: #f8f9fa;
+        min-height: calc(100vh - 120px);
+    }
+
+    .report-header {
+        background: linear-gradient(135deg, #0277bd 0%, #0288d1 50%, #039be5 100%);
+        color: white;
+        padding: 25px 30px;
+        border-radius: 12px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 16px rgba(2, 119, 189, 0.3);
+    }
+
+    .report-header h1 {
+        margin: 0 0 8px 0;
+        font-size: 28px;
+        font-weight: 600;
+    }
+
+    .report-header p {
+        margin: 0;
+        opacity: 0.9;
+        font-size: 15px;
+    }
+
+    .stats-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .stat-card {
+        background: white;
+        border-radius: 10px;
+        padding: 16px 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        text-align: center;
+        border-left: 4px solid #00acc1;
+    }
+
+    .stat-card.warning { border-left-color: #ff9800; }
+    .stat-card.danger { border-left-color: #f44336; }
+    .stat-card.success { border-left-color: #4caf50; }
+    .stat-card.muted { border-left-color: #78909c; }
+
+    .stat-value {
+        font-size: 26px;
+        font-weight: 700;
+        color: #01579b;
+        margin-bottom: 4px;
+        line-height: 1.2;
+    }
+
+    .stat-card.danger .stat-value { color: #d32f2f; }
+    .stat-card.warning .stat-value { color: #ef6c00; }
+    .stat-card.success .stat-value { color: #2e7d32; }
+    .stat-card.muted .stat-value { color: #546e7a; }
+
+    .stat-label {
+        font-size: 11px;
+        color: #546e7a;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        line-height: 1.3;
+    }
+
+    .filter-bar {
+        background: white;
+        padding: 15px 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        flex-wrap: wrap;
+    }
+
+    .filter-bar label {
+        font-weight: 600;
+        color: #37474f;
+        font-size: 14px;
+    }
+
+    .filter-bar select {
+        padding: 8px 12px;
+        border: 1px solid #b0bec5;
+        border-radius: 6px;
+        font-size: 14px;
+        min-width: 250px;
+        background: white;
+    }
+
+    .filter-bar button {
+        padding: 8px 18px;
+        background: #0288d1;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        font-weight: 500;
+    }
+
+    .filter-bar button:hover {
+        background: #0277bd;
+    }
+
+    .filter-bar a.clear {
+        padding: 8px 16px;
+        color: #546e7a;
+        text-decoration: none;
+        font-size: 14px;
+        border: 1px solid #cfd8dc;
+        border-radius: 6px;
+    }
+
+    .filter-bar a.clear:hover {
+        background: #eceff1;
+    }
+
+    .report-table-wrapper {
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        overflow: hidden;
+    }
+
+    .report-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+
+    .report-table thead {
+        background: linear-gradient(135deg, #0277bd 0%, #0288d1 100%);
+        color: white;
+    }
+
+    .report-table th {
+        padding: 12px 10px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        white-space: nowrap;
+    }
+
+    .report-table td {
+        padding: 10px;
+        border-bottom: 1px solid #eceff1;
+        vertical-align: middle;
+    }
+
+    .report-table tbody tr:hover {
+        background: #f5f5f5;
+    }
+
+    .report-table tbody tr.superado {
+        background: #ffebee !important;
+    }
+
+    .report-table tbody tr.proximo {
+        background: #fff3e0 !important;
+    }
+
+    .report-table tbody tr.sin-config {
+        background: #eceff1 !important;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .badge-success {
+        background: #e8f5e9;
+        color: #2e7d32;
+    }
+
+    .badge-inactive {
+        background: #eceff1;
+        color: #78909c;
+    }
+
+    .badge-danger {
+        background: #ffebee;
+        color: #c62828;
+    }
+
+    .badge-warning {
+        background: #fff3e0;
+        color: #ef6c00;
+    }
+
+    .badge-muted {
+        background: #eceff1;
+        color: #546e7a;
+    }
+
+    .value-block {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .value-main {
+        font-weight: 600;
+        color: #263238;
+    }
+
+    .value-sub {
+        font-size: 11px;
+        color: #78909c;
+    }
+
+    .pct-bar {
+        width: 100%;
+        height: 6px;
+        background: #e0e0e0;
+        border-radius: 3px;
+        margin-top: 4px;
+        overflow: hidden;
+    }
+
+    .pct-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.3s ease;
+    }
+
+    .pct-bar-fill.ok { background: #4caf50; }
+    .pct-bar-fill.proximo { background: #ff9800; }
+    .pct-bar-fill.superado { background: #f44336; }
+
+    .text-superado { color: #c62828; font-weight: 700; }
+    .text-proximo { color: #ef6c00; font-weight: 700; }
+    .text-ok { color: #2e7d32; font-weight: 600; }
+    .text-muted { color: #78909c; font-weight: 500; }
+
+    .code-dga {
+        font-family: 'SFMono-Regular', Consolas, monospace;
+        font-size: 13px;
+        font-weight: 700;
+        color: #01579b;
+        background: #e1f5fe;
+        padding: 3px 8px;
+        border-radius: 6px;
+        display: inline-block;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #78909c;
+    }
+
+    .empty-state i {
+        font-size: 48px;
+        margin-bottom: 15px;
+        display: block;
+    }
+
+    .nowrap { white-space: nowrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="report-container">
+    <div class="report-header">
+        <h1><i class="fas fa-clipboard-check"></i> Reporte de Cumplimiento DGA — Año {{ current_year }}</h1>
+        <p>Puntos con obligaciones DGA: caudal autorizado vs medición actual, consumo anual vs total autorizado, y puntos sin configurar.</p>
+    </div>
+
+    <div class="stats-cards">
+        <div class="stat-card">
+            <div class="stat-value">{{ total_puntos }}</div>
+            <div class="stat-label">Puntos DGA</div>
+        </div>
+        <div class="stat-card success">
+            <div class="stat-value">{{ puntos_activos }}</div>
+            <div class="stat-label">Cumplimiento Activo</div>
+        </div>
+        <div class="stat-card muted">
+            <div class="stat-value">{{ puntos_sin_caudal_conf }}</div>
+            <div class="stat-label">Sin Caudal Autorizado</div>
+        </div>
+        <div class="stat-card muted">
+            <div class="stat-value">{{ puntos_sin_total_conf }}</div>
+            <div class="stat-label">Sin Total Autorizado</div>
+        </div>
+        <div class="stat-card warning">
+            <div class="stat-value">{{ puntos_proximos_caudal }}</div>
+            <div class="stat-label">Caudal Próximo</div>
+        </div>
+        <div class="stat-card danger">
+            <div class="stat-value">{{ puntos_superados_caudal }}</div>
+            <div class="stat-label">Caudal Superado</div>
+        </div>
+        <div class="stat-card warning">
+            <div class="stat-value">{{ puntos_proximos_total }}</div>
+            <div class="stat-label">Total Anual Próximo</div>
+        </div>
+        <div class="stat-card danger">
+            <div class="stat-value">{{ puntos_superados_total }}</div>
+            <div class="stat-label">Total Anual Superado</div>
+        </div>
+    </div>
+
+    <div class="filter-bar">
+        <label for="project-filter"><i class="fas fa-filter"></i> Proyecto:</label>
+        <select id="project-filter" onchange="applyFilter()">
+            <option value="">Todos los proyectos</option>
+            {% for project in all_projects %}
+            <option value="{{ project.id }}" {% if selected_project_id == project.id %}selected{% endif %}>{{ project.name }}</option>
+            {% endfor %}
+        </select>
+        <button onclick="applyFilter()"><i class="fas fa-search"></i> Filtrar</button>
+        {% if selected_project %}
+        <a href="{% url 'dga_compliance_report' %}" class="clear"><i class="fas fa-times"></i> Limpiar</a>
+        {% endif %}
+    </div>
+
+    <div class="report-table-wrapper">
+        <table class="report-table">
+            <thead>
+                <tr>
+                    <th>Código DGA</th>
+                    <th>Proyecto</th>
+                    <th>Punto</th>
+                    <th>Estándar</th>
+                    <th>Cumplimiento</th>
+                    <th>Caudal Autorizado</th>
+                    <th>Caudal Actual</th>
+                    <th>% Usado Caudal</th>
+                    <th>Total Autorizado Año</th>
+                    <th>Consumo {{ current_year }}</th>
+                    <th>% Gastado</th>
+                    <th>% por Gastar</th>
+                    <th>Última Medición</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in report_data %}
+                <tr class="{% if item.caudal_status == 'superado' or item.total_status == 'superado' %}superado{% elif item.caudal_status == 'proximo' or item.total_status == 'proximo' %}proximo{% elif not item.tiene_caudal_configurado or not item.tiene_total_configurado %}sin-config{% endif %}">
+                    <td class="nowrap">
+                        <span class="code-dga">{{ item.code_dga }}</span>
+                    </td>
+                    <td class="nowrap">{{ item.project }}</td>
+                    <td class="nowrap">
+                        <a href="{% url 'admin:core_catchmentpoint_change' item.point.id %}" style="color:#0288d1; font-weight:600;">
+                            {{ item.point.title }}
+                        </a>
+                    </td>
+                    <td class="nowrap">{{ item.standard }}</td>
+                    <td class="nowrap">
+                        {% if item.send_dga %}
+                        <span class="badge badge-success"><i class="fas fa-check-circle"></i> Activo</span>
+                        {% else %}
+                        <span class="badge badge-inactive"><i class="fas fa-times-circle"></i> Inactivo</span>
+                        {% endif %}
+                    </td>
+                    <td class="nowrap">
+                        {% if item.tiene_caudal_configurado %}
+                        <span class="value-main">{{ item.caudal_autorizado|floatformat:2 }} L/s</span>
+                        {% else %}
+                        <span class="badge badge-muted">SIN CONFIGURAR</span>
+                        {% endif %}
+                    </td>
+                    <td class="nowrap">
+                        {% if item.caudal_actual %}
+                        <span class="value-main">{{ item.caudal_actual|floatformat:2 }} L/s</span>
+                        {% else %}
+                        <span class="value-sub">Sin datos</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.tiene_caudal_configurado %}
+                            {% if item.pct_usado_caudal is not None %}
+                            <div class="value-block">
+                                <span class="{% if item.caudal_status == 'superado' %}text-superado{% elif item.caudal_status == 'proximo' %}text-proximo{% else %}text-ok{% endif %}">
+                                    {{ item.pct_usado_caudal|floatformat:1 }}%
+                                </span>
+                                <div class="pct-bar">
+                                    <div class="pct-bar-fill {{ item.caudal_status }}" style="width: {{ item.pct_usado_caudal|floatformat:0 }}%;"></div>
+                                </div>
+                                {% if item.caudal_status == 'superado' %}
+                                <span class="badge badge-danger">SUPERADO</span>
+                                {% elif item.caudal_status == 'proximo' %}
+                                <span class="badge badge-warning">PRÓXIMO</span>
+                                {% endif %}
+                            </div>
+                            {% else %}
+                            <span class="value-sub">Sin medición</span>
+                            {% endif %}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="nowrap">
+                        {% if item.tiene_total_configurado %}
+                        <span class="value-main">{{ item.total_autorizado }} m³/año</span>
+                        {% else %}
+                        <span class="badge badge-muted">SIN CONFIGURAR</span>
+                        {% endif %}
+                    </td>
+                    <td class="nowrap">
+                        {% if item.consumo_anio > 0 %}
+                        <span class="value-main">{{ item.consumo_anio }} m³</span>
+                        {% else %}
+                        <span class="value-sub">Sin consumo</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.tiene_total_configurado %}
+                            {% if item.pct_gastado_total is not None %}
+                            <div class="value-block">
+                                <span class="{% if item.total_status == 'superado' %}text-superado{% elif item.total_status == 'proximo' %}text-proximo{% else %}text-ok{% endif %}">
+                                    {{ item.pct_gastado_total|floatformat:1 }}%
+                                </span>
+                                <div class="pct-bar">
+                                    <div class="pct-bar-fill {{ item.total_status }}" style="width: {{ item.pct_gastado_total|floatformat:0 }}%;"></div>
+                                </div>
+                                {% if item.total_status == 'superado' %}
+                                <span class="badge badge-danger">SUPERADO</span>
+                                {% elif item.total_status == 'proximo' %}
+                                <span class="badge badge-warning">PRÓXIMO</span>
+                                {% endif %}
+                            </div>
+                            {% else %}
+                            <span class="value-sub">Sin datos</span>
+                            {% endif %}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.tiene_total_configurado %}
+                            {% if item.pct_por_gastar_total is not None %}
+                            <div class="value-block">
+                                <span class="{% if item.total_status == 'superado' %}text-superado{% elif item.total_status == 'proximo' %}text-proximo{% else %}text-ok{% endif %}">
+                                    {{ item.pct_por_gastar_total|floatformat:1 }}%
+                                </span>
+                            </div>
+                            {% else %}
+                            <span class="value-sub">—</span>
+                            {% endif %}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="nowrap">
+                        {% if item.last_medition %}
+                        <span class="value-main">{{ item.last_medition|date:"d/m/Y H:i" }}</span>
+                        {% if item.tiempo_desconectado %}
+                        <span class="badge badge-warning" style="margin-top:4px; display:inline-block;">{{ item.tiempo_desconectado }}</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="badge badge-inactive">Sin registros</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="13">
+                        <div class="empty-state">
+                            <i class="fas fa-inbox"></i>
+                            <h3>No se encontraron puntos DGA</h3>
+                            <p>No hay puntos de captación con configuración DGA para los filtros seleccionados.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function applyFilter() {
+    var projectId = document.getElementById('project-filter').value;
+    var url = new URL(window.location.href);
+    if (projectId) {
+        url.searchParams.set('project', projectId);
+    } else {
+        url.searchParams.delete('project');
+    }
+    window.location.href = url.toString();
+}
+</script>
+{% endblock %}

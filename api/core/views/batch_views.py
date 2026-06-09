@@ -8,8 +8,9 @@ for multiple resources in a single API call.
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from api.api_ik.throttles import BatchRateThrottle
 from rest_framework import status
-from django.db.models import Max, Sum, F
+from django.db.models import Max, Sum, F, Count
 from django.utils import timezone
 from datetime import timedelta
 
@@ -31,9 +32,20 @@ class BatchTelemetryView(APIView):
     """
     permission_classes = [IsAuthenticated]
     
+    throttle_classes = [BatchRateThrottle]
     def post(self, request):
         point_ids = request.data.get('point_ids', [])
         hours_back = request.data.get('hours', 1)
+        
+        try:
+            hours_back = int(hours_back)
+            if hours_back < 1 or hours_back > 168:  # máx 7 días
+                raise ValueError
+        except (ValueError, TypeError):
+            return Response(
+                {"error": "hours debe ser un entero entre 1 y 168"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         if not point_ids:
             return Response(
@@ -146,15 +158,41 @@ class BatchStatsView(APIView):
     """
     permission_classes = [IsAuthenticated]
     
+    throttle_classes = [BatchRateThrottle]
     def post(self, request):
         point_ids = request.data.get('point_ids', [])
         days_back = request.data.get('days', 30)
+        
+        try:
+            days_back = int(days_back)
+            if days_back < 1 or days_back > 365:
+                raise ValueError
+        except (ValueError, TypeError):
+            return Response(
+                {"error": "days debe ser un entero entre 1 y 365"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         if not point_ids or len(point_ids) > 50:
             return Response(
                 {"error": "point_ids required (max 50)"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # Validate user has access to requested points
+        user = request.user
+        if not (user.is_staff or user.is_superuser):
+            allowed_points = set(
+                CatchmentPoint.objects.filter(
+                    owner_user=user
+                ).values_list('id', flat=True)
+            ) | set(
+                user.viewed_catchment_points.values_list('id', flat=True)
+            )
+            point_ids = [pid for pid in point_ids if pid in allowed_points]
+        
+        if not point_ids:
+            return Response({"data": {}})
         
         now = timezone.now()
         time_threshold = now - timedelta(days=days_back)
@@ -165,7 +203,7 @@ class BatchStatsView(APIView):
             date_time_medition__gte=time_threshold
         ).values('catchment_point_id').annotate(
             total_consumption=Sum('total_diff'),
-            record_count=Sum(F('id') * 0 + 1),  # Count trick
+            record_count=Count('id'),
             last_record=Max('date_time_medition')
         )
         

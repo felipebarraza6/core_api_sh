@@ -4,7 +4,7 @@ from drf_excel.mixins import XLSXFileMixin
 from drf_excel.renderers import XLSXRenderer
 from rest_framework.renderers import JSONRenderer
 
-from api.core.serializers import InteractionDetailModelSerializer, InteractionDetailModelSerializerNoProcessing
+from api.core.serializers import InteractionDetailModelSerializer, InteractionDetailModelSerializerNoProcessing, InteractionDetailDgaXlsxSerializer
 from api.core.models import InteractionDetail, CatchmentPoint
 import django.db.models as models
 from django_filters import rest_framework as filters
@@ -15,10 +15,19 @@ from rest_framework.permissions import (
     IsAuthenticated
 )
 from rest_framework.pagination import PageNumberPagination
+from drf_spectacular.utils import extend_schema, extend_schema_view
 
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_view(
+    list=extend_schema(summary="Listar telemetría", description="Registros de telemetría (InteractionDetail). Filtros: catchment_point, date_time_medition, hour, year, month, is_error, send_dga. Default últimas 24h."),
+    retrieve=extend_schema(summary="Detalle de telemetría"),
+    create=extend_schema(summary="Crear registro de telemetría"),
+    update=extend_schema(summary="Actualizar registro de telemetría"),
+    partial_update=extend_schema(summary="Actualizar parcialmente registro de telemetría"),
+    destroy=extend_schema(summary="Eliminar registro de telemetría"),
+)
 class InteractionDetailViewSet(mixins.CreateModelMixin,
                                mixins.RetrieveModelMixin,
                                mixins.UpdateModelMixin,
@@ -115,6 +124,14 @@ class InteractionDetailViewSet(mixins.CreateModelMixin,
     filterset_class = InteractionFilter
 
 
+@extend_schema_view(
+    list=extend_schema(summary="Listar override telemetría", description="Override de registros de telemetría. Default últimos 7 días."),
+    retrieve=extend_schema(summary="Detalle de override"),
+    create=extend_schema(summary="Crear override"),
+    update=extend_schema(summary="Actualizar override"),
+    partial_update=extend_schema(summary="Actualizar parcialmente override"),
+    destroy=extend_schema(summary="Eliminar override"),
+)
 class InteractionDetailOverrideViewSet(mixins.CreateModelMixin,
                                mixins.RetrieveModelMixin,
                                mixins.UpdateModelMixin,
@@ -189,10 +206,26 @@ class InteractionDetailOverrideViewSet(mixins.CreateModelMixin,
             cutoff = timezone.now() - timedelta(days=7)
             queryset = queryset.filter(date_time_medition__gte=cutoff)
 
+        # ✅ Seguridad: límite de 1000 registros para prevenir payloads masivos
+        try:
+            limit = int(request.query_params.get('limit', 1000))
+        except (ValueError, TypeError):
+            limit = 1000
+        limit = min(max(limit, 1), 5000)
+        queryset = queryset[:limit]
+
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
 
+@extend_schema_view(
+    list=extend_schema(summary="Listar override mensual", description="Override mensual de telemetría. Default últimos 90 días."),
+    retrieve=extend_schema(summary="Detalle de override mensual"),
+    create=extend_schema(summary="Crear override mensual"),
+    update=extend_schema(summary="Actualizar override mensual"),
+    partial_update=extend_schema(summary="Actualizar parcialmente override mensual"),
+    destroy=extend_schema(summary="Eliminar override mensual"),
+)
 class InteractionDetailOverrideMonthViewSet(mixins.CreateModelMixin,
                                             mixins.RetrieveModelMixin,
                                             mixins.UpdateModelMixin,
@@ -240,6 +273,14 @@ class InteractionDetailOverrideMonthViewSet(mixins.CreateModelMixin,
             from datetime import timedelta
             cutoff = timezone.now() - timedelta(days=90)
             queryset = queryset.filter(date_time_medition__gte=cutoff)
+
+        # ✅ Seguridad: límite de 1000 registros para prevenir payloads masivos
+        try:
+            limit = int(request.query_params.get('limit', 1000))
+        except (ValueError, TypeError):
+            limit = 1000
+        limit = min(max(limit, 1), 5000)
+        queryset = queryset[:limit]
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -606,9 +647,10 @@ class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
                 indices_to_keep = [0] 
                 
                 # Dynamic Logic
-                has_caudal = "CAUDAL" in variables_set or "CAUDAL_PROMEDIO" in variables_set
-                has_total = "TOTALIZADO" in variables_set
-                has_nivel = "NIVEL" in variables_set
+                variables_set_upper = {v.upper() for v in variables_set}
+                has_caudal = "CAUDAL" in variables_set_upper or "CAUDAL_PROMEDIO" in variables_set_upper
+                has_total = "TOTALIZADO" in variables_set_upper
+                has_nivel = "NIVEL" in variables_set_upper
 
                 # Caudal Columns: "Caudal (l/s)" (Index 1)
                 if has_caudal:
@@ -703,7 +745,7 @@ class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
 
 class InteractionXLSDga(XLSXFileMixin, ReadOnlyModelViewSet):
     queryset = InteractionDetail.objects.all().order_by('-date_time_medition')
-    serializer_class = InteractionDetailModelSerializerNoProcessing
+    serializer_class = InteractionDetailDgaXlsxSerializer
     def get_filename(self, request=None, *args, **kwargs):
         """Construye nombre de archivo según punto y rango de fechas."""
         # Defaults
@@ -796,7 +838,7 @@ class InteractionXLSDga(XLSXFileMixin, ReadOnlyModelViewSet):
             "Caudal (l/s)",
             "Acumulado (m³)",
             "Nivel Freático (m)", 
-            "Código Compronante"
+            "Comprobante"
         ],
         'column_width': [30, 14, 30, 30, 52],
         'height': 25,

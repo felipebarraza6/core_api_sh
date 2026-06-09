@@ -13,13 +13,16 @@ from django.core.mail import send_mail
 from django.utils import timezone
 
 from api.core.models.alerts import AlertTrigger, AlertChannel
+from api.core.models import InteractionDetail
 from api.core.utils.google_chat import send_google_chat_message
 from api.cronjobs.alerts.ai_diagnosis import generate_disconnection_diagnosis
 from api.cronjobs.utils.logging_config import telemetry_logger
+from api.cronjobs.utils.locks import cron_job_lock
 
 logger = logging.getLogger(__name__)
 
 
+@cron_job_lock("alert_dispatcher", timeout=120)
 def run_dispatcher(dry_run: bool = False, max_triggers: int = 50) -> dict:
     """
     Procesa AlertTrigger pendientes y envía notificaciones.
@@ -61,9 +64,14 @@ def run_dispatcher(dry_run: bool = False, max_triggers: int = 50) -> dict:
                 try:
                     point = trigger.point_catchment or trigger.alert_rule.point_catchment
                     if point:
+                        last_record = None
+                        if trigger.interaction_detail_id:
+                            last_record = InteractionDetail.objects.filter(
+                                id=trigger.interaction_detail_id
+                            ).first()
                         trigger.ai_diagnosis = generate_disconnection_diagnosis(
                             point=point,
-                            last_record=trigger.interaction_detail,
+                            last_record=last_record,
                             days_disconnected=trigger.value_at_trigger or 0,
                         )
                         trigger.save(update_fields=["ai_diagnosis"])

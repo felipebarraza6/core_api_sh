@@ -169,7 +169,7 @@ class ManagementViewSet(viewsets.ViewSet):
             )
 
             points_data = []
-            for point in queryset.select_related('project', 'project__client', 'owner_user'):
+            for point in queryset.select_related('project', 'project__client', 'owner_user', 'telemetry_provider'):
                 last_interaction = last_interactions.get(point.id)
 
                 point_data = {
@@ -223,7 +223,10 @@ class ManagementViewSet(viewsets.ViewSet):
         """
         try:
             point_id = request.query_params.get('point')
-            days = int(request.query_params.get('days', 7))
+            try:
+                days = int(request.query_params.get('days', 7))
+            except (ValueError, TypeError):
+                days = 7
             
             start_date = timezone.now() - timedelta(days=days)
             queryset = InteractionDetail.objects.filter(
@@ -446,7 +449,11 @@ class ManagementViewSet(viewsets.ViewSet):
                 queryset = queryset.filter(is_error=True)
             
             count = queryset.count()
-            queryset.update(send_dga=True)
+            queryset.update(
+                send_dga=True,
+                dga_retry_count=0,
+                dga_last_retry_at=None,
+            )
             
             return Response({
                 'message': f'{count} registros agregados a la cola DGA',
@@ -511,7 +518,10 @@ class ManagementViewSet(viewsets.ViewSet):
             - days: Días a consultar (default: 7)
         """
         try:
-            days = int(request.query_params.get('days', 7))
+            try:
+                days = int(request.query_params.get('days', 7))
+            except (ValueError, TypeError):
+                days = 7
             start_date = timezone.now() - timedelta(days=days)
             
             notifications = NotificationsCatchment.objects.filter(
@@ -851,18 +861,18 @@ class ManagementViewSet(viewsets.ViewSet):
         # ========================================
         # 7. ESTADO DE CRONJOBS (basado en logs)
         # ========================================
-        log_dir = '/app/cron_logs/'
+        log_dir = '/tmp/smarthydro/'
         cronjobs_config = [
-            {'name': 'twin_60', 'schedule': '0 * * * *', 'log': 'twin_60.log', 'description': 'Telemetría Twin 60 min'},
-            {'name': 'twin_1', 'schedule': '* * * * *', 'log': 'twin_1.log', 'description': 'Telemetría Twin 1 min'},
-            {'name': 'twin_5', 'schedule': '*/5 * * * *', 'log': 'twin_5.log', 'description': 'Telemetría Twin 5 min'},
-            {'name': 'twin_10', 'schedule': '*/10 * * * *', 'log': 'twin_10.log', 'description': 'Telemetría Twin 10 min'},
-            {'name': 'nettra_60', 'schedule': '0 * * * *', 'log': 'nettra_60.log', 'description': 'Telemetría Nettra 60 min'},
-            {'name': 'nettra_5', 'schedule': '*/5 * * * *', 'log': 'nettra_5.log', 'description': 'Telemetría Nettra 5 min'},
-            {'name': 'novus_60', 'schedule': '0 * * * *', 'log': 'novus_60.log', 'description': 'Telemetría Novus 60 min'},
+            {'name': 'unified_twin_60', 'schedule': '0 * * * *', 'log': 'unified_twin_60.log', 'description': 'Telemetría Twin 60 min'},
+            {'name': 'unified_twin_1', 'schedule': '*/2 * * * *', 'log': 'unified_twin_1.log', 'description': 'Telemetría Twin 1 min'},
+            {'name': 'unified_twin_5', 'schedule': '1-59/5 * * * *', 'log': 'unified_twin_5.log', 'description': 'Telemetría Twin 5 min'},
+            {'name': 'unified_twin_10', 'schedule': '1-59/10 * * * *', 'log': 'unified_twin_10.log', 'description': 'Telemetría Twin 10 min'},
+            {'name': 'unified_nettra_60', 'schedule': '4 * * * *', 'log': 'unified_nettra_60.log', 'description': 'Telemetría Nettra 60 min'},
+            {'name': 'unified_novus_60', 'schedule': '2 * * * *', 'log': 'unified_novus_60.log', 'description': 'Telemetría Novus 60 min'},
             {'name': 'dga', 'schedule': '*/3 * * * *', 'log': 'dga.log', 'description': 'Cola DGA'},
             {'name': 'sma', 'schedule': '*/5 * * * *', 'log': 'sma.log', 'description': 'Cola SMA'},
-            {'name': 'alerts', 'schedule': '*/10 * * * *', 'log': 'alerts.log', 'description': 'Alertas'},
+            {'name': 'alert_engine', 'schedule': '* * * * *', 'log': 'alert_engine.log', 'description': 'Motor de alertas'},
+            {'name': 'alert_dispatcher', 'schedule': '* * * * *', 'log': 'alert_dispatcher.log', 'description': 'Dispatcher de alertas'},
             {'name': 'space_backup', 'schedule': '0 * * * *', 'log': 'space_backup.log', 'description': 'Backup cluster'},
             {'name': 'daily_bulletin', 'schedule': '0 1 * * *', 'log': 'daily_bulletin.log', 'description': 'Boletín diario'},
             {'name': 'daily_chat_report', 'schedule': '0 12 * * *', 'log': 'daily_chat_report.log', 'description': 'Reporte chat diario'},

@@ -18,8 +18,21 @@ from api.core.views.batch_views import BatchTelemetryView, BatchStatsView
 from .views import (
     OptimizedLoginView, PointsSummaryView, PointSummaryView, MyPointsView,
     DashboardStatsView, PointCalendarView, PublicAnnouncementsView,
-    PointVariablesView,
+    PointVariablesView, ClientStatsChatView, PointRecordsView, PointConfigView,
+    SystemEventsSummaryView,
 )
+from .views_tickets import (
+    TicketsListCreateView,
+    TicketDetailUpdateView,
+    TicketCommentsView,
+    TicketAssignView,
+    TicketStatusChangeView,
+    TicketStatsView,
+    TicketAttachmentsView,
+)
+from .views_telemetry_backfill import TelemetryBackfillView
+from .views_point_gaps import PointGapsView
+from .views_compliance import ComplianceListView
 
 try:
     from django_rest_passwordreset.views import (
@@ -64,4 +77,34 @@ urlpatterns = [
 
     # Public announcements (sin auth)
     path('announcements/public/', PublicAnnouncementsView.as_view(), name='public_announcements'),
+
+    # Tickets de soporte + SLA
+    path('tickets/', TicketsListCreateView.as_view(), name='tickets_list_create'),
+    path('tickets/<int:pk>/', TicketDetailUpdateView.as_view(), name='ticket_detail_update'),
+    path('tickets/<int:pk>/comments/', TicketCommentsView.as_view(), name='ticket_comments'),
+    path('tickets/<int:pk>/assign/', TicketAssignView.as_view(), name='ticket_assign'),
+    path('tickets/<int:pk>/status/', TicketStatusChangeView.as_view(), name='ticket_status'),
+    path('tickets/<int:pk>/attachments/', TicketAttachmentsView.as_view(), name='ticket_attachments'),
+    path('tickets/stats/', TicketStatsView.as_view(), name='ticket_stats'),
+
+    # Backfill histórico de telemetría
+    path('telemetry/backfill/', TelemetryBackfillView.as_view(), name='telemetry_backfill'),
+
+    # Gap detection para un punto (solo lectura)
+    path('point/<int:id>/gaps/', PointGapsView.as_view(), name='point_gaps'),
+
+    # Compliance DGA/SMA (listado completo)
+    path('compliance/', ComplianceListView.as_view(), name='compliance_list'),
+
+    # Chat interpretativo con stats del cliente
+    path('chat/client/general_stats/', ClientStatsChatView.as_view(), name='client_stats_chat'),
+
+    # Registros de telemetría por punto y rango de fechas
+    path('point/<int:point_id>/records/', PointRecordsView.as_view(), name='point_records'),
+
+    # Config liviana del punto (d1-d6, addition, is_telemetry)
+    path('point/<int:point_id>/config/', PointConfigView.as_view(), name='point_config'),
+
+    # Resumen de eventos del sistema (auditoría / informes)
+    path('system-events/summary/', SystemEventsSummaryView.as_view(), name='system_events_summary'),
 ]

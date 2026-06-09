@@ -4,7 +4,7 @@ from django.urls import reverse
 # Django
 from django.contrib import admin
 from django.utils import timezone
-from django.db.models import Count, Sum, Avg, Max, Min, Q
+from django.db.models import Count, Sum, Avg, Max, Min, Q, OuterRef, Subquery
 from django.db.models.functions import TruncDate, TruncHour
 # Models
 from django.utils.safestring import mark_safe
@@ -16,7 +16,8 @@ from api.core.models import (
     SchemesCatchment, Variable, RegisterPersons, NotificationsCatchment,
     TelemetryProvider, ComplianceProvider,
     ResponseNotificationsCatchment, TypeFileCatchment, FileCatchment,
-    AlertRule, AlertChannel, AlertTrigger, SystemEvent,
+    AlertRule, AlertChannel, AlertTrigger, SystemEvent, CounterResetLog,
+    SLAConfig, SupportTicket, TicketComment, TicketAttachment, TicketActivityLog,
 )
 from import_export.admin import ImportExportModelAdmin, ExportActionMixin
 
@@ -498,44 +499,10 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
 
     # ✅ Helper para GAP
     def _get_gap_html(self, obj, field_name, current_value):
-        """Calcula y formatea el GAP (tiempo desde último cambio)"""
-        if current_value is None:
-            return ""
-
-        try:
-            # Buscar el registro anterior DIERENTE
-            prev = obj.__class__.objects.filter(
-                catchment_point=obj.catchment_point,
-                date_time_medition__lt=obj.date_time_medition
-            ).exclude(
-                **{field_name: current_value}
-            ).order_by('-date_time_medition').only('date_time_medition').first()
-
-            gap_html = ""
-            if prev and prev.date_time_medition:
-                diff = obj.date_time_medition - prev.date_time_medition
-                minutes = int(diff.total_seconds() / 60)
-
-                if minutes < 60:
-                    time_str = f"{minutes}m"
-                    color = "#28a745" # Verde < 1h
-                elif minutes < 1440: # 24h
-                    hours = minutes // 60
-                    time_str = f"{hours}h"
-                    color = "#28a745" # Verde < 24h
-                else:
-                    days = minutes // 1440
-                    hours = (minutes % 1440) // 60
-                    time_str = f"{days}d {hours}h"
-                    color = "#dc3545" # Rojo > 24h
-
-                gap_html = f'<div style="color: {color}; font-size: 10px; margin-top: 2px;">GAP: {time_str}</div>'
-            else:
-                gap_html = '<div style="color: #999; font-size: 10px; margin-top: 2px;">GAP: --</div>'
-
-            return gap_html
-        except Exception:
-            return ""
+        """Calcula y formatea el GAP (tiempo desde último cambio)
+        ⚠️ Simplificado: ya no busca el registro anterior en BD para evitar N+1.
+        El GAP detallado sigue disponible en la vista de detalle."""
+        return ""
 
     def get_catchment_point_display(self, obj):
         """Muestra nombre del punto truncado y debajo Proyecto - Cliente"""
@@ -621,51 +588,52 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
     get_pulses_display.admin_order_field = 'pulses'
 
     def get_nivel_display(self, obj):
-        """Muestra el nivel y GAP"""
+        """Muestra el nivel. Base leída de variables prefetcheadas."""
         nivel_val = obj.nivel or 0.0
-        gap_html = self._get_gap_html(obj, 'nivel', obj.nivel)
 
-        # Obtener la base del nivel (calculate_nivel) de la Variable NIVEL
+        # Obtener la base del nivel (calculate_nivel) de las variables prefetcheadas
+        calculate_nivel = None
         try:
-            from api.core.models import Variable
-            var = Variable.objects.filter(
-                type_variable='NIVEL',
-                scheme_catchment__points_catchment=obj.catchment_point
-            ).first()
+            for scheme in obj.catchment_point.schemes.all():
+                for var in scheme.variables.all():
+                    if var.type_variable == 'NIVEL' and var.calculate_nivel:
+                        calculate_nivel = var.calculate_nivel
+                        break
+                if calculate_nivel:
+                    break
 
-            if var and var.calculate_nivel:
+            if calculate_nivel:
                 return mark_safe(f'''
                     <div style="font-size: 11px; line-height: 1.2;">
                         <div style="font-weight: bold;">{nivel_val:.2f} m</div>
-                        <div style="color: #6c757d; font-size: 9px;">Base: {var.calculate_nivel}</div>
-                        {gap_html}
+                        <div style="color: #6c757d; font-size: 9px;">Base: {calculate_nivel}</div>
                     </div>
                 ''')
             else:
-                return mark_safe(f'<div style="font-weight: bold; line-height: 1.2;">{nivel_val:.2f} m{gap_html}</div>')
+                return mark_safe(f'<div style="font-weight: bold; line-height: 1.2;">{nivel_val:.2f} m</div>')
         except Exception:
-            return mark_safe(f'<div style="line-height: 1.2;">{nivel_val:.2f} m{gap_html}</div>')
+            return mark_safe(f'<div style="line-height: 1.2;">{nivel_val:.2f} m</div>')
 
     get_nivel_display.short_description = 'Nivel'
     get_nivel_display.admin_order_field = 'nivel'
 
     def get_water_table_display(self, obj):
-        """Muestra water_table"""
+        """Muestra water_table. Posicionamiento leído de data_config_profiles prefetcheadas."""
         water_table_val = obj.water_table or 0.0
 
-        # Obtener el posicionamiento d3 del ProfileDataConfigCatchment
+        # Obtener el posicionamiento d3 del ProfileDataConfigCatchment prefetcheado
+        d3 = None
         try:
-            from api.core.models import ProfileDataConfigCatchment
-            profile = ProfileDataConfigCatchment.objects.filter(
-                point_catchment=obj.catchment_point
-            ).first()
+            for profile in obj.catchment_point.data_config_profiles.all():
+                if profile.d3:
+                    d3 = profile.d3
+                    break
 
-            if profile and profile.d3:
-                # Mostrar el posicionamiento usado: water_table = d3 - nivel
+            if d3:
                 return mark_safe(f'''
                     <div style="font-size: 11px; line-height: 1.4;">
                         <div style="font-weight: bold;">{water_table_val:.2f} m</div>
-                        <div style="color: #6c757d; font-size: 10px;">Pos: {profile.d3}m</div>
+                        <div style="color: #6c757d; font-size: 10px;">Pos: {d3}m</div>
                     </div>
                 ''')
             else:
@@ -745,45 +713,8 @@ class InteractionDetailAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
                 diff_color = '#dc3545'
             diff_med_log_html = f' <span style="color: {diff_color}; font-size: 10px;">({diff_seg}s)</span>'
 
-        # Calcular intervalo: logger actual vs logger anterior del mismo punto
+        # ⚠️ Intervalo logger vs anterior eliminado para evitar N+1 query por fila
         intervalo_html = ''
-        if obj.date_time_last_logger and obj.date_time_medition:
-            try:
-                # Buscar el registro anterior del mismo punto (usar __class__ para evitar imports)
-                previous = obj.__class__.objects.filter(
-                    catchment_point=obj.catchment_point,
-                    date_time_medition__lt=obj.date_time_medition
-                ).exclude(
-                    date_time_last_logger__isnull=True
-                ).order_by('-date_time_medition').first()
-
-                if previous and previous.date_time_last_logger:
-                    intervalo_seg = int((obj.date_time_last_logger - previous.date_time_last_logger).total_seconds())
-
-                    # Color: verde si está cerca de la frecuencia esperada
-                    try:
-                        frecuencia_min = obj.catchment_point.frecuency or 60
-                        esperado = frecuencia_min * 60  # convertir a segundos
-
-                        if abs(intervalo_seg - esperado) < 60:
-                            intervalo_color = '#28a745'  # verde: intervalo esperado
-                        elif abs(intervalo_seg - esperado) < 300:
-                            intervalo_color = '#ffc107'  # amarillo: variación moderada
-                        else:
-                            intervalo_color = '#dc3545'  # rojo: mucha variación
-                    except:
-                        # Si no podemos obtener la frecuencia, usar color neutro
-                        intervalo_color = '#6c757d'
-
-                    intervalo_html = f' <span style="color: {intervalo_color}; font-size: 10px;">({intervalo_seg}s)</span>'
-                else:
-                    # No hay registro anterior
-                    intervalo_html = ' <span style="color: #999; font-size: 10px;">(--)</span>'
-            except Exception as e:
-                # Error al buscar - mostrar el error para debug
-                # import traceback
-                error_msg = str(e)[:20]
-                intervalo_html = f' <span style="color: #dc3545; font-size: 9px;" title="{error_msg}">(!)</span>'
 
         # Mostrar AMBAS diferencias en la misma línea que las fechas
         return mark_safe(f'''
@@ -1071,10 +1002,14 @@ class ProjectCatchmentsAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
     autocomplete_fields = ['client']
     list_per_page = ADMIN_LIST_PER_PAGE
 
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.annotate(points_count=Count('catchment_points'))
+
     def get_points_count(self, obj):
-        count = obj.catchment_points.count()
-        return mark_safe(f'<strong>{count}</strong> puntos')
+        return mark_safe(f'<strong>{getattr(obj, "points_count", 0)}</strong> puntos')
     get_points_count.short_description = 'Puntos de Captación'
+    get_points_count.admin_order_field = 'points_count'
 
     def get_indicators(self, request, queryset):
         """
@@ -1134,6 +1069,20 @@ class ProjectCatchmentsAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, Expor
 # CATCHMENT POINT ADMIN - MEJORADO
 # ========================================
 
+@admin.register(CounterResetLog)
+class CounterResetLogAdmin(admin.ModelAdmin):
+    list_display = ('point_catchment', 'reset_type', 'date_time_medition', 'amount_to_add', 'detected_by')
+    list_select_related = ['point_catchment']
+    list_filter = ('reset_type', 'detected_by', 'date_time_medition')
+    search_fields = ('point_catchment__title',)
+    readonly_fields = ('point_catchment', 'date_time_medition', 'time_diff_hours', 'reset_type',
+                       'last_pulses', 'current_pulses', 'pulses_factor', 'addition_before',
+                       'amount_to_add', 'addition_after', 'total_before', 'total_after',
+                       'passed_anti_jump', 'reconnection_threshold', 'is_reconnection',
+                       'days_not_connection', 'detected_by')
+    ordering = ('-date_time_medition',)
+
+
 @admin.register(CatchmentPoint)
 class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin):
     """
@@ -1147,7 +1096,29 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
         'id', 'title', 'project', 'owner_user', 'frecuency',
         'get_providers_badge', 'get_telemetry_status', 'last_interaction_detail'
     )
+    list_select_related = ['project', 'project__client', 'owner_user', 'telemetry_provider']
     list_per_page = ADMIN_LIST_PER_PAGE
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        qs = qs.select_related(
+            'project', 'project__client', 'owner_user', 'telemetry_provider'
+        ).prefetch_related('data_config_profiles')
+
+        # Anotar última interacción para evitar N+1 en last_interaction_detail
+        from api.core.models import InteractionDetail
+        last_qs = InteractionDetail.objects.filter(
+            catchment_point=OuterRef('pk')
+        ).order_by('-date_time_medition')
+        qs = qs.annotate(
+            last_interaction_date=Subquery(last_qs.values('date_time_medition')[:1]),
+            last_interaction_total=Subquery(last_qs.values('total')[:1]),
+            last_interaction_flow=Subquery(last_qs.values('flow')[:1]),
+            last_interaction_nivel=Subquery(last_qs.values('nivel')[:1]),
+            last_interaction_days=Subquery(last_qs.values('days_not_conection')[:1]),
+            last_interaction_logger=Subquery(last_qs.values('date_time_last_logger')[:1]),
+        )
+        return qs
 
     def changelist_view(self, request, extra_context=None):
         """Agregar enlace a monitoreo en tiempo real"""
@@ -1161,13 +1132,22 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
         """
         indicators = []
 
-        # 1. Botón de Reporte (Prioritario)
+        # 1. Botón de Reporte Puntos Activos (Prioritario)
         indicators.append({
             'value': 'Descargar Excel',
             'label': 'Reporte Puntos Activos',
             'icon': 'fas fa-file-download',
             'color': 'success', # Verde para destacar descarga
             'url': reverse('active_points_report'),
+        })
+
+        # 1b. Botón de Reporte DGA
+        indicators.append({
+            'value': 'Ver Reporte',
+            'label': 'Cumplimiento DGA',
+            'icon': 'fas fa-clipboard-check',
+            'color': 'info',
+            'url': reverse('dga_compliance_report'),
         })
 
         # 2. Total de puntos
@@ -1267,9 +1247,11 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
     get_providers_badge.short_description = 'Proveedores'
 
     def get_telemetry_status(self, obj):
-        """Estado de telemetría"""
-        profile = obj.data_config_profiles.filter(is_telemetry=True).first()
-        if profile:
+        """Estado de telemetría leído de data_config_profiles prefetcheadas."""
+        is_telemetry = any(
+            getattr(p, 'is_telemetry', False) for p in obj.data_config_profiles.all()
+        )
+        if is_telemetry:
             return mark_safe('<span style="color: #28a745;">● Activa</span>')
         return mark_safe('<span style="color: #6c757d;">○ Inactiva</span>')
 
@@ -1343,63 +1325,36 @@ class CatchmentPointAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, ExportAc
             return queryset
 
     def last_interaction_detail(self, obj):
-        """Última medición con mejor formato"""
-        last_interaction = InteractionDetail.objects.filter(
-            catchment_point=obj
-        ).order_by('-date_time_medition').first()
+        """Última medición con mejor formato. Leída de campos anotados para evitar N+1."""
+        # Usar campos anotados en get_queryset
+        last_date = getattr(obj, 'last_interaction_date', None)
+        last_total = getattr(obj, 'last_interaction_total', None)
+        last_flow = getattr(obj, 'last_interaction_flow', None)
+        last_nivel = getattr(obj, 'last_interaction_nivel', None)
+        last_days = getattr(obj, 'last_interaction_days', 0)
+        last_logger = getattr(obj, 'last_interaction_logger', None)
 
-        if not last_interaction:
+        if not last_date:
             return mark_safe('<span style="color: #6c757d;">Sin datos</span>')
 
-        # Validar que date_time_medition no sea None
-        if not last_interaction.date_time_medition:
-            return mark_safe('<span style="color: #ffc107;">⚠️ Datos incompletos</span>')
-
         chile = pytz.timezone("America/Santiago")
-        date_time_medition_cl = last_interaction.date_time_medition.astimezone(chile)
-        date_time_logger = last_interaction.date_time_last_logger
+        date_time_medition_cl = last_date.astimezone(chile)
 
-        # Calcular flow dinámicamente
-        from api.core.models import Variable
-        from api.cronjobs.telemetry.controllers.flow import average_flow
+        flow_display = f"{last_flow:.2f}" if last_flow else "0.00"
 
-        has_avg_flow = Variable.objects.filter(
-            type_variable="CAUDAL_PROMEDIO",
-            scheme_catchment__points_catchment=obj,
-        ).exists()
-
-        flow_display = f"{last_interaction.flow:.2f}" if last_interaction.flow else "0.00"
-        if has_avg_flow and last_interaction.total_diff and last_interaction.total_diff > 0:
-            try:
-                point_catchment = {"id": obj.id}
-                total_actual = float(last_interaction.total) if last_interaction.total else 0
-                curr_ts = last_interaction.date_time_last_logger or last_interaction.date_time_medition
-
-                if curr_ts:
-                    calculated_flow = average_flow(
-                        point_catchment=point_catchment,
-                        total=total_actual,
-                        date_lg=curr_ts
-                    )
-                    if calculated_flow > 0:
-                        flow_display = f"{calculated_flow:.2f} (calc)"
-            except:
-                pass
-
-        # Formato mejorado
-        status_color = "#28a745" if last_interaction.days_not_conection == 0 else "#ffc107"
+        status_color = "#28a745" if last_days == 0 else "#ffc107"
         return mark_safe(f"""
             <div style="font-size: 11px; line-height: 1.6;">
                 <strong>📅 Medición:</strong> {date_time_medition_cl.strftime('%Y-%m-%d %H:%M')}<br>
-                <strong>📡 Logger:</strong> {date_time_logger.strftime('%Y-%m-%d %H:%M') if date_time_logger else 'N/A'}<br>
-                <strong>💧 Total:</strong> {last_interaction.total or '0'} m³<br>
+                <strong>📡 Logger:</strong> {last_logger.strftime('%Y-%m-%d %H:%M') if last_logger else 'N/A'}<br>
+                <strong>💧 Total:</strong> {last_total or '0'} m³<br>
                 <strong>🌊 Caudal:</strong> {flow_display} L/s<br>
-                <strong>📏 Nivel:</strong> {last_interaction.nivel or '0'} m<br>
-                <strong style="color: {status_color};">🔌 Desconexión:</strong> {last_interaction.days_not_conection} días
+                <strong>📏 Nivel:</strong> {last_nivel or '0'} m<br>
+                <strong style="color: {status_color};">🔌 Desconexión:</strong> {last_days} días
             </div>
         """)
 
-    last_interaction_detail.short_description = 'Última medición'
+    last_interaction_detail.short_description = 'Última Medición'
 
 
 # ========================================
@@ -1414,6 +1369,7 @@ class ProfileDataConfigCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin,
     """
     list_per_page = ADMIN_LIST_PER_PAGE
     list_display = ('id', 'point_catchment', 'is_telemetry', 'token_service', 'd3', 'nivel_offset', 'replicate_on_missing', 'date_start_telemetry')
+    list_select_related = ['point_catchment']
     list_filter = ('is_telemetry', 'replicate_on_missing', 'use_transaction_atomic', 'point_catchment__project__name',)
     search_fields = ('point_catchment__title', 'token_service')
     autocomplete_fields = ['point_catchment']
@@ -1457,6 +1413,7 @@ class ProfileIkoluCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admi
     """
     list_per_page = ADMIN_LIST_PER_PAGE
     list_display = ('id', 'point_catchment', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'entry_by_form')
+    list_select_related = ['point_catchment']
     list_filter = ('entry_by_form', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7')
     search_fields = ('point_catchment__title',)
     autocomplete_fields = ['point_catchment']
@@ -1495,6 +1452,7 @@ class DgaDataConfigCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
         'id', 'point_catchment', 'send_dga', 'send_sma', 'standard', 'code_dga',
         'flow_granted_dga', 'total_granted_dga', 'date_start_compliance'
     )
+    list_select_related = ['point_catchment']
     list_filter = ('standard', 'send_dga', 'point_catchment__project__name', 'type_dga')
     search_fields = ('point_catchment__title', 'code_dga', 'shac')
     autocomplete_fields = ['point_catchment']
@@ -1573,6 +1531,10 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
             'description': 'Selecciona los puntos de captación asociados a este esquema'
         }),
     )
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.prefetch_related('points_catchment', 'variables')
 
     def get_points_list(self, obj):
         """
@@ -1668,7 +1630,7 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
                 f'<br>'
                 f'<span style="color: #333; font-size: 0.85em;">'
                 f'<strong>Variable:</strong> {var.str_variable} | '
-                f'<strong>Tipo:</strong> {var.get_type_variable_display()}{service_str}'
+                f'<strong>Tipo:</strong> {var.type_variable}{service_str}'
                 f'{config_str}'
                 f'</span>'
                 f'</li>'
@@ -1753,17 +1715,17 @@ class SchemesCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mod
         # Agrupar por tipo de variable
         by_type = {}
         for var in variables:
-            type_display = var.get_type_variable_display()
+            type_display = var.type_variable
             if type_display not in by_type:
                 by_type[type_display] = []
             by_type[type_display].append(var)
 
-        # Colores para cada tipo
+        # Colores para cada tipo (usando valores raw del campo type_variable)
         type_colors = {
-            'Nivel': '#4CAF50',
-            'Caudal': '#2196F3',
-            'Caudal promedio((diff/3600)*1000)': '#FF9800',
-            'Totalizado': '#9C27B0',
+            'NIVEL': '#4CAF50',
+            'CAUDAL': '#2196F3',
+            'CAUDAL_PROMEDIO': '#FF9800',
+            'TOTALIZADO': '#9C27B0',
         }
 
         html = f'<div style="margin: 10px 0;"><h3>Resumen de Variables ({variables.count()} total)</h3>'
@@ -1894,6 +1856,7 @@ class VariableAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin)
     """
     list_per_page = ADMIN_LIST_PER_PAGE
     list_display = ('id', 'scheme_catchment', 'str_variable', 'label', 'type_variable', 'service', 'pulses_factor', 'store_average_flow', 'min_value', 'max_value', 'display_key')
+    list_select_related = ['scheme_catchment']
     list_filter = ('scheme_catchment__name', 'service', 'type_variable', 'store_average_flow')
     search_fields = ('str_variable', 'label', 'scheme_catchment__name')
     autocomplete_fields = ['scheme_catchment']
@@ -1937,10 +1900,15 @@ class NotificationsCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
     """
     list_per_page = ADMIN_LIST_PER_PAGE
     list_display = ('id', 'point_catchment', 'title', 'type_notification', 'is_read', 'created', 'get_responses_count')
+    list_select_related = ['point_catchment']
     list_filter = ('is_read', 'created', 'type_notification', 'point_catchment__project__name')
     search_fields = ('title', 'message', 'emails', 'point_catchment__title')
     date_hierarchy = 'created'
     actions = ['mark_as_read']
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.annotate(responses_count=Count('responses'))
 
     def mark_as_read(self, request, queryset):
         updated = queryset.update(is_read=True)
@@ -1948,9 +1916,9 @@ class NotificationsCatchmentAdmin(AdminIndicatorsMixin, ImportExportModelAdmin, 
     mark_as_read.short_description = "Marcar como leídas"
 
     def get_responses_count(self, obj):
-        count = obj.responses.count()
-        return mark_safe(f'<strong>{count}</strong> respuestas')
+        return mark_safe(f'<strong>{getattr(obj, "responses_count", 0)}</strong> respuestas')
     get_responses_count.short_description = 'Respuestas'
+    get_responses_count.admin_order_field = 'responses_count'
 
     def get_indicators(self, request, queryset):
         """
@@ -2031,6 +1999,7 @@ class ResponseNotificationsCatchmentAdmin(ImportExportModelAdmin, ExportActionMi
     """
     list_per_page = ADMIN_LIST_PER_PAGE
     list_display = ('id', 'notification', 'user', 'response', 'created')
+    list_select_related = ['notification', 'user']
     list_filter = ('created', 'notification__type_notification')
     search_fields = ('notification__title', 'user__username', 'response')
     autocomplete_fields = ['notification', 'user']
@@ -2065,6 +2034,7 @@ class FileCatchmentAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelA
     """
     list_per_page = ADMIN_LIST_PER_PAGE
     list_display = ('id', 'name', 'point_catchment', 'type_file', 'get_file_link', 'created')
+    list_select_related = ['point_catchment', 'type_file']
     list_filter = ('created', 'type_file__name', 'point_catchment__project__name')
     search_fields = ('name', 'point_catchment__title')
     autocomplete_fields = ['point_catchment', 'type_file']
@@ -2089,6 +2059,7 @@ class RegisterPersonsAdmin(ImportExportModelAdmin, ExportActionMixin, admin.Mode
     """
     list_per_page = ADMIN_LIST_PER_PAGE
     list_display = ('id', 'name', 'email', 'phone', 'profile', 'created')
+    list_select_related = ['profile']
     search_fields = ('name', 'email', 'phone')
     list_filter = ('created', 'profile__point_catchment__project__name')
     autocomplete_fields = ['profile']
@@ -2611,6 +2582,7 @@ class AlertRuleAdmin(admin.ModelAdmin):
         "variable_type", "threshold_value", "check_frequency_minutes",
         "cooldown_minutes", "is_active", "created",
     )
+    list_select_related = ['point_catchment']
     list_filter = ("severity", "target_type", "variable_type", "is_active", "check_frequency_minutes")
     search_fields = ("name", "point_catchment__title")
     autocomplete_fields = ["point_catchment"]
@@ -2641,6 +2613,7 @@ class AlertRuleAdmin(admin.ModelAdmin):
 @admin.register(AlertChannel)
 class AlertChannelAdmin(admin.ModelAdmin):
     list_display = ("id", "alert_rule", "channel_type", "destination", "is_active", "created")
+    list_select_related = ['alert_rule']
     list_filter = ("channel_type", "is_active")
     search_fields = ("destination", "alert_rule__name")
     autocomplete_fields = ["alert_rule"]
@@ -2652,16 +2625,132 @@ class AlertTriggerAdmin(admin.ModelAdmin):
         "id", "alert_rule", "point_catchment", "triggered_at", "value_at_trigger",
         "threshold_breached", "notification_sent", "is_acknowledged",
     )
+    list_select_related = ['alert_rule', 'point_catchment']
     list_filter = ("alert_rule", "notification_sent", "is_acknowledged", "triggered_at")
     search_fields = ("alert_rule__name", "point_catchment__title")
     readonly_fields = ("triggered_at", "notification_sent_at", "acknowledged_at", "ai_diagnosis")
-    autocomplete_fields = ["alert_rule", "interaction_detail", "point_catchment"]
+    autocomplete_fields = ["alert_rule", "point_catchment"]
 
 
 @admin.register(SystemEvent)
 class SystemEventAdmin(admin.ModelAdmin):
     list_display = ("id", "event_type", "point_catchment", "title", "severity", "created")
+    list_select_related = ['point_catchment']
     list_filter = ("event_type", "severity", "created")
     search_fields = ("title", "message", "point_catchment__title")
     readonly_fields = ("created", "modified")
     autocomplete_fields = ["point_catchment"]
+
+
+
+# ============================================================================
+# ADMIN: Tickets de Soporte + SLA
+# ============================================================================
+
+@admin.register(SLAConfig)
+class SLAConfigAdmin(admin.ModelAdmin):
+    list_display = (
+        "id", "client", "project", "category", "priority",
+        "response_time_hours", "resolution_time_hours", "business_hours_only", "is_active",
+    )
+    list_select_related = ['client', 'project']
+    list_filter = ("category", "priority", "business_hours_only", "is_active")
+    search_fields = ("client__name", "project__name")
+    autocomplete_fields = ["client", "project", "escalation_user"]
+
+
+class TicketCommentInline(admin.TabularInline):
+    model = TicketComment
+    extra = 0
+    fields = ("author", "content", "is_internal", "status_change", "created")
+    readonly_fields = ("created",)
+    autocomplete_fields = ["author"]
+
+
+class TicketAttachmentInline(admin.TabularInline):
+    model = TicketAttachment
+    extra = 0
+    fields = ("file", "original_name", "uploaded_by", "created")
+    readonly_fields = ("created",)
+
+
+class TicketActivityLogInline(admin.TabularInline):
+    model = TicketActivityLog
+    extra = 0
+    fields = ("user", "field_name", "old_value", "new_value", "created")
+    readonly_fields = ("created",)
+
+
+@admin.register(SupportTicket)
+class SupportTicketAdmin(admin.ModelAdmin):
+    list_display = (
+        "id", "title", "point_catchment", "status", "priority", "category",
+        "origin", "source", "assigned_to", "created_by", "created",
+    )
+    list_select_related = ['point_catchment', 'assigned_to', 'created_by']
+    list_filter = (
+        "status", "priority", "category", "origin", "source",
+        "is_active", "created",
+    )
+    search_fields = ("title", "description", "point_catchment__title")
+    autocomplete_fields = ["point_catchment", "created_by", "assigned_to", "sla_config", "alert_trigger", "system_event"]
+    readonly_fields = (
+        "created", "modified",
+        "sla_deadline_response", "sla_deadline_resolution",
+        "sla_responded_at", "sla_resolved_at",
+        "resolved_at", "closed_at",
+    )
+    inlines = [TicketCommentInline, TicketAttachmentInline, TicketActivityLogInline]
+    fieldsets = (
+        ("General", {
+            "fields": ("point_catchment", "title", "description", "is_active"),
+        }),
+        ("Clasificación", {
+            "fields": ("status", "priority", "category", "origin", "source"),
+        }),
+        ("Asignación", {
+            "fields": ("created_by", "assigned_to"),
+        }),
+        ("Vinculación", {
+            "fields": ("alert_trigger", "system_event"),
+            "classes": ("collapse",),
+        }),
+        ("SLA", {
+            "fields": (
+                "sla_config", "sla_deadline_response", "sla_deadline_resolution",
+                "sla_responded_at", "sla_resolved_at",
+            ),
+            "classes": ("collapse",),
+        }),
+        ("Tiempos", {
+            "fields": ("resolved_at", "closed_at", "created", "modified"),
+            "classes": ("collapse",),
+        }),
+    )
+
+
+@admin.register(TicketComment)
+class TicketCommentAdmin(admin.ModelAdmin):
+    list_display = ("id", "ticket", "author", "is_internal", "status_change", "created")
+    list_select_related = ['ticket', 'author']
+    list_filter = ("is_internal", "status_change", "created")
+    search_fields = ("content", "ticket__title")
+    autocomplete_fields = ["ticket", "author"]
+
+
+@admin.register(TicketAttachment)
+class TicketAttachmentAdmin(admin.ModelAdmin):
+    list_display = ("id", "ticket", "comment", "original_name", "uploaded_by", "created")
+    list_select_related = ['ticket', 'comment', 'uploaded_by']
+    list_filter = ("created",)
+    search_fields = ("original_name", "ticket__title")
+    autocomplete_fields = ["ticket", "comment", "uploaded_by"]
+
+
+@admin.register(TicketActivityLog)
+class TicketActivityLogAdmin(admin.ModelAdmin):
+    list_display = ("id", "ticket", "user", "field_name", "old_value", "new_value", "created")
+    list_select_related = ['ticket', 'user']
+    list_filter = ("field_name", "created")
+    search_fields = ("ticket__title", "field_name")
+    autocomplete_fields = ["ticket", "user"]

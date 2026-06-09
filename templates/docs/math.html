@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartMath: El Motor Numérico</title>
+    <style>
+        :root {
+            --sh-blue: #6ab0f0;
+            --sh-blue-dark: #4a9de0;
+            --sh-blue-light: rgba(106,176,240,0.12);
+            --sh-green: #5dd9c0;
+            --sh-green-dark: #3ec0a0;
+            --sh-green-light: rgba(93,217,192,0.12);
+            --sh-yellow: #e8c252;
+            --sh-red: #ff9a82;
+            --sh-red-dark: #e0705a;
+            --sh-navy: #0f1a33;
+            --sh-navy-light: #1a2d52;
+            --sh-bg: #0b1120;
+            --sh-card: #151e2e;
+            --sh-text: #e2e8f0;
+            --sh-text-muted: #8899aa;
+            --sh-border: #2a3544;
+            --radius: 16px;
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.25), 0 2px 4px -2px rgba(0,0,0,0.2);
+            --shadow-md: 0 10px 15px -3px rgba(0,0,0,0.3), 0 4px 6px -4px rgba(0,0,0,0.25);
+            --shadow-lg: 0 20px 25px -5px rgba(0,0,0,0.35), 0 8px 10px -6px rgba(0,0,0,0.3);
+            --max-width: 1100px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Georgia', 'Times New Roman', 'Liberation Serif', 'Cambria', 'PT Serif', serif;
+            background: var(--sh-bg);
+            color: var(--sh-text);
+            line-height: 1.85;
+            font-size: 16.5px;
+        }
+        h1, h2, h3, h4 {
+            font-family: 'Georgia', 'Times New Roman', 'Liberation Serif', 'Cambria', serif;
+            letter-spacing: -0.02em;
+        }
+        a { color: var(--sh-blue-dark); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        .header {
+            background: linear-gradient(90deg, var(--sh-navy) 0%, var(--sh-blue-dark) 100%);
+            color: #e2e8f0;
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow-lg);
+        }
+        .header-inner {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .logo { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px; }
+        .logo span { font-weight: 300; opacity: 0.85; margin-left: 0.5rem; }
+        .nav a {
+            color: rgba(255,255,255,0.9);
+            margin-left: 1.5rem;
+            font-size: 0.88rem;
+            font-weight: 500;
+        }
+        .nav a:hover { color: #e2e8f0; text-decoration: none; }
+
+        .hero {
+            background: var(--sh-navy);
+            color: #e2e8f0;
+            padding: 5rem 2rem 4rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero h1 {
+            font-size: 3rem;
+            font-weight: 900;
+            margin-bottom: 0.75rem;
+            letter-spacing: -1.5px;
+            position: relative;
+            text-shadow: 0 2px 20px rgba(106,176,240,0.25);
+        }
+        .hero p { font-size: 1.15rem; opacity: 0.92; max-width: 700px; margin: 0 auto; font-weight: 300; position: relative; }
+        .hero-badges {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 1.5rem;
+            position: relative;
+        }
+        .badge {
+            background: rgba(255,255,255,0.15);
+            padding: 0.4rem 1rem;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+
+        .container {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 2.5rem 2rem;
+        }
+        .section { margin-bottom: 4rem; }
+        .section-header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+        .section-num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--sh-blue), var(--sh-green));
+            color: #e2e8f0;
+            border-radius: 50%;
+            font-weight: 800;
+            font-size: 1.2rem;
+            margin-bottom: 0.75rem;
+            box-shadow: 0 4px 16px rgba(86,156,214,0.4), 0 0 0 4px rgba(86,156,214,0.1);
+        }
+        .section-title {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #e2e8f0 0%, #6ab0f0 50%, #5dd9c0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+            line-height: 1.2;
+        }
+        .section-subtitle {
+            color: var(--sh-text-muted);
+            font-size: 1.05rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .math-card {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .math-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        .math-card h3 {
+            font-size: 1.25rem;
+            color: var(--sh-text);
+            margin-bottom: 1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding-bottom: 0.6rem;
+            border-bottom: 1px solid rgba(106,176,240,0.15);
+        }
+        .math-card p, .math-card li {
+            font-size: 0.95rem;
+            color: var(--sh-text);
+            margin-bottom: 0.6rem;
+        }
+        .math-card ul { padding-left: 1.2rem; }
+        .math-card ul li { margin-bottom: 0.35rem; }
+
+        .highlight-box {
+            background: linear-gradient(135deg, var(--sh-blue-light), var(--sh-green-light));
+            border-radius: var(--radius);
+            padding: 1.75rem;
+            margin: 1.5rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .highlight-box::before {
+            content: "";
+            position: absolute;
+            top: 0; right: 0;
+            width: 120px; height: 120px;
+            background: radial-gradient(circle, rgba(86,156,214,0.08) 0%, transparent 70%);
+        }
+        .highlight-box h4 {
+            color: var(--sh-text);
+            font-size: 1.05rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+        .highlight-box p {
+            font-size: 0.92rem;
+            color: var(--sh-text);
+        }
+
+        .eq-block {
+            background: #0a0f1a;
+            color: #e2e8f0;
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            overflow-x: auto;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.9rem;
+            line-height: 1.9;
+            margin: 1.25rem 0;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .eq-block .var { color: #569cd6; }
+        .eq-block .num { color: #b5cea8; }
+        .eq-block .op { color: #dcdcaa; }
+        .eq-block .comment { color: #6a9955; }
+
+        .citation {
+            background: linear-gradient(90deg, rgba(78,201,176,0.08), rgba(86,156,214,0.05));
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            margin: 1rem 0;
+            font-size: 0.87rem;
+            color: var(--sh-text-muted);
+            border: 1px solid rgba(78,201,176,0.12);
+        }
+        .citation strong { color: var(--sh-text); }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .diagram {
+            background: #1a2332;
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            margin: 1.25rem 0;
+            overflow-x: auto;
+            font-family: "SFMono-Regular", Consolas, monospace;
+            font-size: 0.82rem;
+            line-height: 1.6;
+            color: #94a3b8;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
+            white-space: pre;
+            min-width: fit-content;
+        }
+        .diagram .label { color: var(--sh-blue-dark); font-weight: 700; }
+        .diagram .value { color: var(--sh-green-dark); font-weight: 700; }
+        .diagram .axis { color: var(--sh-text-muted); }
+        .diagram .highlight { color: var(--sh-red-dark); font-weight: 700; }
+
+        .vis-matrix {
+            display: inline-grid;
+            grid-template-columns: repeat(3, 42px);
+            gap: 4px;
+            margin: 0.5rem 0;
+        }
+        .vis-cell {
+            width: 42px; height: 42px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #e2e8f0;
+        }
+
+        .mini-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 3px;
+            height: 60px;
+            padding: 0.5rem 0;
+        }
+        .mini-bar {
+            width: 8px;
+            border-radius: 3px 3px 0 0;
+            background: linear-gradient(to top, var(--sh-blue), var(--sh-green));
+            opacity: 0.85;
+        }
+        .mini-bar.anomaly {
+            background: linear-gradient(to top, var(--sh-red), var(--sh-yellow));
+        }
+
+        .tensor-vis {
+            display: grid;
+            grid-template-columns: repeat(4, 36px);
+            gap: 6px;
+            margin: 0.5rem 0;
+        }
+        .tensor-layer {
+            display: grid;
+            grid-template-columns: repeat(2, 36px);
+            gap: 4px;
+            padding: 6px;
+            border-radius: 8px;
+            background: rgba(86,156,214,0.1);
+            border: 1px solid rgba(86,156,214,0.15);
+        }
+        .tensor-cell {
+            width: 36px; height: 36px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: #e2e8f0;
+        }
+
+        .attn-flow {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin: 1rem 0;
+            padding: 1rem;
+            background: rgba(86,156,214,0.04);
+            border-radius: 12px;
+        }
+        .attn-box {
+            background: #151e2e;
+            border: 2px solid var(--sh-blue);
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--sh-text);
+            box-shadow: 0 2px 6px rgba(86,156,214,0.12);
+        }
+        .attn-arrow {
+            font-size: 1.3rem;
+            color: var(--sh-green);
+        }
+
+        /* Variable legend for equations */
+        .var-legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.75rem;
+            margin: 1rem 0;
+            padding: 1rem;
+            background: rgba(106,176,240,0.06);
+            border-radius: 10px;
+            border: 1px solid rgba(106,176,240,0.1);
+        }
+        .var-item {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+        }
+        .var-symbol {
+            font-family: "SFMono-Regular", Consolas, monospace;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--sh-blue);
+            min-width: 60px;
+        }
+        .var-meaning {
+            font-size: 0.85rem;
+            color: var(--sh-text-muted);
+        }
+
+        .footer {
+            background: linear-gradient(90deg, var(--sh-navy), var(--sh-blue-dark));
+            color: rgba(255,255,255,0.75);
+            padding: 2.5rem 2rem;
+            text-align: center;
+            font-size: 0.88rem;
+            margin-top: 3rem;
+        }
+        .footer a { color: rgba(255,255,255,0.9); font-weight: 500; }
+        .footer a:hover { color: #e2e8f0; }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2rem; }
+            .header-inner { flex-direction: column; gap: 0.75rem; }
+            .nav a { margin: 0 0.4rem; font-size: 0.8rem; }
+            .container { padding: 1.5rem; }
+            .math-card { padding: 1.25rem; }
+            .diagram { font-size: 0.7rem; }
+        }
+        section[id] { scroll-margin-top: 80px; }
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <div class="header-inner">
+        <div class="logo">SmartMath <span>El Motor Numérico</span></div>
+        <nav class="nav">
+            <a href="#vectores">Vectores</a>
+            <a href="#matrices">Matrices</a>
+            <a href="#tensores">Tensores</a>
+            <a href="#atencion">Atención</a>
+            <a href="#anomalias">Anomalías</a>
+            <a href="#biblio">Bibliografía</a>
+            <a href="/docs/" style="background:rgba(255,255,255,0.15);padding:0.3rem 0.8rem;border-radius:50px;">📘 API</a>
+        </nav>
+    </div>
+</header>
+
+<section class="hero">
+    <h1>SmartMath: Fundamentos Matemáticos del Motor</h1>
+    <p>Lenguaje matemático del motor: vectores, matrices, tensores, atención y detección de anomalías.</p>
+    <div class="hero-badges">
+        <span class="badge">Álgebra Lineal</span>
+        <span class="badge">Tensores</span>
+        <span class="badge">Transformers</span>
+        <span class="badge">Anomalías</span>
+    </div>
+</section>
+
+<div class="container">
+
+    <section class="section" id="intro">
+        <div class="section-header">
+            <div class="section-num">1</div>
+            <h2 class="section-title">El Lenguaje de las Máquinas</h2>
+            <p class="section-subtitle">El álgebra lineal como lenguaje base del procesamiento de datos hidrológicos.</p>
+        </div>
+
+        <div class="math-card">
+            <h3>📐 De los números a los espacios</h3>
+            <p>Un dato de telemetría hidrológica no es un número aislado. Cuando un sensor envía caudal, nivel y total cada 5 minutos, está describiendo el <strong>estado</strong> de un sistema hídrico en un instante particular. Ese estado vive en un espacio matemático concreto.</p>
+            <p>Cualquier dato cuantitativo puede representarse como un elemento de un <strong>espacio vectorial</strong>. En este motor, cada punto de captación genera una serie temporal de caudal, nivel y volumen acumulado. Estas tres magnitudes, medidas en instantes discretos de tiempo, conforman objetos matemáticos que viven en espacios de dimensión finita.</p>
+            <p>Según <strong>Strang</strong>, el álgebra lineal es el estudio de espacios vectoriales y las transformaciones lineales entre ellos. En hidrología computacional, cada eje representa una variable física medible, y cada vector representa el estado de un sistema hídrico en un instante dado. Esta no es teoría abstracta: es la base sobre la que construimos todo, desde la detección de anomalías hasta el chatbot.</p>
+            <div class="citation">
+                <strong>Strang, G. (2016).</strong> <em>Introduction to Linear Algebra</em> (5th ed.). Wellesley-Cambridge Press. ISBN 978-0980232776.
+            </div>
+        </div>
+
+        <div class="highlight-box">
+            <h4>Definición: Espacio Vectorial Real</h4>
+            <p>Un espacio vectorial <em>V</em> sobre el campo <strong>R</strong> es un conjunto con dos operaciones — adición y multiplicación escalar — que satisfacen ocho axiomas de cerradura, asociatividad, conmutatividad, elemento neutro, inverso aditivo, y distributividad. Todo dato hidrológico multivariable pertenece intrínsecamente a algún <em>V = R<sup>n</sup></em>.</p>
+        </div>
+    </section>
+
+    <section class="section" id="vectores">
+        <div class="section-header">
+            <div class="section-num">2</div>
+            <h2 class="section-title">Vectores: Series Temporales como Trayectorias</h2>
+            <p class="section-subtitle">Comparar dos días de operación con 288 mediciones cada uno requiere una representación vectorial.</p>
+        </div>
+
+        <div class="math-card">
+            <h3>🌊 El caudal como vector</h3>
+            <p>Una gráfica de caudal vs tiempo funciona para visualizar un día, pero comparar dos días distintos requiere una estructura matemática diferente. La representación vectorial permite operaciones como distancia, correlación y proyección que no son posibles en una visualización bidimensional.</p>
+            <p>Supongamos un punto de captación que reporta caudal cada 5 minutos. En una hora tenemos 12 mediciones. Si concatenamos las mediciones de un día completo (288 muestras), obtenemos un vector:</p>
+            <div class="eq-block">
+<span class="var">x</span> = [x<sub>1</sub>, x<sub>2</sub>, ..., x<sub>288</sub>]<sup>T</sup> <span class="op">∈</span> <span class="var">R</span><sup>288</sup>
+            </div>
+            <div class="var-legend">
+                <div class="var-item">
+                    <span class="var-symbol">x</span>
+                    <span class="var-meaning">Vector de mediciones de una variable en un día completo. Dimensión 288 (una muestra cada 5 minutos). Tipo: real.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">x<sub>i</sub></span>
+                    <span class="var-meaning">i-ésima medición del vector. Tipo: real. Ej: caudal en el i-ésimo intervalo de 5 minutos.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">R<sup>288</sup></span>
+                    <span class="var-meaning">Espacio vectorial de 288 dimensiones sobre los números reales.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">R</span>
+                    <span class="var-meaning">Conjunto de números reales. R<sup>n</sup> denota un espacio vectorial de n dimensiones sobre R.</span>
+                </div>
+            </div>
+            <p>Cada componente <em>x<sub>i</sub></em> es un número real (litros por segundo). El espacio <strong>R<sup>288</sup></strong> es enorme, pero la física del problema impone restricciones: los caudales no pueden ser negativos, y la variación entre muestras consecutivas está acotada por la inercia hidráulica del sistema. Esto significa que los vectores de caudal <strong>no llenan todo el espacio</strong>; viven en una <em>variedad</em> (manifold) de dimensión mucho menor.</p>
+
+            <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; margin:1.5rem 0;">
+                <div>
+                    <p style="font-size:0.85rem; color:var(--sh-text-muted); margin-bottom:0.5rem;">Caudal horario visualizado</p>
+                    <div class="mini-chart">
+                        <div class="mini-bar" style="height:20%"></div>
+                        <div class="mini-bar" style="height:35%"></div>
+                        <div class="mini-bar" style="height:50%"></div>
+                        <div class="mini-bar" style="height:65%"></div>
+                        <div class="mini-bar" style="height:80%"></div>
+                        <div class="mini-bar" style="height:90%"></div>
+                        <div class="mini-bar" style="height:85%"></div>
+                        <div class="mini-bar" style="height:70%"></div>
+                        <div class="mini-bar" style="height:55%"></div>
+                        <div class="mini-bar" style="height:40%"></div>
+                        <div class="mini-bar" style="height:30%"></div>
+                        <div class="mini-bar" style="height:25%"></div>
+                    </div>
+                    <p style="font-size:0.75rem; color:var(--sh-text-muted);">12 muestras = 1 hora = vector en R<sup>12</sup></p>
+                </div>
+                <div class="diagram">
+<span class="label">Vector de 24h (288 dim):</span>
+x = [10.2, 10.5, 10.8, 11.0, 11.2, 11.5,
+     12.1, 12.8, 13.5, 14.2, 14.8, 15.0,  ← pico de riego
+     14.5, 13.8, 12.5, 11.2, 10.5, 10.1,
+     10.0,  9.8,  9.8,  9.9, 10.0, 10.1]
+                </div>
+            </div>
+            <div class="citation">
+                <strong>Deisenroth, M. P., Faisal, A. A., & Ong, C. S. (2020).</strong> <em>Mathematics for Machine Learning</em>. Cambridge University Press. Cap. 2. ISBN 978-1108455145.
+            </div>
+        </div>
+
+        <div class="math-card">
+            <h3>📏 Distancia y similitud entre patrones</h3>
+            <p>Para comparar dos días de operación necesitamos una <strong>métrica</strong> en el espacio vectorial. La más natural es la distancia euclidiana:</p>
+            <div class="eq-block">
+<span class="var">d</span>(<span class="var">x</span>, <span class="var">y</span>) = ||<span class="var">x</span> - <span class="var">y</span>||<sub>2</sub> = <span class="op">√</span>(<span class="var">Σ</span><sub>i=1</sub><sup>n</sup> (<span class="var">x</span><sub>i</sub> - <span class="var">y</span><sub>i</sub>)<sup>2</sup>)
+            </div>
+            <div class="var-legend">
+                <div class="var-item">
+                    <span class="var-symbol">d(x, y)</span>
+                    <span class="var-meaning">Distancia euclidiana entre dos vectores x e y. Mide qué tan "diferentes" son dos días de operación.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">||·||<sub>2</sub></span>
+                    <span class="var-meaning">Norma euclidiana (o norma L2). Raíz cuadrada de la suma de cuadrados de las componentes.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">Σ</span>
+                    <span class="var-meaning">Sumatoria. Σ<sub>i=1</sub><sup>n</sup> indica sumar desde i=1 hasta i=n.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">n</span>
+                    <span class="var-meaning">Dimensión del vector. Número de componentes. Ej: n=288 para un día de muestras cada 5 minutos.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">y</span>
+                    <span class="var-meaning">Segundo vector de mediciones (ej: otro día de caudal para comparar con x). Misma dimensión que x.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">y<sub>i</sub></span>
+                    <span class="var-meaning">i-ésima componente del vector y. Tipo: real.</span>
+                </div>
+            </div>
+            <p>Sin embargo, la distancia euclidiana ignora la <strong>correlación temporal</strong>: dos días con el mismo patrón pero desplazados una hora aparecerían como muy diferentes. Desde el punto de vista algebraico, la correlación no es más que el <strong>coseno del ángulo entre vectores centrados</strong>:</p>
+            <div class="eq-block">
+<span class="var">corr</span>(<span class="var">x</span>, <span class="var">y</span>) = cos(<span class="var">θ</span>) = (<span class="var">x</span><sup>T</sup><span class="var">y</span>) / (||<span class="var">x</span>|| · ||<span class="var">y</span>||)
+            </div>
+            <div class="var-legend">
+                <div class="var-item">
+                    <span class="var-symbol">corr(x, y)</span>
+                    <span class="var-meaning">Correlación entre dos vectores. Equivalente al coseno del ángulo entre vectores centrados. Rango: [-1, 1].</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">θ</span>
+                    <span class="var-meaning">Ángulo entre los vectores x e y en el espacio R<sup>n</sup>. θ=0 → vectores paralelos (máxima correlación).</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">||x||</span>
+                    <span class="var-meaning">Norma euclidiana (longitud) del vector x. ||x|| = √(x₁² + x₂² + ... + xₙ²).</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">x<sup>T</sup>y</span>
+                    <span class="var-meaning">Producto punto (o producto interno) entre x e y. Suma de productos componente a componente: Σ xᵢyᵢ.</span>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; margin:1.5rem 0;">
+                <div class="diagram" style="flex:1; min-width:280px;">
+<span class="label">Dos vectores en R²:</span>
+
+      y
+      ↑
+      |    ★ y (día anómalo)
+      |   /|
+      |  / |  d(x,y) = ||x-y||
+      | /  |
+      |/   |
+      ●────┼────→ x
+     x     |
+           |
+
+<span class="axis">θ = ángulo entre vectores</span>
+<span class="value">cos(θ) alto = patrones similares</span>
+                </div>
+                <div style="flex:1; min-width:280px;">
+                    <p style="font-size:0.9rem; margin-bottom:0.75rem;"><strong>Comparación de dos días:</strong></p>
+                    <div style="display:flex; gap:1rem;">
+                        <div style="flex:1;">
+                            <p style="font-size:0.8rem; color:var(--sh-text-muted);">Día normal</p>
+                            <div class="mini-chart">
+                                <div class="mini-bar" style="height:30%"></div>
+                                <div class="mini-bar" style="height:50%"></div>
+                                <div class="mini-bar" style="height:70%"></div>
+                                <div class="mini-bar" style="height:90%"></div>
+                                <div class="mini-bar" style="height:80%"></div>
+                                <div class="mini-bar" style="height:60%"></div>
+                                <div class="mini-bar" style="height:40%"></div>
+                                <div class="mini-bar" style="height:35%"></div>
+                            </div>
+                        </div>
+                        <div style="flex:1;">
+                            <p style="font-size:0.8rem; color:var(--sh-text-muted);">Día anómalo</p>
+                            <div class="mini-chart">
+                                <div class="mini-bar" style="height:30%"></div>
+                                <div class="mini-bar" style="height:50%"></div>
+                                <div class="mini-bar" style="height:70%"></div>
+                                <div class="mini-bar anomaly" style="height:45%"></div>
+                                <div class="mini-bar anomaly" style="height:40%"></div>
+                                <div class="mini-bar" style="height:60%"></div>
+                                <div class="mini-bar" style="height:40%"></div>
+                                <div class="mini-bar" style="height:35%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <p style="font-size:0.8rem; color:var(--sh-text-muted); margin-top:0.5rem;">El pico que falta (rojo) produce un ángulo θ mayor → correlación menor → alerta.</p>
+                </div>
+            </div>
+            <div class="citation">
+                <strong>Hastie, T., Tibshirani, R., & Friedman, J. (2009).</strong> <em>The Elements of Statistical Learning</em> (2nd ed.). Springer. Cap. 14. ISBN 978-0387848570.
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="matrices">
+        <div class="section-header">
+            <div class="section-num">3</div>
+            <h2 class="section-title">Matrices: Sistemas Multivariables</h2>
+            <p class="section-subtitle">Tres variables correlacionadas (caudal, nivel, total) que no pueden analizarse por separado.</p>
+        </div>
+
+        <div class="math-card">
+            <h3>🔄 De vector a matriz</h3>
+            <p>La telemetría completa reporta tres variables simultáneas que evolucionan juntas. El caudal sube cuando baja el nivel. El total acumulado crece en proporción. No pueden analizarse por separado. Esa correlación forzada es lo que hace que los datos hidrológicos vivan en una estructura matricial.</p>
+            <p>Un pozo con telemetría completa reporta tres variables cada 5 minutos. Si organizamos un día de datos como filas (tiempo) y columnas (variables), obtenemos una <strong>matriz X ∈ R<sup>288×3</sup></strong>:</p>
+            <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; margin:1.5rem 0;">
+                <div class="eq-block" style="flex:1; min-width:300px;">
+<span class="var">X</span> = <span class="op">[</span>
+  [<span class="var">q</span><sub>1</sub>, <span class="var">n</span><sub>1</sub>, <span class="var">t</span><sub>1</sub>],
+  [<span class="var">q</span><sub>2</sub>, <span class="var">n</span><sub>2</sub>, <span class="var">t</span><sub>2</sub>],
+  ...,
+  [<span class="var">q</span><sub>288</sub>, <span class="var">n</span><sub>288</sub>, <span class="var">t</span><sub>288</sub>]
+<span class="op">]</span>
+
+<span class="comment">-- q = caudal (L/s), n = nivel (m), t = total (m³)</span>
+                </div>
+                <div class="var-legend" style="flex:1; min-width:280px;">
+                    <div class="var-item">
+                        <span class="var-symbol">X</span>
+                        <span class="var-meaning">Matriz de datos. Filas = instantes de tiempo, columnas = variables (caudal, nivel, total).</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">q<sub>i</sub></span>
+                        <span class="var-meaning">Caudal en el i-ésimo instante. Unidad: litros por segundo (L/s). Tipo: real.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">n<sub>i</sub></span>
+                        <span class="var-meaning">Nivel en el i-ésimo instante. Unidad: metros (m). Tipo: real.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">t<sub>i</sub></span>
+                        <span class="var-meaning">Total acumulado en el i-ésimo instante. Unidad: metros cúbicos (m³). Tipo: real.</span>
+                    </div>
+                </div>
+                <div style="flex:1; min-width:280px;">
+                    <p style="font-size:0.85rem; color:var(--sh-text-muted); margin-bottom:0.5rem;">Visualización de X (primeras 6 filas):</p>
+                    <div style="display:flex; gap:4px;">
+                        <div class="vis-matrix" style="grid-template-columns: repeat(3, 48px);">
+                            <div class="vis-cell" style="background:var(--sh-blue)">q₁</div>
+                            <div class="vis-cell" style="background:var(--sh-green)">n₁</div>
+                            <div class="vis-cell" style="background:var(--sh-navy)">t₁</div>
+                            <div class="vis-cell" style="background:var(--sh-blue)">q₂</div>
+                            <div class="vis-cell" style="background:var(--sh-green)">n₂</div>
+                            <div class="vis-cell" style="background:var(--sh-navy)">t₂</div>
+                            <div class="vis-cell" style="background:var(--sh-blue)">q₃</div>
+                            <div class="vis-cell" style="background:var(--sh-green)">n₃</div>
+                            <div class="vis-cell" style="background:var(--sh-navy)">t₃</div>
+                            <div class="vis-cell" style="background:var(--sh-blue); opacity:0.5">...</div>
+                            <div class="vis-cell" style="background:var(--sh-green); opacity:0.5">...</div>
+                            <div class="vis-cell" style="background:var(--sh-navy); opacity:0.5">...</div>
+                        </div>
+                    </div>
+                    <p style="font-size:0.75rem; color:var(--sh-text-muted); margin-top:0.5rem;">Azul=caudal | Verde=nivel | Navy=total</p>
+                </div>
+            </div>
+            <p>Cada fila es una instantánea del sistema; cada columna es una variable física. Las operaciones matriciales permiten extraer patrones que no son visibles en una sola variable.</p>
+        </div>
+
+        <div class="math-card">
+            <h3>🔎 SVD: Descomposición en Valores Singulares</h3>
+            <p>La SVD descompone cualquier matriz de datos <strong>X</strong> en tres matrices que revelan la estructura interna del sistema hidrológico:</p>
+            <div class="eq-block">
+<span class="var">X</span> = <span class="var">U</span> <span class="var">Σ</span> <span class="var">V</span><sup>T</sup>
+            </div>
+            <div class="var-legend">
+                <div class="var-item">
+                    <span class="var-symbol">X</span>
+                    <span class="var-meaning">Matriz de datos original. Filas = tiempo, columnas = variables (caudal, nivel, total).</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">U</span>
+                    <span class="var-meaning">Modos temporales. Cada columna es un patrón de comportamiento en el tiempo (ej: ciclo diario).</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">Σ</span>
+                    <span class="var-meaning">Valores singulares σ₁, σ₂, σ₃. Indican qué tan "importante" es cada modo. σ₁ ≥ σ₂ ≥ σ₃ ≥ 0.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">Vᵀ</span>
+                    <span class="var-meaning">Combinaciones de variables. Indica cómo se mezclan caudal, nivel y total en cada modo.</span>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; margin:1.5rem 0;">
+                <div class="diagram" style="flex:1; min-width:300px;">
+<span class="label">SVD como descomposición:</span>
+
+    ┌─────────┐     ┌─────────┐     ┌─────────┐
+    │         │     │ σ₁ 0  0 │     │         │
+    │    U    │  ×  │ 0  σ₂ 0 │  ×  │   Vᵀ    │
+    │         │     │ 0  0  σ₃│     │         │
+    └─────────┘     └─────────┘     └─────────┘
+       ↑                ↑                ↑
+    modos            importancia      combinaciones
+    temporales       de cada modo     de variables
+
+<span class="value">σ₁ >> σ₂ ≈ σ₃ → 1 modo domina</span>
+<span class="value">σ₁ ≈ σ₂ ≈ σ₃ → 3 modos independientes</span>
+                </div>
+                <div style="flex:1; min-width:280px;">
+                    <p style="font-size:0.9rem; margin-bottom:0.75rem;"><strong>Valores singulares de un pozo real:</strong></p>
+                    <div style="display:flex; align-items:flex-end; gap:8px; height:100px; padding:0.5rem; background:#0f1724; border-radius:10px;">
+                        <div style="width:40px; background:linear-gradient(to top, var(--sh-blue), var(--sh-blue-dark)); border-radius:6px 6px 0 0; height:90%; display:flex; align-items:flex-end; justify-content:center; color:white; font-size:0.7rem; font-weight:700; padding-bottom:4px;">σ₁</div>
+                        <div style="width:40px; background:linear-gradient(to top, var(--sh-green), var(--sh-green-dark)); border-radius:6px 6px 0 0; height:25%; display:flex; align-items:flex-end; justify-content:center; color:white; font-size:0.7rem; font-weight:700; padding-bottom:4px;">σ₂</div>
+                        <div style="width:40px; background:linear-gradient(to top, var(--sh-navy), var(--sh-navy-light)); border-radius:6px 6px 0 0; height:15%; display:flex; align-items:flex-end; justify-content:center; color:white; font-size:0.7rem; font-weight:700; padding-bottom:4px;">σ₃</div>
+                    </div>
+                    <p style="font-size:0.8rem; color:var(--sh-text-muted); margin-top:0.5rem;">σ₁ domina: caudal, nivel y total están acoplados. Un solo modo explica el 85% de la varianza.</p>
+                </div>
+            </div>
+            <p>En hidrología, la SVD revela <strong>modos dominantes de comportamiento</strong>. El primer valor singular σ₁ captura la tendencia principal (ej: ciclo diario de riego). Si σ₂/σ₁ ≈ 0, el sistema es esencialmente unidimensional. La SVD también permite <strong>compresión y denoising</strong>: reconstruir X usando solo los k valores singulares más grandes filtra ruido de medición.</p>
+            <div class="citation">
+                <strong>Golub, G. H., & Van Loan, C. F. (2013).</strong> <em>Matrix Computations</em> (4th ed.). Johns Hopkins University Press. ISBN 978-1421407944.
+            </div>
+        </div>
+
+        <div class="math-card">
+            <h3>📉 PCA: Proyección en subespacios principales</h3>
+            <p>PCA encuentra las direcciones donde los datos varían más. Es la SVD aplicada a la matriz centrada. Proyecta los datos a un espacio más pequeño conservando la información esencial:</p>
+            <div class="eq-block">
+<span class="var">Z</span> = <span class="var">X</span><sub>c</sub> <span class="var">W</span>
+            </div>
+            <div class="var-legend">
+                <div class="var-item">
+                    <span class="var-symbol">X_c</span>
+                    <span class="var-meaning">Matriz centrada: cada variable tiene media cero. Elimina sesgos de escala.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">W</span>
+                    <span class="var-meaning">Matriz de componentes principales. Cada columna es una dirección de máxima varianza.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">Z</span>
+                    <span class="var-meaning">Datos proyectados. Z tiene menos columnas que X pero conserva el 95% de la información.</span>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; margin:1.5rem 0;">
+                <div class="diagram" style="flex:1; min-width:280px;">
+<span class="label">PCA como proyección:</span>
+
+       n (nivel)
+       ↑
+       │    ·  ·    ·
+       │  ·    · ·    ·
+       │ ·  ·    ·  ·   ·
+       │·    ·  ·    ·    ·  ← nube de datos
+       │  ·  ·    · ·    ·     (caudal vs nivel)
+       │ ·    ·  ·   ·  ·
+       └──────────────────→ q (caudal)
+              ↑
+         PC₁: dirección de
+         máxima varianza
+
+<span class="value">Proyección en PC₁ = información esencial</span>
+<span class="highlight">Residual perpendicular a PC₁ = anomalía potencial</span>
+                </div>
+                <div style="flex:1; min-width:280px;">
+                    <p style="font-size:0.9rem; margin-bottom:0.75rem;"><strong>Ejemplo concreto:</strong></p>
+                    <p style="font-size:0.88rem; color:var(--sh-text); margin-bottom:0.5rem;">Un pozo tiene 3 variables pero PCA muestra que el 95% de la varianza se explica por <strong>un solo componente</strong>: la extracción programada.</p>
+                    <div style="background:var(--sh-green-light); border-radius:10px; padding:1rem; margin-top:0.5rem;">
+                        <p style="font-size:0.85rem; color:var(--sh-text); font-weight:600; margin-bottom:0.3rem;">✓ Estado normal</p>
+                        <p style="font-size:0.8rem; color:var(--sh-text-muted);">Todas las variables se mueven juntas según PC₁. Residual pequeño.</p>
+                    </div>
+                    <div style="background:linear-gradient(135deg, #fee2e2, #fecaca); border-radius:10px; padding:1rem; margin-top:0.5rem;">
+                        <p style="font-size:0.85rem; color:var(--sh-red-dark); font-weight:600; margin-bottom:0.3rem;">⚠ Anomalía detectada</p>
+                        <p style="font-size:0.8rem; color:var(--sh-text-muted);">El total sube pero el nivel no baja. Residual grande → alerta de reset.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="citation">
+                <strong>Jolliffe, I. T., & Cadima, J. (2016).</strong> "Principal component analysis: a review and recent developments". <em>Phil. Trans. R. Soc. A</em>, 374(2065), 20150202.
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="tensores">
+        <div class="section-header">
+            <div class="section-num">4</div>
+            <h2 class="section-title">Tensores: Datos en Batch y Deep Learning</h2>
+            <p class="section-subtitle">La estructura matemática que permite a un modelo de lenguaje procesar conversaciones sobre telemetría hidrológica.</p>
+        </div>
+
+        <div class="math-card">
+            <h3>📦 Definición tensorial</h3>
+            <p>Un modelo de lenguaje como Gemini representa una conversación como una secuencia de vectores (tokens), donde cada vector vive en un espacio de miles de dimensiones. Y no es una sola conversación: es un batch de conversaciones procesadas en paralelo. Esa estructura — batch × secuencia × dimensión — es un tensor de orden 3. Sin entender esto, es imposible dimensionar la memoria GPU o interpretar qué está haciendo el modelo.</p>
+            <p>Un <strong>tensor de orden k</strong> generaliza escalares (k=0), vectores (k=1) y matrices (k=2) a k dimensiones. En hidrología, un tensor de orden 3 emerge cuando consideramos múltiples puntos a través del tiempo:</p>
+            <div class="eq-block">
+<span class="var">T</span> <span class="op">∈</span> <span class="var">R</span><sup>P × T × V</sup>
+
+<span class="comment">-- P: número de puntos de captación</span>
+<span class="comment">-- T: pasos temporales (ej: 288 muestras/día)</span>
+<span class="comment">-- V: variables por punto (caudal, nivel, total = 3)</span>
+            </div>
+            <div class="var-legend">
+                <div class="var-item">
+                    <span class="var-symbol">T</span>
+                    <span class="var-meaning">Tensor de orden 3 que generaliza la matriz a tres dimensiones. En este contexto: batch de puntos × tiempo × variables.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">P</span>
+                    <span class="var-meaning">Número de puntos de captación en el batch. Tipo: entero ≥ 1.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">T</span>
+                    <span class="var-meaning">Pasos temporales. Ej: 288 muestras en un día con frecuencia de 5 minutos. Tipo: entero.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">V</span>
+                    <span class="var-meaning">Número de variables medidas por punto. En este motor típicamente V = 3 (caudal, nivel, total).</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">k</span>
+                    <span class="var-meaning">Orden del tensor (número de índices). Escalar k=0, vector k=1, matriz k=2, batch hidrológico k=3.</span>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; margin:1.5rem 0;">
+                <div style="flex:1; min-width:280px;">
+                    <p style="font-size:0.85rem; color:var(--sh-text-muted); margin-bottom:0.5rem;">Tensor R^(4×3×3) visualizado:</p>
+                    <div style="display:flex; gap:8px;">
+                        <div>
+                            <p style="font-size:0.7rem; color:var(--sh-text-muted); text-align:center; margin-bottom:4px;">Punto 1</p>
+                            <div class="tensor-layer">
+                                <div class="tensor-cell" style="background:var(--sh-blue)">q</div>
+                                <div class="tensor-cell" style="background:var(--sh-green)">n</div>
+                                <div class="tensor-cell" style="background:var(--sh-navy)">t</div>
+                                <div class="tensor-cell" style="background:var(--sh-blue); opacity:0.3">q</div>
+                                <div class="tensor-cell" style="background:var(--sh-green); opacity:0.3">n</div>
+                                <div class="tensor-cell" style="background:var(--sh-navy); opacity:0.3">t</div>
+                            </div>
+                        </div>
+                        <div>
+                            <p style="font-size:0.7rem; color:var(--sh-text-muted); text-align:center; margin-bottom:4px;">Punto 2</p>
+                            <div class="tensor-layer">
+                                <div class="tensor-cell" style="background:var(--sh-blue)">q</div>
+                                <div class="tensor-cell" style="background:var(--sh-green)">n</div>
+                                <div class="tensor-cell" style="background:var(--sh-navy)">t</div>
+                                <div class="tensor-cell" style="background:var(--sh-blue); opacity:0.3">q</div>
+                                <div class="tensor-cell" style="background:var(--sh-green); opacity:0.3">n</div>
+                                <div class="tensor-cell" style="background:var(--sh-navy); opacity:0.3">t</div>
+                            </div>
+                        </div>
+                        <div>
+                            <p style="font-size:0.7rem; color:var(--sh-text-muted); text-align:center; margin-bottom:4px;">...</p>
+                            <div class="tensor-layer" style="opacity:0.5">
+                                <div class="tensor-cell" style="background:var(--sh-blue)">q</div>
+                                <div class="tensor-cell" style="background:var(--sh-green)">n</div>
+                                <div class="tensor-cell" style="background:var(--sh-navy)">t</div>
+                                <div class="tensor-cell" style="background:var(--sh-blue); opacity:0.3">q</div>
+                                <div class="tensor-cell" style="background:var(--sh-green); opacity:0.3">n</div>
+                                <div class="tensor-cell" style="background:var(--sh-navy); opacity:0.3">t</div>
+                            </div>
+                        </div>
+                    </div>
+                    <p style="font-size:0.75rem; color:var(--sh-text-muted); margin-top:0.5rem;">Cada capa = un punto. Cada fila = un instante. Cada celda = una variable.</p>
+                </div>
+                <div class="diagram" style="flex:1; min-width:280px;">
+<span class="label">Jerarquía tensorial:</span>
+
+  escalar (orden 0)        5.2
+       ↓
+  vector (orden 1)         [10, 12, 11, 13, ...]
+       ↓
+  matriz (orden 2)         ┌ q  n  t ┐
+                           │ 10 45 200 │
+                           │ 11 44 210 │
+                           └ ...      ┘
+       ↓
+  tensor (orden 3)         [Punto1][Punto2][Punto3]
+                              ↓        ↓        ↓
+                           matrices  matrices  matrices
+                           288×3     288×3     288×3
+                </div>
+            </div>
+            <div class="citation">
+                <strong>Goodfellow, I., Bengio, Y., & Courville, A. (2016).</strong> <em>Deep Learning</em>. MIT Press. ISBN 978-0262035613.
+            </div>
+        </div>
+
+        <div class="math-card">
+            <h3>🧠 Embeddings: palabras como vectores</h3>
+            <p>Los LLM (como Gemini, usado en el chatbot de esta API) operan en espacios vectoriales de alta dimensión. El primer paso es convertir tokens en <strong>embeddings</strong>: vectores densos en R<sup>d</sup> donde d típicamente está entre 768 y 4096.</p>
+
+            <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; margin:1.5rem 0;">
+                <div class="diagram" style="flex:1; min-width:300px;">
+<span class="label">De palabra a vector:</span>
+
+  "caudal"  ──→  [0.23, -0.81,  0.15, ...,  0.44]  ∈ R^d
+  "litros"  ──→  [0.19, -0.75,  0.21, ...,  0.38]  ∈ R^d
+  "flujo"   ──→  [0.25, -0.79,  0.18, ...,  0.41]  ∈ R^d
+  "perro"   ──→  [-0.62,  0.33, -0.71, ...,  0.12]  ∈ R^d
+       ↑
+   lejos de
+   hidrología
+
+<span class="value">d(caudal, litros) ≈ 0.1  ← cercanos</span>
+<span class="highlight">d(caudal, perro) ≈ 1.8  ← lejanos</span>
+                </div>
+                <div style="flex:1; min-width:280px;">
+                    <p style="font-size:0.9rem; margin-bottom:0.75rem;"><strong>Relaciones semánticas lineales:</strong></p>
+                    <div class="eq-block" style="font-size:0.8rem; padding:1rem;">
+<span class="var">embedding</span>("rey") -
+<span class="var">embedding</span>("hombre") +
+<span class="var">embedding</span>("mujer") ≈
+<span class="var">embedding</span>("reina")
+                    </div>
+                    <p style="font-size:0.88rem; color:var(--sh-text); margin-top:0.75rem;">En este motor, cuando un usuario pregunta <em>"¿cuánto extraje ayer?"</em>, el modelo proyecta la consulta a un vector y lo compara con el espacio de intenciones posibles (medición, tendencia, alerta, ayuda).</p>
+                </div>
+            </div>
+            <div class="var-legend">
+                <div class="var-item">
+                    <span class="var-symbol">embedding</span>
+                    <span class="var-meaning">Función que mapea un token (palabra o subpalabra) a un vector denso en R<sup>d</sup>. Los embeddings se aprenden durante el entrenamiento del modelo.</span>
+                </div>
+            </div>
+            <div class="citation">
+                <strong>Mikolov, T., Chen, K., Corrado, G., & Dean, J. (2013).</strong> "Efficient estimation of word representations in vector space". <em>arXiv:1301.3781</em>.
+            </div>
+        </div>
+
+        <div class="math-card">
+            <h3>🔷 Redes neuronales como composición de transformaciones</h3>
+            <p>Una red neuronal feedforward con L capas es una composición de transformaciones afines seguidas de no-linealidades:</p>
+            <div class="eq-block">
+<span class="var">f</span>(<span class="var">x</span>) = <span class="var">W</span><sub>L</sub> <span class="var">σ</span>(<span class="var">W</span><sub>L-1</sub> <span class="var">σ</span>(...<span class="var">σ</span>(<span class="var">W</span><sub>1</sub><span class="var">x</span> + <span class="var">b</span><sub>1</sub>)...) + <span class="var">b</span><sub>L-1</sub>) + <span class="var">b</span><sub>L</sub>
+            </div>
+            <div class="var-legend">
+                <div class="var-item">
+                    <span class="var-symbol">f(x)</span>
+                    <span class="var-meaning">Salida de la red neuronal feedforward con L capas. Mapea el vector de entrada x al espacio de salida.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">W<sub>ℓ</sub></span>
+                    <span class="var-meaning">Matriz de pesos de la capa ℓ. Transforma linealmente los datos de una capa a la siguiente. Tipo: real.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">b<sub>ℓ</sub></span>
+                    <span class="var-meaning">Vector de sesgos (bias) de la capa ℓ. Traslada la transformación lineal. Tipo: real.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">σ</span>
+                    <span class="var-meaning">Función de activación no-lineal (ej: ReLU, tanh, GELU). Introduce no-linealidad entre capas.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">L</span>
+                    <span class="var-meaning">Número total de capas ocultas de la red. Tipo: entero ≥ 1.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">d</span>
+                    <span class="var-meaning">Dimensión del vector de entrada x. Tipo: entero. Ej: d=288 para un vector de mediciones diarias.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">y</span>
+                    <span class="var-meaning">Vector de salida de la red neuronal. Dimensión depende de la tarea (clasificación, regresión, etc.).</span>
+                </div>
+            </div>
+            <div class="attn-flow">
+                <div class="attn-box">x ∈ R^d</div>
+                <div class="attn-arrow">→</div>
+                <div class="attn-box">W₁x+b₁</div>
+                <div class="attn-arrow">→</div>
+                <div class="attn-box">σ(·)</div>
+                <div class="attn-arrow">→</div>
+                <div class="attn-box">W₂(·)+b₂</div>
+                <div class="attn-arrow">→</div>
+                <div class="attn-box">σ(·)</div>
+                <div class="attn-arrow">→</div>
+                <div class="attn-box">... → y</div>
+            </div>
+            <p>Cada capa proyecta los datos a un nuevo espacio vectorial donde, idealmente, las clases se vuelven <strong>linealmente separables</strong>. El teorema de aproximación universal garantiza que una red suficientemente amplia puede aproximar cualquier función continua.</p>
+            <div class="citation">
+                <strong>Hornik, K., Stinchcombe, M., & White, H. (1989).</strong> "Multilayer feedforward networks are universal approximators". <em>Neural Networks</em>, 2(5), 359-366.
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="atencion">
+        <div class="section-header">
+            <div class="section-num">5</div>
+            <h2 class="section-title">Mecanismo de Atención: El Corazón del LLM</h2>
+            <p class="section-subtitle">Por qué el chatbot no responde con frases genéricas: la matemática que le permite conectar "caudal" con "alerta" y "DGA" en una misma conversación.</p>
+        </div>
+
+        <div class="math-card">
+            <h3>🎯 Atención como producto punto escalado</h3>
+            <p>Un sistema de respuesta basado en reglas fijas asocia palabras clave con respuestas predefinidas. Si el usuario dice "caudal", responde con el último valor. Este enfoque falla cuando la pregunta requiere contexto: "¿por qué mi caudal subió después de la lluvia?" implica relacionar "lluvia" con "caudal", algo que el mecanismo de atención resuelve matemáticamente.</p>
+            <p>El mecanismo de atención determina qué tokens de una oración son relevantes entre sí. Cada token genera tres representaciones vectoriales diferentes:</p>
+            <div class="eq-block">
+<span class="var">Q</span> = <span class="var">X</span> <span class="var">W</span><sup>Q</sup>
+<span class="var">K</span> = <span class="var">X</span> <span class="var">W</span><sup>K</sup>
+<span class="var">V</span> = <span class="var">X</span> <span class="var">W</span><sup>V</sup>
+
+<span class="var">Attention</span>(<span class="var">Q</span>, <span class="var">K</span>, <span class="var">V</span>) = <span class="var">softmax</span>(<span class="var">QK</span><sup>T</sup> / <span class="op">√</span><span class="var">d</span><sub>k</sub>) <span class="var">V</span>
+            </div>
+            <div class="var-legend">
+                <div class="var-item">
+                    <span class="var-symbol">Q (Query)</span>
+                    <span class="var-meaning">"¿Qué estoy buscando?" Representación del token que hace la pregunta.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">K (Key)</span>
+                    <span class="var-meaning">"¿Qué ofrezco?" Representación de cada token candidato a ser consultado.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">V (Value)</span>
+                    <span class="var-meaning">"¿Qué información tengo?" Contenido real que se entregará si hay match.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">d_k</span>
+                    <span class="var-meaning">Dimensión de los vectores Q y K. Divide para evitar valores extremos en el producto punto.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">softmax</span>
+                    <span class="var-meaning">Convierte puntuaciones de similitud en probabilidades que suman 1. Mayor puntuación = más atención.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup></span>
+                    <span class="var-meaning">Matrices de proyección aprendibles que transforman X en Query, Key y Value respectivamente. Tipo: real.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">Attention</span>
+                    <span class="var-meaning">Función de atención escalada. Calcula pesos de relevancia entre todos los pares de tokens y produce un vector enriquecido.</span>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; margin:1.5rem 0;">
+                <div class="diagram" style="flex:1; min-width:300px;">
+<span class="label">Matriz de atención A = softmax(QKᵀ/√d):</span>
+
+        "el" "pozo" "5" "de" "Iansa"
+      ┌────────────────────────────┐
+"el"  │ 0.4   0.2   0.1  0.1  0.2 │
+"pozo"│ 0.1   0.5   0.2  0.1  0.1 │
+"5"   │ 0.1   0.2   0.4  0.1  0.2 │ ← "5" atiende a "pozo" e "Iansa"
+"de"  │ 0.1   0.1   0.1  0.3  0.4 │
+"Iansa│ 0.1   0.1   0.2  0.2  0.4 │
+      └────────────────────────────┘
+        ↑ valores más altos = más atención
+
+<span class="value">Cada fila suma 1 (probabilidad)</span>
+                </div>
+                <div style="flex:1; min-width:280px;">
+                    <p style="font-size:0.9rem; margin-bottom:0.75rem;"><strong>Flujo visual:</strong></p>
+                    <div class="attn-flow" style="flex-direction:column; align-items:stretch;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-size:0.8rem; color:var(--sh-text-muted);">Tokens de entrada</span>
+                            <span style="font-size:0.8rem; color:var(--sh-text-muted);">Salida enriquecida</span>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; justify-content:center; flex-wrap:wrap;">
+                            <div class="attn-box" style="padding:0.5rem 0.75rem; font-size:0.8rem;">el</div>
+                            <div class="attn-box" style="padding:0.5rem 0.75rem; font-size:0.8rem;">pozo</div>
+                            <div class="attn-box" style="padding:0.5rem 0.75rem; font-size:0.8rem; border-color:var(--sh-green);">5</div>
+                            <div class="attn-box" style="padding:0.5rem 0.75rem; font-size:0.8rem;">de</div>
+                            <div class="attn-box" style="padding:0.5rem 0.75rem; font-size:0.8rem; border-color:var(--sh-green);">Iansa</div>
+                        </div>
+                        <div style="text-align:center; font-size:1.2rem; color:var(--sh-blue);">↓ Q, K, V</div>
+                        <div style="display:flex; justify-content:center;">
+                            <div style="background:linear-gradient(135deg, var(--sh-blue-light), var(--sh-green-light)); border-radius:10px; padding:0.75rem 1.5rem; text-align:center;">
+                                <p style="font-size:0.85rem; font-weight:600; color:var(--sh-text);">softmax(QKᵀ/√dₖ) · V</p>
+                            </div>
+                        </div>
+                        <div style="text-align:center; font-size:1.2rem; color:var(--sh-green);">↓</div>
+                        <div style="display:flex; gap:0.5rem; justify-content:center; flex-wrap:wrap;">
+                            <div class="attn-box" style="padding:0.5rem 0.75rem; font-size:0.8rem; opacity:0.6;">el*</div>
+                            <div class="attn-box" style="padding:0.5rem 0.75rem; font-size:0.8rem;">pozo*</div>
+                            <div class="attn-box" style="padding:0.5rem 0.75rem; font-size:0.8rem; border-color:var(--sh-red);">5*+<br><small>Iansa</small></div>
+                            <div class="attn-box" style="padding:0.5rem 0.75rem; font-size:0.8rem;">de*</div>
+                            <div class="attn-box" style="padding:0.5rem 0.75rem; font-size:0.8rem; opacity:0.6;">Iansa*</div>
+                        </div>
+                    </div>
+                    <p style="font-size:0.8rem; color:var(--sh-text-muted); margin-top:0.5rem;">El token "5" se enriquece con contexto de "pozo" e "Iansa" (rojo).</p>
+                </div>
+            </div>
+            <p>En una conversación hidrológica, si el usuario dice "<em>el pozo 5 de Iansa</em>", los tokens "pozo" y "5" generan queries que alinean fuertemente con la key de "Iansa" en la memoria contextual. La salida de atención enriquece la representación del token actual con información de todo el contexto previo.</p>
+            <div class="citation">
+                <strong>Vaswani, A., et al. (2017).</strong> "Attention is all you need". <em>Advances in Neural Information Processing Systems</em>, 30.
+            </div>
+        </div>
+
+        <div class="math-card">
+            <h3>🔄 Multi-head attention: atención paralela</h3>
+            <p>En vez de una única proyección, los transformers aplican <strong>h atenciones en paralelo</strong> con proyecciones diferentes, concatenando los resultados:</p>
+            <div class="eq-block">
+<span class="var">MultiHead</span>(<span class="var">Q</span>, <span class="var">K</span>, <span class="var">V</span>) = <span class="var">Concat</span>(<span class="var">head</span><sub>1</sub>, ..., <span class="var">head</span><sub>h</sub>) <span class="var">W</span><sup>O</sup>
+
+<span class="var">head</span><sub>i</sub> = <span class="var">Attention</span>(<span class="var">QW</span><sub>i</sub><sup>Q</sup>, <span class="var">KW</span><sub>i</sub><sup>K</sup>, <span class="var">VW</span><sub>i</sub><sup>V</sup>)
+            </div>
+            <div class="var-legend">
+                <div class="var-item">
+                    <span class="var-symbol">MultiHead</span>
+                    <span class="var-meaning">Función que ejecuta h mecanismos de atención en paralelo con proyecciones diferentes, y mezcla los resultados.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">Concat</span>
+                    <span class="var-meaning">Operación de concatenación. Une los h vectores de salida de cada cabeza en un único vector largo.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">head<sub>i</sub></span>
+                    <span class="var-meaning">Salida de la i-ésima cabeza de atención. Cada cabeza especializa en un tipo de relación diferente.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">h</span>
+                    <span class="var-meaning">Número de cabezas de atención en paralelo. Tipo: entero. Ej: h=8 o h=12 en transformers estándar.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">W<sup>O</sup></span>
+                    <span class="var-meaning">Matriz de pesos de salida. Mezcla linealmente las h cabezas concatenadas en la representación final.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">W<sub>i</sub><sup>Q</sup>, W<sub>i</sub><sup>K</sup>, W<sub>i</sub><sup>V</sup></span>
+                    <span class="var-meaning">Matrices de proyección de la i-ésima cabeza. Cada cabeza tiene sus propios pesos aprendibles.</span>
+                </div>
+            </div>
+            <div style="display:flex; gap:1rem; justify-content:center; flex-wrap:wrap; margin:1.5rem 0;">
+                <div style="background:#0f1724; border-radius:12px; padding:1rem; text-align:center; min-width:140px;">
+                    <div style="width:36px; height:36px; background:var(--sh-blue); border-radius:50%; margin:0 auto 0.5rem; display:flex; align-items:center; justify-content:center; color:white; font-weight:700; font-size:0.8rem;">H1</div>
+                    <p style="font-size:0.8rem; color:var(--sh-text-muted);">Coreferencia</p>
+                    <p style="font-size:0.75rem; color:var(--sh-text-muted);">"el pozo" = "punto 5"</p>
+                </div>
+                <div style="background:#0f1724; border-radius:12px; padding:1rem; text-align:center; min-width:140px;">
+                    <div style="width:36px; height:36px; background:var(--sh-green); border-radius:50%; margin:0 auto 0.5rem; display:flex; align-items:center; justify-content:center; color:white; font-weight:700; font-size:0.8rem;">H2</div>
+                    <p style="font-size:0.8rem; color:var(--sh-text-muted);">Temporal</p>
+                    <p style="font-size:0.75rem; color:var(--sh-text-muted);">"ayer" = fecha específica</p>
+                </div>
+                <div style="background:#0f1724; border-radius:12px; padding:1rem; text-align:center; min-width:140px;">
+                    <div style="width:36px; height:36px; background:var(--sh-navy); border-radius:50%; margin:0 auto 0.5rem; display:flex; align-items:center; justify-content:center; color:white; font-weight:700; font-size:0.8rem;">H3</div>
+                    <p style="font-size:0.8rem; color:var(--sh-text-muted);">Jerárquica</p>
+                    <p style="font-size:0.75rem; color:var(--sh-text-muted);">"Iansa" ⊃ "pozo 5"</p>
+                </div>
+                <div style="background:#0f1724; border-radius:12px; padding:1rem; text-align:center; min-width:140px;">
+                    <div style="width:36px; height:36px; background:var(--sh-red); border-radius:50%; margin:0 auto 0.5rem; display:flex; align-items:center; justify-content:center; color:white; font-weight:700; font-size:0.8rem;">H4</div>
+                    <p style="font-size:0.8rem; color:var(--sh-text-muted);">Semántica</p>
+                    <p style="font-size:0.75rem; color:var(--sh-text-muted);">"caudal" ≈ "litros"</p>
+                </div>
+            </div>
+            <p>Cada "cabeza" puede especializarse en un tipo de relación diferente. La composición lineal final <strong>W<sup>O</sup></strong> mezcla estas especializaciones en una representación unificada.</p>
+        </div>
+    </section>
+
+    <section class="section" id="anomalias">
+        <div class="section-header">
+            <div class="section-num">6</div>
+            <h2 class="section-title">Detección de Anomalías: Geometría del Error</h2>
+            <p class="section-subtitle">Detectar comportamiento anómalo en un pozo sin revisar 288 datos manualmente cada día.</p>
+        </div>
+
+        <div class="math-card">
+            <h3>📐 Distancia de Mahalanobis</h3>
+            <p>La detección manual de anomalías funciona para pocas fuentes, pero no escala. Una caída repentina de caudal, un nivel inconsistente o un total que se resetea son patrones identificables visualmente en 10 pozos, pero no en 100. La alternativa matemática es geométrica: los datos normales de un pozo no llenan todo el espacio; viven en una estructura de dimensión mucho menor. Lo que cae fuera de esa estructura es anómalo.</p>
+            <p>La distancia euclidiana trata todas las direcciones igual. Pero en hidrología, caudal y nivel están correlacionados: si ambos cambian juntos, es normal. Si solo uno cambia, es anómalo. Mahalanobis mide distancia <strong>respetando la forma de la nube de datos</strong>:</p>
+            <div class="eq-block">
+<span class="var">D</span><sup>2</sup>(<span class="var">x</span>) = (<span class="var">x</span> - <span class="var">μ</span>)<sup>T</sup> <span class="var">Σ</span><sup>-1</sup> (<span class="var">x</span> - <span class="var">μ</span>)
+            </div>
+            <div class="var-legend">
+                <div class="var-item">
+                    <span class="var-symbol">x</span>
+                    <span class="var-meaning">Vector de mediciones del pozo en un instante: [caudal, nivel, total].</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">μ</span>
+                    <span class="var-meaning">Vector de medias históricas. Es el "centro" del comportamiento normal.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">Σ</span>
+                    <span class="var-meaning">Matriz de covarianza. Captura cómo se correlacionan las variables entre sí.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">Σ⁻¹</span>
+                    <span class="var-meaning">Inversa de covarianza. Acorta distancias en direcciones de alta correlación.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">D²</span>
+                    <span class="var-meaning">Distancia al cuadrado. Si D² > τ → el punto es anómalo.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">D</span>
+                    <span class="var-meaning">Distancia de Mahalanobis (raíz cuadrada de D²). Mide desviación respecto al comportamiento normal en unidades de desviación estándar.</span>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; margin:1.5rem 0;">
+                <div class="diagram" style="flex:1; min-width:280px;">
+<span class="label">Euclidiana vs Mahalanobis:</span>
+
+     nivel
+       ↑
+       │      ╭────────╮
+       │     ╱   ·A    ╲
+       │    │  ·    ·   │
+       │    │ ·   ●   ·  │  ← nube normal
+       │    │  ·    ·   │     (caudal vs nivel
+       │     ╲   ·B   ·╱      correlacionados)
+       │      ╰────────╯
+       └──────────────────→ caudal
+
+<span class="value">Euclidiana: d(A,●) = d(B,●)</span>
+<span class="highlight">Mahalanobis: D(A) >> D(B)</span>
+<span class="axis">A está en la dirección de la correlación → menos anómalo</span>
+                </div>
+                <div style="flex:1; min-width:280px;">
+                    <p style="font-size:0.9rem; margin-bottom:0.75rem;"><strong>Ejemplo concreto:</strong></p>
+                    <p style="font-size:0.88rem; color:var(--sh-text); margin-bottom:0.5rem;">Un pico de caudal sin cambio de nivel podría tener distancia euclidiana "normal", pero Mahalanobis detecta la <strong>ruptura de correlación</strong>.</p>
+                    <div style="background:#0f1724; border-radius:10px; padding:1rem; margin-top:0.5rem;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                            <span style="font-size:0.8rem; color:var(--sh-text-muted);">Situación</span>
+                            <span style="font-size:0.8rem; color:var(--sh-text-muted);">D² Mahalanobis</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid var(--sh-border);">
+                            <span style="font-size:0.85rem;">Caudal ↑, Nivel ↓ (esperado)</span>
+                            <span style="font-size:0.85rem; color:var(--sh-green); font-weight:700;">2.1 ✓</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid var(--sh-border);">
+                            <span style="font-size:0.85rem;">Caudal ↑, Nivel = (raro)</span>
+                            <span style="font-size:0.85rem; color:var(--sh-yellow); font-weight:700;">7.4 ⚠</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding:0.3rem 0;">
+                            <span style="font-size:0.85rem;">Caudal ↑, Nivel ↑ (imposible)</span>
+                            <span style="font-size:0.85rem; color:var(--sh-red-dark); font-weight:700;">18.9 ✗</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="citation">
+                <strong>Bishop, C. M. (2006).</strong> <em>Pattern Recognition and Machine Learning</em>. Springer. Cap. 2. ISBN 978-0387310732.
+            </div>
+        </div>
+
+        <div class="math-card">
+            <h3>🔺 Subespacios normales y anómalos</h3>
+            <p>Tras PCA, los datos normales se alinean en pocas direcciones principales. Cualquier desviación perpendicular a esas direcciones es anómala:</p>
+            <div class="eq-block">
+<span class="var">x</span> = <span class="var">x</span><sub>normal</sub> + <span class="var">x</span><sub>residual</sub>
+
+<span class="var">||x</span><sub>residual</sub><span class="var">||²</span> = <span class="var">Σ</span><sub>i=k+1</sub><sup>r</sup> (<span class="var">u</span><sub>i</sub><sup>T</sup><span class="var">x</span>)<sup>2</sup>
+            </div>
+            <div class="var-legend">
+                <div class="var-item">
+                    <span class="var-symbol">x</span>
+                    <span class="var-meaning">Vector de observación actual (medición del pozo).</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">x_normal</span>
+                    <span class="var-meaning">Proyección de x sobre los k componentes principales. Representa comportamiento esperado.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">x_residual</span>
+                    <span class="var-meaning">Lo que sobra después de proyectar. Es perpendicular al subespacio normal. Cuanto mayor, más anómalo.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">u_i</span>
+                    <span class="var-meaning">i-ésimo vector singular de U. Cada u_i es una dirección ortogonal en el espacio de datos.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">k</span>
+                    <span class="var-meaning">Número de componentes principales conservados. k=1 para un pozo donde todo está acoplado.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">τ</span>
+                    <span class="var-meaning">Umbral de anomalía. Se calibra con percentil 99 de datos históricos normales.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">r</span>
+                    <span class="var-meaning">Rango de la matriz de datos (número de valores singulares no nulos). r = min(filas, columnas) en la práctica.</span>
+                </div>
+                <div class="var-item">
+                    <span class="var-symbol">||x<sub>residual</sub>||²</span>
+                    <span class="var-meaning">Norma al cuadrado del residual. Mide la magnitud de la desviación perpendicular al subespacio normal.</span>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; margin:1.5rem 0;">
+                <div class="diagram" style="flex:1; min-width:280px;">
+<span class="label">Descomposición en subespacios:</span>
+
+         R^d (espacio completo)
+         │
+         │  ┌─────────────────┐
+         │  │   Subespacio    │
+         │  │   Normal R^k    │
+         │  │  ┌─────────┐    │
+         │  │  │  · · ·  │    │
+         │  │  │ · ● ● · │    │
+         │  │  │  · · ·  │    │
+         │  │  └─────────┘    │
+         │  │       ↑         │
+         │  │   x_normal      │
+         │  └─────────────────┘
+         │         ↑
+         │    x_residual (anomalía)
+         │    perpendicular al plano
+         │
+         └────────────────────────→
+                </div>
+                <div style="flex:1; min-width:280px;">
+                    <p style="font-size:0.9rem; margin-bottom:0.75rem;"><strong>Visualización del residual:</strong></p>
+                    <div style="background:#0f1724; border-radius:10px; padding:1rem;">
+                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+                            <div style="width:12px; height:12px; border-radius:50%; background:var(--sh-green);"></div>
+                            <span style="font-size:0.85rem;">Datos normales (||res||² pequeño)</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+                            <div style="width:12px; height:12px; border-radius:50%; background:var(--sh-red);"></div>
+                            <span style="font-size:0.85rem;">Anomalía (||res||² grande)</span>
+                        </div>
+                        <div style="height:80px; position:relative; background:white; border-radius:8px; border:1px solid var(--sh-border);">
+                            <div style="position:absolute; bottom:10%; left:15%; width:6px; height:6px; border-radius:50%; background:var(--sh-green); opacity:0.6;"></div>
+                            <div style="position:absolute; bottom:25%; left:35%; width:6px; height:6px; border-radius:50%; background:var(--sh-green); opacity:0.6;"></div>
+                            <div style="position:absolute; bottom:18%; left:55%; width:6px; height:6px; border-radius:50%; background:var(--sh-green); opacity:0.6;"></div>
+                            <div style="position:absolute; bottom:30%; left:70%; width:6px; height:6px; border-radius:50%; background:var(--sh-green); opacity:0.6;"></div>
+                            <div style="position:absolute; bottom:22%; left:45%; width:6px; height:6px; border-radius:50%; background:var(--sh-green); opacity:0.6;"></div>
+                            <div style="position:absolute; bottom:75%; left:60%; width:10px; height:10px; border-radius:50%; background:var(--sh-red); box-shadow:0 0 8px var(--sh-red);"></div>
+                            <div style="position:absolute; bottom:5%; left:5%; font-size:0.7rem; color:var(--sh-text-muted);">PC₁</div>
+                            <div style="position:absolute; top:5%; left:5%; font-size:0.7rem; color:var(--sh-text-muted);">PC₂</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p>Este enfoque — <strong>PCA-based anomaly detection</strong> — es computacionalmente eficiente (una vez calculada la SVD, cada evaluación es O(d)) y no requiere datos etiquetados como "anómalos". Solo necesita una muestra representativa de comportamiento normal.</p>
+        </div>
+
+        <div class="math-card">
+            <h3>🌊 Aplicación concreta en el motor</h3>
+            <p>Supongamos un pozo con historial de 90 días. Calculamos la SVD de su matriz de datos (288 muestras/día × 3 variables). Encontramos que σ₁/σ₂ ≈ 15, indicando que un único modo domina. Usamos k=1 como subespacio normal.</p>
+            <div style="background:#0f1724; border-radius:12px; padding:1.5rem; margin:1.5rem 0;">
+                <p style="font-size:0.9rem; font-weight:700; color:var(--sh-text); margin-bottom:1rem;">Datos de un día nuevo:</p>
+                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:1rem; margin-bottom:1rem;">
+                    <div style="text-align:center;">
+                        <p style="font-size:0.8rem; color:var(--sh-text-muted);">Caudal</p>
+                        <p style="font-size:1.3rem; font-weight:800; color:var(--sh-blue);">12 L/s</p>
+                        <p style="font-size:0.75rem; color:var(--sh-green);">Normal: 10-11</p>
+                    </div>
+                    <div style="text-align:center;">
+                        <p style="font-size:0.8rem; color:var(--sh-text-muted);">Nivel</p>
+                        <p style="font-size:1.3rem; font-weight:800; color:var(--sh-green);">45 m</p>
+                        <p style="font-size:0.75rem; color:var(--sh-green);">Normal: 44-46</p>
+                    </div>
+                    <div style="text-align:center;">
+                        <p style="font-size:0.8rem; color:var(--sh-text-muted);">Total</p>
+                        <p style="font-size:1.3rem; font-weight:800; color:var(--sh-red);">+500 m³</p>
+                        <p style="font-size:0.75rem; color:var(--sh-red-dark);">Imposible en 1h</p>
+                    </div>
+                </div>
+                <div style="border-top:1px solid var(--sh-border); padding-top:1rem;">
+                    <p style="font-size:0.9rem; color:var(--sh-text);"><strong>Análisis:</strong> Caudal y nivel parecen normales individualmente, pero el salto de <strong>500 m³ en 1 hora</strong> viola el acoplamiento físico esperado (caudal de 12 L/s = 43.2 m³/h, no 500).</p>
+                    <p style="font-size:0.9rem; color:var(--sh-text); margin-top:0.5rem;"><strong>Resultado:</strong> ||x<sub>res</sub>||² supera el umbral τ (percentil 99). <span style="color:var(--sh-red-dark); font-weight:700;">→ Alerta de reset de contador o error de sensor.</span></p>
+                </div>
+            </div>
+            <p>Este flujo matemático — <strong>vector → proyección → norma residual → umbral</strong> — es la base teórica de las <em>heurísticas de auditoría</em> que este motor aplica automáticamente.</p>
+        </div>
+    </section>
+
+    <section class="section" id="mapa">
+        <div class="section-header">
+            <div class="section-num">7</div>
+            <h2 class="section-title">Mapa Matemático del Motor</h2>
+            <p class="section-subtitle">Cada componente del sistema traducido a objetos matemáticos. Las variables se definen antes de usarse.</p>
+        </div>
+
+        <div class="highlight-box" style="margin-bottom:2rem;">
+            <h4>📝 Notación común en esta sección</h4>
+            <p><strong>R</strong> = conjunto de números reales. <strong>R<sup>n</sup></strong> = espacio vectorial de n dimensiones. <strong>R<sup>n×m</sup></strong> = espacio de matrices con n filas y m columnas. Las dimensiones se escriben como (filas × columnas).</p>
+        </div>
+
+        <div class="grid-2">
+            <div class="math-card">
+                <h3>📡 Telemetría</h3>
+                <p><strong>Objeto:</strong> Matriz de lecturas X ∈ R<sup>T×V</sup></p>
+                <div class="var-legend">
+                    <div class="var-item">
+                        <span class="var-symbol">T</span>
+                        <span class="var-meaning">Número de lecturas temporales. Entero ≥ 1. Ej: 288 lecturas en un día con frecuencia de 5 minutos.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">V</span>
+                        <span class="var-meaning">Número de variables medidas. Entero ≥ 1. En este motor típicamente V = 3 (caudal, nivel, total).</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">X</span>
+                        <span class="var-meaning">Matriz de datos. Cada fila es un instante de tiempo, cada columna es una variable. Tipo: real (float64).</span>
+                    </div>
+                </div>
+                <p><strong>Operaciones:</strong> Diferenciación temporal (Δtotal/Δt → caudal), interpolación lineal para huecos, validación de rangos.</p>
+                <p><strong>Espacio concreto:</strong> R<sup>288×3</sup> para un día de telemetría a 5 minutos con 3 variables.</p>
+            </div>
+
+            <div class="math-card">
+                <h3>⚠️ Alertas Umbral</h3>
+                <p><strong>Objeto:</strong> Función indicadora χ<sub>[a,b]</sub>(x)</p>
+                <div class="var-legend">
+                    <div class="var-item">
+                        <span class="var-symbol">x</span>
+                        <span class="var-meaning">Valor medido en un instante. Tipo: real (float). Ej: caudal = 15.3 L/s.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">a, b</span>
+                        <span class="var-meaning">Límites inferior y superior del umbral configurado. Tipo: real. a ≤ b.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">χ</span>
+                        <span class="var-meaning">Función indicadora. Vale 1 si x está fuera de [a,b], 0 si está dentro. Tipo: entero {0, 1}.</span>
+                    </div>
+                </div>
+                <p><strong>Operaciones:</strong> Comparación escalar (x &lt; a o x &gt; b), lógica booleana compuesta (AND/OR entre múltiples condiciones).</p>
+                <p><strong>Espacio:</strong> R → {0, 1}. El dominio son los reales (valores medidos); el codominio es binario (alerta/no alerta).</p>
+            </div>
+
+            <div class="math-card">
+                <h3>🤖 Chatbot (Gemini)</h3>
+                <p><strong>Objeto:</strong> Secuencia de embeddings E ∈ R<sup>n×d</sup></p>
+                <div class="var-legend">
+                    <div class="var-item">
+                        <span class="var-symbol">n</span>
+                        <span class="var-meaning">Número de tokens (palabras o subpalabras) en la entrada. Tipo: entero ≥ 1.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">d</span>
+                        <span class="var-meaning">Dimensión del vector de embedding. Tipo: entero. En Gemini, d ≈ 768 a 4096 según el modelo.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">E</span>
+                        <span class="var-meaning">Matriz de embeddings. Cada fila es un token convertido a un vector numérico de d dimensiones. Tipo: real.</span>
+                    </div>
+                </div>
+                <p><strong>Operaciones:</strong> Multi-head self-attention, redes feedforward, softmax sobre el vocabulario de salida.</p>
+                <p><strong>Espacio:</strong> R<sup>d</sup> — cada token vive en un espacio semántico latente de d dimensiones donde palabras similares están cerca.</p>
+            </div>
+
+            <div class="math-card">
+                <h3>📊 Reportes DGA/SMA</h3>
+                <p><strong>Objeto:</strong> Agregaciones temporales sobre ventanas de datos</p>
+                <div class="var-legend">
+                    <div class="var-item">
+                        <span class="var-symbol">T</span>
+                        <span class="var-meaning">Número de lecturas crudas en la ventana temporal. Tipo: entero. Ej: 288 lecturas diarias a 5 min.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">k</span>
+                        <span class="var-meaning">Número de reportes agregados resultantes. Tipo: entero. Ej: 1 reporte diario (k=1) o 24 reportes horarios (k=24).</span>
+                    </div>
+                </div>
+                <p><strong>Operaciones:</strong> Proyección sobre ventanas (GROUP BY temporal), reducción de dimensionalidad: sumas, promedios, máximos, mínimos.</p>
+                <p><strong>Espacio:</strong> R<sup>T</sup> → R<sup>k</sup>. Toma T lecturas individuales y las comprime en k valores agregados.</p>
+            </div>
+
+            <div class="math-card">
+                <h3>🔍 Auditoría de Datos</h3>
+                <p><strong>Objeto:</strong> Residuo de reconstrucción ||x − x̂||</p>
+                <div class="var-legend">
+                    <div class="var-item">
+                        <span class="var-symbol">x</span>
+                        <span class="var-meaning">Vector de observación actual. Dimensión d. Tipo: real. Ej: [caudal, nivel, total] en un instante.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">x̂</span>
+                        <span class="var-meaning">Reconstrucción de x usando solo los k componentes principales. Tipo: real. Dimensión d.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">k</span>
+                        <span class="var-meaning">Número de componentes principales conservados. Tipo: entero. k &lt; d.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">d</span>
+                        <span class="var-meaning">Dimensión original del vector de observación. Tipo: entero. En este motor, d = 3.</span>
+                    </div>
+                </div>
+                <p><strong>Operaciones:</strong> SVD truncada, proyección ortogonal sobre el subespacio normal, norma del residual.</p>
+                <p><strong>Espacio:</strong> R<sup>k</sup> ⊂ R<sup>d</sup>. El subespacio normal tiene k dimensiones (las principales) dentro del espacio original de d dimensiones.</p>
+            </div>
+
+            <div class="math-card">
+                <h3>📈 Tendencias</h3>
+                <p><strong>Objeto:</strong> Regresión lineal y = Xβ + ε</p>
+                <div class="var-legend">
+                    <div class="var-item">
+                        <span class="var-symbol">y</span>
+                        <span class="var-meaning">Vector de valores observados (ej: niveles freáticos en T instantes). Dimensión T×1. Tipo: real.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">X</span>
+                        <span class="var-meaning">Matriz de diseño. Primera columna = 1s (intercepto), segunda = tiempos t₁...tₜ. Dimensión T×2. Tipo: real.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">β</span>
+                        <span class="var-meaning">Vector de parámetros [β₀, β₁] = [intercepto, pendiente]. Dimensión 2×1. Tipo: real.</span>
+                    </div>
+                    <div class="var-item">
+                        <span class="var-symbol">ε</span>
+                        <span class="var-meaning">Vector de errores o residuos. Dimensión T×1. Tipo: real. Media teórica = 0.</span>
+                    </div>
+                </div>
+                <p><strong>Operaciones:</strong> Estimación por mínimos cuadrados β̂ = (X<sup>T</sup>X)<sup>−1</sup>X<sup>T</sup>y, cálculo del error cuadrático medio.</p>
+                <p><strong>Espacio:</strong> R<sup>2</sup> — el parámetro β vive en un plano bidimensional: eje horizontal = intercepto, eje vertical = pendiente.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="biblio">
+        <div class="section-header">
+            <div class="section-num">8</div>
+            <h2 class="section-title">Bibliografía Fundamental</h2>
+            <p class="section-subtitle">Textos de referencia citados en este documento, organizados por tema.</p>
+        </div>
+
+        <div class="math-card">
+            <h3>📚 Álgebra Lineal y Matricial</h3>
+            <div class="citation">
+                <strong>Strang, G. (2016).</strong> <em>Introduction to Linear Algebra</em> (5th ed.). Wellesley-Cambridge Press. ISBN 978-0980232776.<br>
+                <em>El texto clásico para comprender espacios vectoriales, ortogonalidad, SVD y aplicaciones.</em>
+            </div>
+            <div class="citation">
+                <strong>Golub, G. H., & Van Loan, C. F. (2013).</strong> <em>Matrix Computations</em> (4th ed.). Johns Hopkins University Press. ISBN 978-1421407944.<br>
+                <em>Referencia avanzada para descomposiciones matriciales, estabilidad numérica y algoritmos.</em>
+            </div>
+        </div>
+
+        <div class="math-card">
+            <h3>🤖 Machine Learning y Deep Learning</h3>
+            <div class="citation">
+                <strong>Goodfellow, I., Bengio, Y., & Courville, A. (2016).</strong> <em>Deep Learning</em>. MIT Press. ISBN 978-0262035613.<br>
+                <em>Tratado completo de redes neuronales, desde perceptrones hasta transformers y generative models.</em>
+            </div>
+            <div class="citation">
+                <strong>Bishop, C. M. (2006).</strong> <em>Pattern Recognition and Machine Learning</em>. Springer. ISBN 978-0387310732.<br>
+                <em>Fundamentos probabilísticos de clasificación, regresión, clustering y detección de anomalías.</em>
+            </div>
+            <div class="citation">
+                <strong>Hastie, T., Tibshirani, R., & Friedman, J. (2009).</strong> <em>The Elements of Statistical Learning</em> (2nd ed.). Springer. ISBN 978-0387848570.<br>
+                <em>Enfoque estadístico riguroso para modelos lineales, kernels, árboles y métodos no supervisados.</em>
+            </div>
+            <div class="citation">
+                <strong>Deisenroth, M. P., Faisal, A. A., & Ong, C. S. (2020).</strong> <em>Mathematics for Machine Learning</em>. Cambridge University Press. ISBN 978-1108455145.<br>
+                <em>Texto moderno que conecta álgebra lineal, cálculo vectorial y probabilidad con ML.</em>
+            </div>
+        </div>
+
+        <div class="math-card">
+            <h3>🧠 Transformers y Procesamiento de Lenguaje</h3>
+            <div class="citation">
+                <strong>Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., & Polosukhin, I. (2017).</strong> "Attention is all you need". <em>Advances in Neural Information Processing Systems</em>, 30.<br>
+                <em>El artículo fundacional que introdujo la arquitectura Transformer, base de GPT, Gemini y otros LLM.</em>
+            </div>
+            <div class="citation">
+                <strong>Mikolov, T., Chen, K., Corrado, G., & Dean, J. (2013).</strong> "Efficient estimation of word representations in vector space". <em>arXiv preprint arXiv:1301.3781</em>.<br>
+                <em>Word2Vec: cómo entrenar embeddings semánticos con redes neuronales superficiales.</em>
+            </div>
+        </div>
+
+        <div class="math-card">
+            <h3>📉 Análisis de Componentes y Reducción de Dimensionalidad</h3>
+            <div class="citation">
+                <strong>Jolliffe, I. T., & Cadima, J. (2016).</strong> "Principal component analysis: a review and recent developments". <em>Philosophical Transactions of the Royal Society A</em>, 374(2065), 20150202.<br>
+                <em>Revisión moderna de PCA, sparse PCA, y aplicaciones en ciencia de datos.</em>
+            </div>
+        </div>
+
+        <div class="math-card">
+            <h3>📐 Cálculo Tensorial (SmartMath)</h3>
+            <div class="citation">
+                <strong>Synge, J. L., & Schild, A. (1949).</strong> <em>Tensor Calculus</em>. Dover Publications. ISBN 978-0486636122.<br>
+                <em>Texto clásico sobre tensores en geometría diferencial. Base conceptual para entender tensores en ML.</em>
+            </div>
+        </div>
+    </section>
+
+</div>
+
+<footer class="footer">
+    <p><strong>SmartMath: El Motor Numérico</strong></p>
+    <p style="margin-top:0.5rem;">
+        <a href="/docs/">Documentación API</a> ·
+        <a href="/docs/sales/">Catálogo de Capacidades</a> ·
+        <a href="/api/schema/redoc/">Redoc Técnico</a>
+    </p>
+    <p style="margin-top:0.5rem; opacity:0.6;">© SmartHydro — Motor matemático para telemetría y cumplimiento normativo</p>
+</footer>
+
+</body>
+</html>

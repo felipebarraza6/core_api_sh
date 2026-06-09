@@ -11,8 +11,10 @@ from django.conf import settings
 from api.core.models import DgaDataConfigCatchment, InteractionDetail
 from api.core.utils.compliance import ComplianceConfig
 from api.cronjobs.utils.logging_config import sma_logger
+from api.cronjobs.utils.locks import cron_job_lock
 
 
+@cron_job_lock("sma", timeout=300)
 def run():
     """Ejecutar cronjob SMA"""
     sma_logger.info("Iniciando cronjob SMA...")

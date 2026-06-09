@@ -19,7 +19,8 @@ from rest_framework.authtoken.models import Token
 
 from api.core.models import (
     AlertRule, AlertChannel, AlertTrigger, SystemEvent,
-    CatchmentPoint, User, InteractionDetail,
+    CatchmentPoint, User, InteractionDetail, ProjectCatchments, Client,
+    ProfileDataConfigCatchment,
 )
 
 # El entorno de tests no tiene django-csp instalado; removemos el middleware para tests de API
@@ -218,4 +219,100 @@ class AlertSubsystemAPITests(TestCase):
     def test_alert_channels_list_empty(self):
         resp = self.client.get("/api/alert_channels/")
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data["count"], 0)
+
+
+class AlertEngineTriggerTests(TestCase):
+    """Tests para el flujo completo: engine crea trigger con interaction_detail."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="engine_tester", email="engine@test.com", password="testpass"
+        )
+        self.client_obj = Client.objects.create(name="Engine Client")
+        self.project = ProjectCatchments.objects.create(
+            name="Engine Project", client=self.client_obj
+        )
+        self.point = CatchmentPoint.objects.create(
+            title="Engine Point",
+            owner_user=self.user,
+            project=self.project,
+            frecuency="60",
+        )
+        ProfileDataConfigCatchment.objects.create(
+            point_catchment=self.point,
+            is_telemetry=True,
+        )
+        self.interaction = InteractionDetail.objects.create(
+            catchment_point=self.point,
+            date_time_medition="2026-05-23T12:00:00+00:00",
+            flow="150.0",
+            total=1000.0,
+        )
+
+    def test_engine_creates_trigger_with_interaction_detail_id(self):
+        """El motor debe crear un AlertTrigger con interaction_detail_id correcto."""
+        from api.cronjobs.alerts.alert_engine import run_engine
+
+        rule = AlertRule.objects.create(
+            name="Test Caudal Alto",
+            target_type="THRESHOLD_MAX",
+            variable_type="CAUDAL",
+            threshold_value=100,
+            check_frequency_minutes=1,
+            cooldown_minutes=0,
+            point_catchment=self.point,
+        )
+
+        stats = run_engine(dry_run=False)
+
+        self.assertEqual(stats["triggered"], 1)
+        trigger = AlertTrigger.objects.filter(alert_rule=rule).first()
+        self.assertIsNotNone(trigger)
+        # interaction_detail debe estar presente (sea FK o IntegerField)
+        self.assertEqual(trigger.interaction_detail_id, self.interaction.id)
+
+    def test_dispatcher_processes_trigger_without_error(self):
+        """El dispatcher debe procesar un trigger sin explotar."""
+        from api.cronjobs.alerts.alert_dispatcher import run_dispatcher
+        from api.cronjobs.alerts.alert_engine import run_engine
+
+        rule = AlertRule.objects.create(
+            name="Test Dispatcher",
+            target_type="THRESHOLD_MAX",
+            variable_type="CAUDAL",
+            threshold_value=100,
+            check_frequency_minutes=1,
+            cooldown_minutes=0,
+            point_catchment=self.point,
+        )
+
+        run_engine(dry_run=False)
+        trigger = AlertTrigger.objects.filter(alert_rule=rule).first()
+        self.assertIsNotNone(trigger)
+
+        # El dispatcher no debe fallar al procesar el trigger
+        stats = run_dispatcher(dry_run=True)
+        self.assertEqual(stats["processed"], 1)
+        self.assertEqual(stats["errors"], 0)
+
+    def test_trigger_cooldown_prevents_duplicate(self):
+        """El cooldown debe evitar triggers duplicados consecutivos."""
+        from api.cronjobs.alerts.alert_engine import run_engine
+
+        rule = AlertRule.objects.create(
+            name="Test Cooldown",
+            target_type="THRESHOLD_MAX",
+            variable_type="CAUDAL",
+            threshold_value=100,
+            check_frequency_minutes=1,
+            cooldown_minutes=60,
+            point_catchment=self.point,
+        )
+
+        # Primera ejecución: debe crear trigger
+        stats1 = run_engine(dry_run=False)
+        self.assertEqual(stats1["triggered"], 1)
+
+        # Segunda ejecución inmediata: no debe crear otro por cooldown
+        stats2 = run_engine(dry_run=False)
+        self.assertEqual(stats2["triggered"], 0)

@@ -88,7 +88,7 @@
 {% block extrajs %}
 {{ block.super }}
 {% if charts_data %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script src="{% static 'vendor/chartjs/chart.min.js' %}"></script>
 <script>
     (function () {
     // Datos de los gráficos desde el contexto

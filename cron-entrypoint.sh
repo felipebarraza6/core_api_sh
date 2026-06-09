@@ -29,7 +29,7 @@ if [ -d /tmp/smarthydro ] && [ ! -L /tmp/smarthydro ]; then
 fi
 ln -sfn /var/log/smarthydro /tmp/smarthydro
 : > /tmp/smarthydro/django.log || true
-for f in twin_1 twin_5 twin_60 nettra_5 nettra_60 novus_60 dga sma alerts cluster_backup; do
+for f in unified_twin_1 unified_twin_5 unified_twin_60 unified_nettra_60 unified_novus_60 dga sma alert_engine alert_dispatcher space_backup daily_bulletin daily_chat_report daily_active_tickets dga_mayor_hourly; do
   touch "/tmp/smarthydro/${f}.log"
 done
 

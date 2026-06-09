@@ -9,5 +9,12 @@ from .catchment_points import (Client, ProjectCatchments, CatchmentPoint,
                                ResponseNotificationsCatchment, TypeFileCatchment,
                                FileCatchment, ProfileDataConfigCatchment,
                                DgaDataConfigCatchment, SchemesCatchment,
-                               Variable,  RegisterPersons)
+                               Variable,  RegisterPersons, CounterResetLog)
 from .alerts import AlertRule, AlertChannel, AlertTrigger, SystemEvent
+from .tickets import (
+    SLAConfig,
+    SupportTicket,
+    TicketComment,
+    TicketAttachment,
+    TicketActivityLog,
+)

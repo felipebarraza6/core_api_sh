@@ -10,6 +10,8 @@ from datetime import datetime
 import pytz
 
 from api.core.models import CatchmentPoint, InteractionDetail, ProjectCatchments
+from django.db.models import Sum, Avg, Max, Min, Count
+from django.db.models.functions import TruncDate
 from api.core.reports.excel_generator import (
     generate_excel_by_project,
     generate_excel_by_point,
@@ -19,6 +21,7 @@ from api.core.reports.excel_generator import (
 )
 
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
+from drf_spectacular.utils import extend_schema, extend_schema_view
 
 
 class ActiveCatchmentPointsReportView(APIView):
@@ -146,16 +149,21 @@ class ActiveCatchmentPointsReportView(APIView):
         return response
 
 
+@extend_schema_view(
+    by_project=extend_schema(summary="Excel por proyecto", description="Análisis de telemetría agregado por proyecto. Query: project_id."),
+    by_point=extend_schema(summary="Excel por punto", description="Análisis de telemetría por punto y período. Query: point_id, year, month."),
+    last_month=extend_schema(summary="Excel último mes", description="Datos del mes anterior para múltiples puntos. Query: project_id, point_ids."),
+    last_year=extend_schema(summary="Excel último año", description="Datos del año anterior para múltiples puntos. Query: project_id, point_ids."),
+    annual_compressed=extend_schema(summary="Excel anual comprimido", description="Resumen anual comprimido por punto. Query: project_id, point_ids."),
+    json_by_project=extend_schema(summary="JSON por proyecto", description="Resumen de últimos 30 días por punto. Query: project_id, point_ids."),
+    json_by_point=extend_schema(summary="JSON por punto", description="Datos diarios agregados por punto. Query: point_id, year, month."),
+    json_last_month=extend_schema(summary="JSON último mes", description="Datos del mes anterior por punto. Query: project_id, point_ids."),
+    json_last_year=extend_schema(summary="JSON último año", description="Datos del año anterior por punto. Query: project_id, point_ids."),
+    json_annual_compressed=extend_schema(summary="JSON anual comprimido", description="Resumen anual por punto. Query: project_id, point_ids."),
+)
 class ReportsGenerationViewSet(viewsets.ViewSet):
     """
-    ViewSet para generar reportes Excel y PDF desde el frontend.
-
-    Endpoints:
-    - GET /api/reports/by-project/?project_id=1
-    - GET /api/reports/by-point/?point_id=1&year=2025&month=5
-    - GET /api/reports/last-month/?project_id=1
-    - GET /api/reports/last-year/?project_id=1
-    - GET /api/reports/annual-compressed/?project_id=1
+    ViewSet para generar reportes Excel y JSON desde el frontend.
     """
     permission_classes = [IsAuthenticated]
 
@@ -241,8 +249,14 @@ class ReportsGenerationViewSet(viewsets.ViewSet):
         year = request.query_params.get('year')
         month = request.query_params.get('month')
 
-        year = int(year) if year else None
-        month = int(month) if month else None
+        try:
+            year = int(year) if year else None
+        except (ValueError, TypeError):
+            year = None
+        try:
+            month = int(month) if month else None
+        except (ValueError, TypeError):
+            month = None
 
         buffer = generate_excel_by_point(point, year=year, month=month)
         return self._excel_response(
@@ -264,7 +278,10 @@ class ReportsGenerationViewSet(viewsets.ViewSet):
 
         point_ids = None
         if point_ids_str:
-            point_ids = [int(x.strip()) for x in point_ids_str.split(',') if x.strip()]
+            try:
+                point_ids = [int(x.strip()) for x in point_ids_str.split(',') if x.strip()]
+            except (ValueError, TypeError):
+                point_ids = None
 
         points = self._get_points(project_id=project_id, point_ids=point_ids)
         if not points:
@@ -300,7 +317,10 @@ class ReportsGenerationViewSet(viewsets.ViewSet):
 
         point_ids = None
         if point_ids_str:
-            point_ids = [int(x.strip()) for x in point_ids_str.split(',') if x.strip()]
+            try:
+                point_ids = [int(x.strip()) for x in point_ids_str.split(',') if x.strip()]
+            except (ValueError, TypeError):
+                point_ids = None
 
         points = self._get_points(project_id=project_id, point_ids=point_ids)
         if not points:
@@ -336,7 +356,10 @@ class ReportsGenerationViewSet(viewsets.ViewSet):
 
         point_ids = None
         if point_ids_str:
-            point_ids = [int(x.strip()) for x in point_ids_str.split(',') if x.strip()]
+            try:
+                point_ids = [int(x.strip()) for x in point_ids_str.split(',') if x.strip()]
+            except (ValueError, TypeError):
+                point_ids = None
 
         points = self._get_points(project_id=project_id, point_ids=point_ids)
         if not points:
@@ -357,3 +380,208 @@ class ReportsGenerationViewSet(viewsets.ViewSet):
             buffer,
             f"reporte_anual_comprimido_{datetime.now().strftime('%Y%m%d')}.xlsx"
         )
+
+    # =========================================================================
+    # JSON REPORTS (para frontend)
+    # =========================================================================
+
+    def _get_point_ids_from_params(self, request):
+        """Extrae point_ids de query params."""
+        project_id = request.query_params.get('project_id')
+        point_ids_str = request.query_params.get('point_ids')
+        point_ids = None
+        if point_ids_str:
+            try:
+                point_ids = [int(x.strip()) for x in point_ids_str.split(',') if x.strip()]
+            except (ValueError, TypeError):
+                point_ids = None
+        points = self._get_points(project_id=project_id, point_ids=point_ids)
+        return project_id, points
+
+    def _json_response(self, data):
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='json/by-project')
+    def json_by_project(self, request):
+        """Reporte JSON por proyecto: resumen de cada punto (últimos 30 días)."""
+        project_id, points = self._get_point_ids_from_params(request)
+        if not points:
+            return Response({'error': 'No hay puntos'}, status=status.HTTP_404_NOT_FOUND)
+
+        from django.utils import timezone
+        from datetime import timedelta
+        cutoff = timezone.now() - timedelta(days=30)
+        point_ids = [p.id for p in points]
+
+        # Agregados por punto
+        aggregates = (
+            InteractionDetail.objects
+            .filter(catchment_point_id__in=point_ids, date_time_medition__gte=cutoff)
+            .values('catchment_point_id', 'catchment_point__title')
+            .annotate(
+                total_consumo=Sum('total_diff'),
+                caudal_promedio=Avg('flow'),
+                caudal_max=Max('flow'),
+                nivel_promedio=Avg('nivel'),
+                ultima_medicion=Max('date_time_medition'),
+                registros=Count('id'),
+            )
+            .order_by('catchment_point_id')
+        )
+
+        return self._json_response(list(aggregates))
+
+    @action(detail=False, methods=['get'], url_path='json/by-point')
+    def json_by_point(self, request):
+        """Reporte JSON por punto: datos diarios agregados."""
+        point_id = request.query_params.get('point_id')
+        if not point_id:
+            return Response({'error': 'point_id es requerido'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            point = CatchmentPoint.objects.get(id=point_id)
+        except CatchmentPoint.DoesNotExist:
+            return Response({'error': 'Punto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            year = int(request.query_params.get('year', timezone.now().year))
+        except (ValueError, TypeError):
+            year = timezone.now().year
+        month = request.query_params.get('month')
+
+        try:
+            month_int = int(month) if month else None
+        except (ValueError, TypeError):
+            month_int = None
+
+        qs = InteractionDetail.objects.filter(
+            catchment_point=point,
+            date_time_medition__year=year,
+        )
+        if month_int:
+            qs = qs.filter(date_time_medition__month=month_int)
+
+        daily = (
+            qs.annotate(dia=TruncDate('date_time_medition'))
+            .values('dia')
+            .annotate(
+                consumo=Sum('total_diff'),
+                caudal_promedio=Avg('flow'),
+                caudal_max=Max('flow'),
+                nivel_promedio=Avg('nivel'),
+                total=Max('total'),
+                registros=Count('id'),
+            )
+            .order_by('dia')
+        )
+
+        return self._json_response({
+            'point_id': point.id,
+            'point_title': point.title,
+            'year': year,
+            'month': month_int,
+            'daily_data': list(daily),
+        })
+
+    @action(detail=False, methods=['get'], url_path='json/last-month')
+    def json_last_month(self, request):
+        """Reporte JSON del último mes completo por punto."""
+        project_id, points = self._get_point_ids_from_params(request)
+        if not points:
+            return Response({'error': 'No hay puntos'}, status=status.HTTP_404_NOT_FOUND)
+
+        from django.utils import timezone
+        from datetime import timedelta
+        today = timezone.now().date()
+        first_day_this_month = today.replace(day=1)
+        last_day_last_month = first_day_this_month - timedelta(days=1)
+        first_day_last_month = last_day_last_month.replace(day=1)
+
+        point_ids = [p.id for p in points]
+        daily = (
+            InteractionDetail.objects
+            .filter(
+                catchment_point_id__in=point_ids,
+                date_time_medition__date__gte=first_day_last_month,
+                date_time_medition__date__lte=last_day_last_month,
+            )
+            .annotate(dia=TruncDate('date_time_medition'))
+            .values('catchment_point_id', 'catchment_point__title', 'dia')
+            .annotate(
+                consumo=Sum('total_diff'),
+                caudal_promedio=Avg('flow'),
+                caudal_max=Max('flow'),
+                nivel_promedio=Avg('nivel'),
+                registros=Count('id'),
+            )
+            .order_by('catchment_point_id', 'dia')
+        )
+
+        return self._json_response(list(daily))
+
+    @action(detail=False, methods=['get'], url_path='json/last-year')
+    def json_last_year(self, request):
+        """Reporte JSON del último año completo por punto (mensual)."""
+        project_id, points = self._get_point_ids_from_params(request)
+        if not points:
+            return Response({'error': 'No hay puntos'}, status=status.HTTP_404_NOT_FOUND)
+
+        from django.utils import timezone
+        today = timezone.now().date()
+        start_of_this_year = today.replace(month=1, day=1)
+        start_of_last_year = (start_of_this_year - timedelta(days=1)).replace(month=1, day=1)
+        end_of_last_year = start_of_this_year - timedelta(days=1)
+
+        point_ids = [p.id for p in points]
+        monthly = (
+            InteractionDetail.objects
+            .filter(
+                catchment_point_id__in=point_ids,
+                date_time_medition__date__gte=start_of_last_year,
+                date_time_medition__date__lte=end_of_last_year,
+            )
+            .values('catchment_point_id', 'catchment_point__title')
+            .annotate(
+                mes=TruncDate('date_time_medition'),
+                consumo=Sum('total_diff'),
+                caudal_promedio=Avg('flow'),
+                caudal_max=Max('flow'),
+                nivel_promedio=Avg('nivel'),
+                registros=Count('id'),
+            )
+            .order_by('catchment_point_id', 'mes')
+        )
+
+        return self._json_response(list(monthly))
+
+    @action(detail=False, methods=['get'], url_path='json/annual-compressed')
+    def json_annual_compressed(self, request):
+        """Reporte JSON anual comprimido: resumen por punto del año actual."""
+        project_id, points = self._get_point_ids_from_params(request)
+        if not points:
+            return Response({'error': 'No hay puntos'}, status=status.HTTP_404_NOT_FOUND)
+
+        from django.utils import timezone
+        today = timezone.now().date()
+        start_of_year = today.replace(month=1, day=1)
+
+        point_ids = [p.id for p in points]
+        summary = (
+            InteractionDetail.objects
+            .filter(
+                catchment_point_id__in=point_ids,
+                date_time_medition__date__gte=start_of_year,
+            )
+            .values('catchment_point_id', 'catchment_point__title')
+            .annotate(
+                consumo_total=Sum('total_diff'),
+                caudal_promedio=Avg('flow'),
+                caudal_maximo=Max('flow'),
+                nivel_promedio=Avg('nivel'),
+                ultima_medicion=Max('date_time_medition'),
+                registros=Count('id'),
+            )
+            .order_by('catchment_point_id')
+        )
+
+        return self._json_response(list(summary))

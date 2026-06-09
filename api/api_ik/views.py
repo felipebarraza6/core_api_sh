@@ -13,7 +13,7 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 from django.db.models import (
-    OuterRef, Subquery, Count, Q, Prefetch
+    Count, Q, Prefetch
 )
 
 from api.core.models import (
@@ -21,12 +21,18 @@ from api.core.models import (
     CatchmentPoint,
     InteractionDetail,
     ProfileDataConfigCatchment,
+    ProfileIkoluCatchment,
     DgaDataConfigCatchment,
     NotificationsCatchment,
     SchemesCatchment,
     Variable,
+    CounterResetLog,
 )
-from .throttles import LoginRateThrottle
+from api.core.models.alerts import AlertRule, SystemEvent
+from .throttles import (
+    LoginRateThrottle, BatchRateThrottle, SummaryRateThrottle,
+    DashboardRateThrottle, PublicReadRateThrottle,
+)
 
 
 class OptimizedLoginView(APIView):
@@ -124,13 +130,9 @@ class PointsSummaryView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    throttle_classes = [SummaryRateThrottle]
     def get(self, request):
         user = request.user
-
-        # Subquery: última InteractionDetail por punto
-        latest_interaction = InteractionDetail.objects.filter(
-            catchment_point=OuterRef('pk')
-        ).order_by('-date_time_medition')
 
         # Queryset optimizado
         # Staff/superuser ven todos los puntos; usuarios normales solo los suyos
@@ -167,23 +169,34 @@ class PointsSummaryView(APIView):
                     )
                 )
             ),
+            Prefetch(
+                'interactiondetail_set',
+                queryset=InteractionDetail.objects.order_by('-date_time_medition')[:1],
+                to_attr='latest_interaction'
+            ),
         ).annotate(
-            latest_flow=Subquery(latest_interaction.values('flow')[:1]),
-            latest_total=Subquery(latest_interaction.values('total')[:1]),
-            latest_nivel=Subquery(latest_interaction.values('nivel')[:1]),
-            latest_water_table=Subquery(latest_interaction.values('water_table')[:1]),
-            latest_is_error=Subquery(latest_interaction.values('is_error')[:1]),
-            latest_days_not_conection=Subquery(latest_interaction.values('days_not_conection')[:1]),
-            latest_date_time_medition=Subquery(latest_interaction.values('date_time_medition')[:1]),
-            latest_variable_values=Subquery(latest_interaction.values('variable_values')[:1]),
             alerts_count=Count('notifications', filter=Q(notifications__is_active=True)),
         )
+
+        # ── Conteo de alertas del nuevo subsistema por punto ──
+        point_ids = [p.id for p in points]
+        alert_rule_counts = {
+            item['point_catchment']: item['count']
+            for item in AlertRule.objects.filter(
+                point_catchment_id__in=point_ids,
+                is_active=True,
+                legacy_notification_id__isnull=True,
+            ).values('point_catchment').annotate(count=Count('id'))
+        }
+
+        points_list = list(points)
+        total_count = len(points_list)
 
         points_data = []
         active_points = 0
         points_with_alerts = 0
 
-        for p in points:
+        for p in points_list:
             # Config data (telemetry)
             config = p.data_config_profiles.first()
             is_telemetry = config.is_telemetry if config else False
@@ -209,23 +222,25 @@ class PointsSummaryView(APIView):
             elif p.is_novus:
                 provider = 'novus'
 
-            # Última telemetría
+            # Última telemetría (precargada vía Prefetch)
+            li = p.latest_interaction[0] if p.latest_interaction else None
             latest = {
-                'date_time_medition': p.latest_date_time_medition.isoformat() if p.latest_date_time_medition else None,
-                'flow': str(p.latest_flow) if p.latest_flow is not None else None,
-                'total': p.latest_total,
-                'nivel': str(p.latest_nivel) if p.latest_nivel is not None else None,
-                'water_table': str(p.latest_water_table) if p.latest_water_table is not None else None,
-                'is_error': p.latest_is_error if p.latest_is_error is not None else False,
-                'days_not_connection': p.latest_days_not_conection if p.latest_days_not_conection is not None else 0,
-                'variable_values': p.latest_variable_values or {},
+                'date_time_medition': li.date_time_medition.isoformat() if li and li.date_time_medition else None,
+                'flow': str(li.flow) if li and li.flow is not None else None,
+                'total': li.total if li else None,
+                'nivel': str(li.nivel) if li and li.nivel is not None else None,
+                'water_table': str(li.water_table) if li and li.water_table is not None else None,
+                'is_error': li.is_error if li and li.is_error is not None else False,
+                'days_not_connection': li.days_not_conection if li and li.days_not_conection is not None else 0,
+                'variable_values': li.variable_values if li else {},
             }
 
             # Activo: sin días de desconexión
-            is_active = (p.latest_days_not_conection == 0) if p.latest_days_not_conection is not None else True
+            total_alerts = p.alerts_count + alert_rule_counts.get(p.id, 0)
+            is_active = (li.days_not_conection == 0) if li and li.days_not_conection is not None else True
             if is_active:
                 active_points += 1
-            if p.alerts_count > 0:
+            if total_alerts > 0:
                 points_with_alerts += 1
 
             points_data.append({
@@ -249,15 +264,35 @@ class PointsSummaryView(APIView):
                     'send_dga': dga_config.send_dga if dga_config else False,
                 } if dga_config else None,
                 'latest_telemetry': latest,
-                'alerts_count': p.alerts_count,
+                'alerts_count': total_alerts,
             })
 
-        return Response({
+        # Paginación opcional (no rompe compatibilidad hacia atrás)
+        limit = request.query_params.get('limit')
+        offset = request.query_params.get('offset')
+        pagination_meta = None
+        if limit is not None:
+            try:
+                limit = min(int(limit), 200)
+                offset = max(int(offset or 0), 0)
+                points_data = points_data[offset:offset + limit]
+                pagination_meta = {
+                    'limit': limit,
+                    'offset': offset,
+                    'total': total_count,
+                }
+            except (ValueError, TypeError):
+                pass
+
+        response = {
             'points': points_data,
-            'total_points': len(points_data),
+            'total_points': total_count,
             'active_points': active_points,
             'points_with_alerts': points_with_alerts,
-        })
+        }
+        if pagination_meta:
+            response['meta'] = pagination_meta
+        return Response(response)
 
 
 class PointSummaryView(APIView):
@@ -269,6 +304,7 @@ class PointSummaryView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    throttle_classes = [SummaryRateThrottle]
     def get(self, request, point_id):
         user = request.user
 
@@ -307,47 +343,12 @@ class PointSummaryView(APIView):
                         )
                     )
                 ),
+                Prefetch(
+                    'interactiondetail_set',
+                    queryset=InteractionDetail.objects.order_by('-date_time_medition')[:1],
+                    to_attr='latest_interaction'
+                ),
             ).annotate(
-                latest_flow=Subquery(
-                    InteractionDetail.objects.filter(
-                        catchment_point=OuterRef('pk')
-                    ).order_by('-date_time_medition').values('flow')[:1]
-                ),
-                latest_total=Subquery(
-                    InteractionDetail.objects.filter(
-                        catchment_point=OuterRef('pk')
-                    ).order_by('-date_time_medition').values('total')[:1]
-                ),
-                latest_nivel=Subquery(
-                    InteractionDetail.objects.filter(
-                        catchment_point=OuterRef('pk')
-                    ).order_by('-date_time_medition').values('nivel')[:1]
-                ),
-                latest_water_table=Subquery(
-                    InteractionDetail.objects.filter(
-                        catchment_point=OuterRef('pk')
-                    ).order_by('-date_time_medition').values('water_table')[:1]
-                ),
-                latest_is_error=Subquery(
-                    InteractionDetail.objects.filter(
-                        catchment_point=OuterRef('pk')
-                    ).order_by('-date_time_medition').values('is_error')[:1]
-                ),
-                latest_days_not_conection=Subquery(
-                    InteractionDetail.objects.filter(
-                        catchment_point=OuterRef('pk')
-                    ).order_by('-date_time_medition').values('days_not_conection')[:1]
-                ),
-                latest_date_time_medition=Subquery(
-                    InteractionDetail.objects.filter(
-                        catchment_point=OuterRef('pk')
-                    ).order_by('-date_time_medition').values('date_time_medition')[:1]
-                ),
-                latest_variable_values=Subquery(
-                    InteractionDetail.objects.filter(
-                        catchment_point=OuterRef('pk')
-                    ).order_by('-date_time_medition').values('variable_values')[:1]
-                ),
                 alerts_count=Count('notifications', filter=Q(notifications__is_active=True)),
             ).get(id=point_id)
         except CatchmentPoint.DoesNotExist:
@@ -381,7 +382,14 @@ class PointSummaryView(APIView):
         elif point.is_novus:
             provider = 'novus'
 
-        is_active = (point.latest_days_not_conection == 0) if point.latest_days_not_conection is not None else True
+        li = point.latest_interaction[0] if point.latest_interaction else None
+        is_active = (li.days_not_conection == 0) if li and li.days_not_conection is not None else True
+
+        # ── Sumar alertas del nuevo subsistema ──
+        new_alerts = AlertRule.objects.filter(
+            point_catchment_id=point.id, is_active=True, legacy_notification_id__isnull=True
+        ).count()
+        total_alerts = point.alerts_count + new_alerts
 
         return Response({
             'id': point.id,
@@ -404,16 +412,16 @@ class PointSummaryView(APIView):
                 'send_dga': dga_config.send_dga if dga_config else False,
             } if dga_config else None,
             'latest_telemetry': {
-                'date_time_medition': point.latest_date_time_medition.isoformat() if point.latest_date_time_medition else None,
-                'flow': str(point.latest_flow) if point.latest_flow is not None else None,
-                'total': point.latest_total,
-                'nivel': str(point.latest_nivel) if point.latest_nivel is not None else None,
-                'water_table': str(point.latest_water_table) if point.latest_water_table is not None else None,
-                'is_error': point.latest_is_error if point.latest_is_error is not None else False,
-                'days_not_connection': point.latest_days_not_conection if point.latest_days_not_conection is not None else 0,
-                'variable_values': point.latest_variable_values or {},
+                'date_time_medition': li.date_time_medition.isoformat() if li and li.date_time_medition else None,
+                'flow': str(li.flow) if li and li.flow is not None else None,
+                'total': li.total if li else None,
+                'nivel': str(li.nivel) if li and li.nivel is not None else None,
+                'water_table': str(li.water_table) if li and li.water_table is not None else None,
+                'is_error': li.is_error if li and li.is_error is not None else False,
+                'days_not_connection': li.days_not_conection if li and li.days_not_conection is not None else 0,
+                'variable_values': li.variable_values if li else {},
             },
-            'alerts_count': point.alerts_count,
+            'alerts_count': total_alerts,
         })
 
 
@@ -442,6 +450,7 @@ class MyPointsView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    throttle_classes = [SummaryRateThrottle]
     def get(self, request):
         user = request.user
 
@@ -480,6 +489,18 @@ class MyPointsView(APIView):
                 'id', 'title', 'frecuency', 'project__name', 'project__client__name'
             )
             result = [_point_dict(p, True, False) for p in points]
+
+            # Paginación opcional (no rompe compatibilidad)
+            limit = request.query_params.get('limit')
+            offset = request.query_params.get('offset')
+            if limit is not None:
+                try:
+                    limit = min(int(limit), 200)
+                    offset = max(int(offset or 0), 0)
+                    result = result[offset:offset + limit]
+                except (ValueError, TypeError):
+                    pass
+
             return Response(result)
 
         # Usuarios normales: owner + viewer
@@ -523,6 +544,17 @@ class MyPointsView(APIView):
             if p.id not in owned_ids:
                 result.append(_point_dict(p, False, True))
 
+        # Paginación opcional (no rompe compatibilidad)
+        limit = request.query_params.get('limit')
+        offset = request.query_params.get('offset')
+        if limit is not None:
+            try:
+                limit = min(int(limit), 200)
+                offset = max(int(offset or 0), 0)
+                result = result[offset:offset + limit]
+            except (ValueError, TypeError):
+                pass
+
         return Response(result)
 
 
@@ -539,51 +571,49 @@ class DashboardStatsView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    throttle_classes = [DashboardRateThrottle]
     def get(self, request):
         user = request.user
         from django.utils import timezone
         from datetime import date, timedelta
+        from django.db.models import Avg, Sum
 
-        # Filtrar puntos según permisos
+        # Filtrar puntos según permisos (ordenados alfabéticamente por nombre)
         if user.is_staff or user.is_superuser:
-            point_ids = list(CatchmentPoint.objects.values_list('id', flat=True))
+            point_ids = list(
+                CatchmentPoint.objects.order_by('title').values_list('id', flat=True)
+            )
         else:
-            owned = list(user.owned_catchment_points.values_list('id', flat=True))
-            viewed = list(user.viewed_catchment_points.values_list('id', flat=True))
-            point_ids = list(set(owned + viewed))
+            owned_ids = set(
+                user.owned_catchment_points.values_list('id', flat=True)
+            )
+            viewed_ids = set(
+                user.viewed_catchment_points.values_list('id', flat=True)
+            )
+            all_ids = owned_ids | viewed_ids
+            point_ids = list(
+                CatchmentPoint.objects.filter(id__in=all_ids)
+                .order_by('title')
+                .values_list('id', flat=True)
+            )
 
         total_points = len(point_ids)
+        today = date.today()
 
         if total_points == 0:
             return Response({
-                'meta': {
-                    'date': str(date.today()),
-                    'date_formatted': self._format_date(date.today()),
-                    'generated_at': timezone.now().isoformat(),
-                    'timezone': str(timezone.get_default_timezone()),
-                },
                 'points': {
                     'total': 0,
                     'with_telemetry': 0,
-                    'without_telemetry': 0,
                     'with_gps': 0,
-                    'with_dga_compliance': 0,
+                    'with_compliance': 0,
                 },
-                'telemetry_today': {
+                'status_today': {
                     'connected': 0,
                     'disconnected': 0,
-                    'without_telemetry': 0,
                 },
-                'notifications': {
-                    'total_active': 0,
-                    'unread': 0,
-                    'by_type': {},
-                    'by_variable': {},
-                },
-                'dga_summary': {
-                    'by_type': {},
-                    'by_standard': {},
-                },
+                'last_7': {},
+                'chat_quota': get_chat_quota(request.user.id),
             })
 
         # Puntos base queryset
@@ -599,89 +629,239 @@ class DashboardStatsView(APIView):
             Q(lat__isnull=True) | Q(lat='') | Q(lon__isnull=True) | Q(lon='')
         ).count()
 
-        with_dga = DgaDataConfigCatchment.objects.filter(
-            point_catchment_id__in=point_ids,
-            send_dga=True
-        ).exclude(
-            Q(code_dga__isnull=True) | Q(code_dga='')
+        # Compliance = DGA o SMA configurado
+        with_compliance = DgaDataConfigCatchment.objects.filter(
+            Q(point_catchment_id__in=point_ids),
+            Q(send_dga=True) | Q(send_sma=True)
+        ).filter(
+            Q(send_dga=True, code_dga__isnull=False, code_dga__gt='') |
+            Q(send_sma=True, sma_device_id__isnull=False, sma_device_id__gt='')
         ).values('point_catchment_id').distinct().count()
 
-        # --- Telemetry hoy ---
-        today = date.today()
-        yesterday = today - timedelta(days=1)
-
-        # Puntos con registros hoy
+        # --- Status hoy ---
         connected_today = InteractionDetail.objects.filter(
             catchment_point_id__in=point_ids,
             date_time_medition__date=today
         ).values('catchment_point_id').distinct().count()
 
-        # Puntos sin telemetría
-        without_telemetry = total_points - with_telemetry
-
-        # Puntos con telemetría pero sin datos hoy = disconnected
         disconnected_today = max(0, with_telemetry - connected_today)
 
-        # --- Notificaciones (solo de los puntos del usuario) ---
-        notifications_qs = NotificationsCatchment.objects.filter(
-            point_catchment_id__in=point_ids
+        # --- Últimos 7 días: por punto, con consumo, caudal y nivel ---
+        # Precalcular profiles d1/d3, telemetry flags y form flags en una sola query
+        profiles_map = {
+            p.point_catchment_id: p
+            for p in ProfileDataConfigCatchment.objects.filter(point_catchment_id__in=point_ids)
+        }
+
+        telemetry_point_ids = set(
+            ProfileDataConfigCatchment.objects.filter(
+                point_catchment_id__in=point_ids,
+                is_telemetry=True,
+            ).values_list('point_catchment_id', flat=True)
         )
 
-        total_active = notifications_qs.filter(is_active=True).count()
-        unread = notifications_qs.filter(is_read=False).count()
+        form_point_ids = set(
+            ProfileIkoluCatchment.objects.filter(
+                point_catchment_id__in=point_ids,
+                entry_by_form=True,
+            ).values_list('point_catchment_id', flat=True)
+        )
 
-        by_type = {
-            item['type_notification']: item['count']
-            for item in notifications_qs.filter(is_active=True).values('type_notification').annotate(count=Count('id'))
-        }
+        # Precalcular qué variables tiene cada punto (caudal / nivel)
+        point_vars = {}
+        for cp in CatchmentPoint.objects.filter(id__in=point_ids):
+            schemes = SchemesCatchment.objects.filter(points_catchment=cp)
+            var_types = set(
+                Variable.objects.filter(scheme_catchment__in=schemes)
+                .values_list('type_variable', flat=True)
+            )
+            profile = profiles_map.get(cp.id)
+            d1_val = profile.d1 if profile else None
+            d3_val = profile.d3 if profile else None
+            point_vars[cp.id] = {
+                'point_id': cp.id,
+                'title': cp.title,
+                'is_telemetry': cp.id in telemetry_point_ids,
+                'is_form': cp.id in form_point_ids,
+                'created_at': cp.created.isoformat() if hasattr(cp, 'created') and cp.created else None,
+                'has_flow': any(v.upper() in ('CAUDAL', 'CAUDAL_PROMEDIO') for v in var_types),
+                'has_level': any(v.upper() == 'NIVEL' for v in var_types),
+                'variables': sorted(list(var_types)),
+                'd1': float(d1_val) if d1_val is not None and d1_val > 0 else None,
+                'd3': float(d3_val) if d3_val is not None and d3_val > 0 else None,
+            }
 
-        by_variable = {
-            item['type_variable']: item['count']
-            for item in notifications_qs.filter(is_active=True).values('type_variable').annotate(count=Count('id'))
-        }
+        # Traer TODOS los registros de los últimos 7 días en UNA sola query
+        start_date = today - timedelta(days=6)
+        week_records = InteractionDetail.objects.filter(
+            catchment_point_id__in=point_ids,
+            date_time_medition__date__gte=start_date,
+            date_time_medition__date__lte=today,
+        ).exclude(
+            is_error=True
+        ).values(
+            'catchment_point_id', 'date_time_medition', 'total', 'total_diff', 'flow', 'water_table'
+        )
 
-        # --- DGA summary ---
-        dga_qs = DgaDataConfigCatchment.objects.filter(point_catchment_id__in=point_ids)
+        from collections import defaultdict
+        by_point_date = defaultdict(list)
+        for r in week_records:
+            pid = r['catchment_point_id']
+            # ✅ FIX: Usar fecha local (Santiago) para que coincida con el filtro de BD
+            d = timezone.localdate(r['date_time_medition'])
+            by_point_date[(pid, d)].append(r)
 
-        by_dga_type = {
-            item['type_dga']: item['count']
-            for item in dga_qs.values('type_dga').annotate(count=Count('id'))
-        }
+        last_7 = {}
+        for pid in point_ids:
+            pv = point_vars[pid]
+            days = []
+            all_flows = []
+            all_levels = []
+            total_m3 = 0.0
+            total_measurements_week = 0
 
-        by_standard = {
-            item['standard']: item['count']
-            for item in dga_qs.values('standard').annotate(count=Count('id'))
-        }
+            for i in range(6, -1, -1):  # Del más antiguo al más reciente
+                d = today - timedelta(days=i)
+                day_records = by_point_date.get((pid, d), [])
+
+                if day_records:
+                    day_records.sort(key=lambda x: x['date_time_medition'])
+                    mcount = len(day_records)
+                    total_measurements_week += mcount
+
+                    # Consumo diario = suma de diffs horarios (consistente con reportes y calendario)
+                    # Es más robusto que last_total - first_total porque maneja resets de contador.
+                    consumo = sum(
+                        float(r['total_diff'] or 0) for r in day_records
+                        if r['total_diff'] is not None
+                    )
+                    total_m3 += consumo
+
+                    day_data = {
+                        'date': str(d),
+                        'consumption': round(consumo, 2),
+                        'measurements_count': mcount,
+                        'has_data': True,
+                    }
+
+                    if pv['has_flow']:
+                        flows = [max(0.0, float(r['flow'])) for r in day_records if r['flow'] is not None]
+                        avg_f = sum(flows) / len(flows) if flows else 0.0
+                        day_data['avg_flow'] = round(avg_f, 2)
+                        all_flows.extend(flows)
+                    else:
+                        day_data['avg_flow'] = None
+
+                    if pv['has_level']:
+                        levels = [max(0.0, float(r['water_table'])) for r in day_records if r['water_table'] is not None]
+                        avg_l = sum(levels) / len(levels) if levels else 0.0
+                        day_data['avg_level'] = round(avg_l, 2)
+                        all_levels.extend(levels)
+                    else:
+                        day_data['avg_level'] = None
+
+                    days.append(day_data)
+                else:
+                    days.append({
+                        'date': str(d),
+                        'consumption': 0.0,
+                        'measurements_count': 0,
+                        'has_data': False,
+                        'avg_flow': None,
+                        'avg_level': None,
+                    })
+
+            # Si ya existe un punto con el mismo título, solo reemplazar si el nuevo tiene más datos
+            existing = last_7.get(pv['title'])
+            if existing is None or total_measurements_week > existing['total_measurements_week']:
+                last_7[pv['title']] = {
+                    'point_id': pv['point_id'],
+                    'title': pv['title'],
+                    'is_telemetry': pv['is_telemetry'],
+                    'is_form': pv['is_form'],
+                    'created_at': pv['created_at'],
+                    'variables': pv['variables'],
+                    'd1': pv['d1'],
+                    'd3': pv['d3'],
+                    'total_m3': round(total_m3, 2),
+                    'total_measurements_week': total_measurements_week,
+                    'avg_flow_week': round(sum(all_flows) / len(all_flows), 2) if all_flows else None,
+                    'avg_level_week': round(sum(all_levels) / len(all_levels), 2) if all_levels else None,
+                    'days': days,
+                }
+
+        # --- Warnings / actividad reciente últimos 7 días (por punto) ---
+        week_ago = today - timedelta(days=7)
+
+        # Traer todos los resets y eventos del sistema de TODOS los puntos en solo 2 queries
+        all_resets = CounterResetLog.objects.filter(
+            point_catchment_id__in=point_ids,
+            created__date__gte=week_ago,
+        ).order_by('-created')
+
+        all_system_events = SystemEvent.objects.filter(
+            point_catchment_id__in=point_ids,
+            severity__in=['WARNING', 'CRITICAL'],
+            created__date__gte=week_ago,
+        ).order_by('-created')
+
+        by_point_resets = defaultdict(list)
+        for r in all_resets:
+            by_point_resets[r.point_catchment_id].append(r)
+
+        by_point_events = defaultdict(list)
+        for e in all_system_events:
+            by_point_events[e.point_catchment_id].append(e)
+
+        # Inyectar warnings dentro de cada día en last_7
+        for pid in point_ids:
+            pv = point_vars[pid]
+            point_warnings = []
+
+            for r in by_point_resets.get(pid, []):
+                msg = r.get_reset_type_display() or r.reset_type
+                if r.total_before is not None:
+                    msg += f" (total: {r.total_before})"
+                point_warnings.append({
+                    'time': r.created.isoformat() if r.created else None,
+                    'date': timezone.localdate(r.created),
+                    'type': 'Reinicio de contador',
+                    'severity': 'Advertencia',
+                    'message': msg,
+                })
+
+            for e in by_point_events.get(pid, []):
+                point_warnings.append({
+                    'time': e.created.isoformat() if e.created else None,
+                    'date': timezone.localdate(e.created),
+                    'type': e.get_event_type_display() or e.event_type,
+                    'severity': e.get_severity_display() or e.severity,
+                    'message': e.message or e.title,
+                })
+
+            # Asignar a cada día los warnings de esa fecha
+            for day in last_7[pv['title']]['days']:
+                d = date.fromisoformat(day['date'])
+                day_warnings = [w for w in point_warnings if w['date'] == d]
+                day_warnings.sort(key=lambda x: x['time'] or '', reverse=True)
+                # Limpiar campo auxiliar 'date' antes de enviar
+                day['warnings'] = [{k: v for k, v in w.items() if k != 'date'} for w in day_warnings]
+
+        chat_quota = get_chat_quota(request.user.id)
 
         return Response({
-            'meta': {
-                'date': str(today),
-                'date_formatted': self._format_date(today),
-                'generated_at': timezone.now().isoformat(),
-                'timezone': str(timezone.get_default_timezone()),
-            },
             'points': {
                 'total': total_points,
                 'with_telemetry': with_telemetry,
-                'without_telemetry': without_telemetry,
                 'with_gps': with_gps,
-                'with_dga_compliance': with_dga,
+                'with_compliance': with_compliance,
             },
-            'telemetry_today': {
+            'status_today': {
                 'connected': connected_today,
                 'disconnected': disconnected_today,
-                'without_telemetry': without_telemetry,
             },
-            'notifications': {
-                'total_active': total_active,
-                'unread': unread,
-                'by_type': by_type,
-                'by_variable': by_variable,
-            },
-            'dga_summary': {
-                'by_type': by_dga_type,
-                'by_standard': by_standard,
-            },
+            'last_7': last_7,
+            'chat_quota': chat_quota,
         })
 
     def _format_date(self, d):
@@ -710,6 +890,7 @@ class PointCalendarView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    throttle_classes = [DashboardRateThrottle]
     def get(self, request, point_id):
         user = request.user
         from django.utils import timezone
@@ -857,6 +1038,7 @@ class PublicAnnouncementsView(APIView):
     """
     permission_classes = [AllowAny]
 
+    throttle_classes = [PublicReadRateThrottle]
     def get(self, request):
         from django.utils import timezone
         from datetime import date
@@ -927,6 +1109,7 @@ class PointVariablesView(APIView):
     }
     """
     permission_classes = [IsAuthenticated]
+    throttle_classes = [SummaryRateThrottle]
 
     def get(self, request, point_id):
         user = request.user
@@ -981,4 +1164,511 @@ class PointVariablesView(APIView):
             "point_title": point.title,
             "variables": variables_data,
             "mapping": mapping,
+        })
+
+
+import json
+import os
+import logging
+from datetime import timedelta
+from django.conf import settings
+from django.utils import timezone
+from rest_framework import serializers
+
+logger = logging.getLogger(__name__)
+
+CHAT_DAILY_LIMIT = 12
+
+
+def get_chat_quota(user_id: int) -> dict:
+    """Obtiene la cuota diaria de chat para un usuario."""
+    try:
+        from django_redis import get_redis_connection
+        con = get_redis_connection("default")
+        today = timezone.now().strftime("%Y-%m-%d")
+        key = f"chat_daily_limit:{user_id}:{today}"
+        used = int(con.get(key) or 0)
+        return {
+            "limit": CHAT_DAILY_LIMIT,
+            "used": used,
+            "remaining": max(0, CHAT_DAILY_LIMIT - used),
+        }
+    except Exception:
+        return {"limit": CHAT_DAILY_LIMIT, "used": 0, "remaining": CHAT_DAILY_LIMIT}
+
+
+class ClientStatsChatSerializer(serializers.Serializer):
+    """Validador para el endpoint de chat con stats del cliente."""
+    message = serializers.CharField(required=True, min_length=1, max_length=2000)
+
+
+class ClientStatsChatView(APIView):
+    """
+    Endpoint de interpretación de datos para el cliente.
+
+    El backend calcula automáticamente los stats del dashboard del usuario
+    autenticado y usa Gemini para responder basándose estrictamente en esos datos.
+
+    POST /api/ik/chat/client/general_stats/
+    Body: {
+        "message": "¿Por qué P2 tiene 78601% de consumo?"
+    }
+    """
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [DashboardRateThrottle]
+
+    DAILY_LIMIT = CHAT_DAILY_LIMIT
+
+    def _check_daily_limit(self, user_id: int) -> tuple[bool, int]:
+        """Verifica si el usuario aún tiene preguntas disponibles hoy."""
+        quota = get_chat_quota(user_id)
+        used = quota["used"]
+        if used >= self.DAILY_LIMIT:
+            return False, used
+
+        try:
+            from django_redis import get_redis_connection
+            con = get_redis_connection("default")
+            today = timezone.now().strftime("%Y-%m-%d")
+            key = f"chat_daily_limit:{user_id}:{today}"
+            new_count = con.incr(key)
+            if new_count == 1:
+                con.expire(key, 86400)  # 24 horas
+            return True, int(new_count)
+        except Exception:
+            # Si Redis falla, no bloqueamos el servicio
+            return True, used
+
+    def _call_gemini(self, prompt: str) -> str:
+        """Llama a Gemini con el prompt construido."""
+        api_key = getattr(settings, 'GEMINI_API_KEY', os.environ.get('GEMINI_API_KEY'))
+        if not api_key:
+            return "Error de configuración: falta GEMINI_API_KEY. Contacta a soporte."
+
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-2.0-flash')
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.2,
+                    max_output_tokens=250,
+                ),
+            )
+            return response.text.strip()
+        except Exception as e:
+            logger.exception("Error llamando a Gemini en ClientStatsChatView")
+            return f"No pude procesar tu consulta en este momento. Error: {str(e)}"
+
+    def _build_prompt(self, stats: dict, message: str) -> str:
+        """Construye el prompt para Gemini enfocado en educación del cliente."""
+        stats_json = json.dumps(stats, indent=2, ensure_ascii=False, default=str)
+        return (
+            "Eres el asistente virtual de Ikolu (Centro de Control), especializado en telemetría hidrológica.\n"
+            "SmartHydro es el proveedor de telemetría y cumplimiento DGA; tú eres el asistente dentro de la app Ikolu.\n"
+            "Tu único objetivo es ayudar al usuario a entender mejor sus datos de telemetría.\n"
+            "NO eres un agente de soporte: NO realizas acciones, NO gestionas trámites y NO modificas configuraciones.\n"
+            "Solo respondes preguntas para mejorar la interpretación de los datos.\n\n"
+            "REGLAS IMPORTANTES:\n"
+            "- NO te presentes en cada mensaje. El usuario ya sabe quién eres. Ve directo a la respuesta.\n"
+            "- Si el usuario tiene un problema técnico o necesita gestión, indícale brevemente que escriba a soporte@smarthydro.cl.\n"
+            "- Prioriza la EDUCACIÓN: explica qué es cada variable (caudal, totalizador, nivel freático, pulsos, consumo, addition, resets, vouchers DGA, etc.).\n"
+            "- Usa lenguaje claro y accesible, como si le explicaras a alguien que no es experto pero necesita entender su operación.\n"
+            "- Relaciona los datos del cliente con los conceptos: 'tu caudal de 46.6 L/s significa que estás extrayendo...'\n"
+            "- Solo menciona problemas o alertas si el usuario pregunta específicamente por ellos o si sirven como ejemplo para explicar un concepto.\n"
+            "- NO hagas inventario de alertas. NO listes punto por punto.\n"
+            "- PROHIBIDO hacer listas con viñetas, asteriscos o numeración.\n"
+            "- Sé EXTREMADAMENTE conciso: máximo 2 oraciones cortas. Salvo que el usuario pida una explicación detallada, responde en una sola frase si es posible.\n"
+            "- No inventes datos. No halucines.\n\n"
+            f"DATOS DEL CLIENTE:\n```json\n{stats_json}\n```\n\n"
+            f"PREGUNTA DEL CLIENTE: {message}\n\n"
+            "Responde en español."
+        )
+
+    def post(self, request):
+        serializer = ClientStatsChatSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Datos inválidos", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Verificar límite diario de 12 preguntas
+        can_ask, used = self._check_daily_limit(request.user.id)
+        if not can_ask:
+            return Response(
+                {
+                    "error": "Has alcanzado el límite diario de 12 preguntas.",
+                    "limit": self.DAILY_LIMIT,
+                    "used": used,
+                    "reset_at": (timezone.now() + timedelta(days=1)).strftime("%Y-%m-%d"),
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        message = serializer.validated_data["message"].strip()
+
+        # Obtener stats directamente del dashboard (misma lógica, sin duplicar código)
+        dashboard_view = DashboardStatsView()
+        dashboard_response = dashboard_view.get(request)
+        stats = dashboard_response.data
+
+        prompt = self._build_prompt(stats, message)
+        response_text = self._call_gemini(prompt)
+
+        remaining = max(0, self.DAILY_LIMIT - used)
+
+        return Response({
+            "response": response_text,
+            "daily_limit": self.DAILY_LIMIT,
+            "used_today": used,
+            "remaining_today": remaining,
+            "timestamp": timezone.now().isoformat(),
+        }, status=status.HTTP_200_OK)
+
+
+class PointRecordsView(APIView):
+    """
+    Endpoint para obtener registros de telemetría de un punto en un rango de fechas.
+
+    GET /api/ik/point/<id>/records/?start_date=2026-05-25&end_date=2026-05-25&limit=100
+
+    Devuelve solo los campos esenciales para gráficos/tablas:
+    - date_time, flow, total, total_diff, nivel, water_table, is_error
+
+    - start_date / end_date: formato ISO (YYYY-MM-DD). Si no se envían, últimas 24h.
+    - limit: máximo 500 registros (default 100).
+    """
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [DashboardRateThrottle]
+
+    def get(self, request, point_id):
+        from datetime import date, timedelta
+        user = request.user
+
+        # Verificar permisos
+        if user.is_staff or user.is_superuser:
+            point_qs = CatchmentPoint.objects.all()
+        else:
+            point_qs = CatchmentPoint.objects.filter(
+                Q(owner_user=user) | Q(users_viewers=user)
+            ).distinct()
+
+        try:
+            point = point_qs.get(id=point_id)
+        except CatchmentPoint.DoesNotExist:
+            return Response(
+                {"error": "Punto no encontrado o sin permisos"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Parámetros de fecha
+        today = date.today()
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+
+        if start_date_str:
+            try:
+                start_date = date.fromisoformat(start_date_str)
+            except ValueError:
+                return Response({"error": "start_date inválido. Usa YYYY-MM-DD."}, status=400)
+        else:
+            start_date = today
+
+        if end_date_str:
+            try:
+                end_date = date.fromisoformat(end_date_str)
+            except ValueError:
+                return Response({"error": "end_date inválido. Usa YYYY-MM-DD."}, status=400)
+        else:
+            end_date = today
+
+        if start_date > end_date:
+            return Response({"error": "start_date no puede ser mayor que end_date."}, status=400)
+
+        # Límite de días (protección)
+        if (end_date - start_date).days > 31:
+            return Response({"error": "Rango máximo permitido: 31 días."}, status=400)
+
+        # Limit
+        try:
+            limit = int(request.query_params.get('limit', 100))
+            if limit < 1:
+                limit = 1
+            elif limit > 500:
+                limit = 500
+        except ValueError:
+            limit = 100
+
+        # Obtener addition del perfil para calcular total_raw (sin offset/addition)
+        # DGA requiere el total sin la corrección acumulada por resets
+        profile = ProfileDataConfigCatchment.objects.filter(point_catchment=point).first()
+        addition = float(profile.addition) if profile and profile.addition else 0.0
+
+        # Query optimizada
+        records = InteractionDetail.objects.filter(
+            catchment_point=point,
+            date_time_medition__date__gte=start_date,
+            date_time_medition__date__lte=end_date,
+        ).order_by('-date_time_medition')[:limit]
+
+        import pytz
+        chile_tz = pytz.timezone('America/Santiago')
+
+        data = []
+        for r in records:
+            total_raw = None
+            if r.total:
+                try:
+                    total_val = float(r.total)
+                    total_raw = round(total_val - addition, 2)
+                    if total_raw < 0:
+                        total_raw = 0
+                except (ValueError, TypeError):
+                    pass
+
+            # Convertir a zona horaria Chile
+            dt_chile = r.date_time_medition.astimezone(chile_tz) if r.date_time_medition else None
+            dt_logger_chile = r.date_time_last_logger.astimezone(chile_tz) if r.date_time_last_logger else None
+
+            data.append({
+                'date_time': dt_chile.isoformat() if dt_chile else None,
+                'date_time_last_logger': dt_logger_chile.isoformat() if dt_logger_chile else None,
+                'days_not_connection': r.days_not_conection,
+                'flow': float(r.flow) if r.flow is not None else None,
+                'total': r.total,
+                'total_raw': total_raw,
+                'total_diff': r.total_diff,
+                'pulses': r.pulses,
+                'nivel': float(r.nivel) if r.nivel is not None else None,
+                'water_table': float(r.water_table) if r.water_table is not None else None,
+                'is_error': r.is_error,
+            })
+
+        return Response({
+            'point_id': point.id,
+            'point_name': point.title,
+            'start_date': str(start_date),
+            'end_date': str(end_date),
+            'limit': limit,
+            'count': len(data),
+            'records': data,
+        }, status=status.HTTP_200_OK)
+
+
+class PointConfigView(APIView):
+    """
+    GET /api/ik/point/<id>/config/
+    Devuelve SOLO la config_data (d1-d6, addition, is_telemetry) de un punto.
+    Muy liviano, sin telemetría ni historial.
+    Auth: Token
+    """
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [DashboardRateThrottle]
+
+    def get(self, request, point_id):
+        user = request.user
+
+        # Verificar permisos
+        if user.is_staff or user.is_superuser:
+            point_qs = CatchmentPoint.objects.all()
+        else:
+            point_qs = CatchmentPoint.objects.filter(
+                Q(owner_user=user) | Q(users_viewers=user)
+            ).distinct()
+
+        try:
+            point = point_qs.get(id=point_id)
+        except CatchmentPoint.DoesNotExist:
+            return Response(
+                {"error": "Punto no encontrado o sin permisos"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Obtener profile config (d1-d6)
+        profile = ProfileDataConfigCatchment.objects.filter(point_catchment=point).first()
+
+        if not profile:
+            return Response(
+                {"error": "El punto no tiene configuración de perfil"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        data = {
+            "d1": str(profile.d1) if profile.d1 is not None else "0.00",
+            "d2": str(profile.d2) if profile.d2 is not None else "0.00",
+            "d3": str(profile.d3) if profile.d3 is not None else "0.00",
+            "d4": str(profile.d4) if profile.d4 is not None else "0.00",
+            "d5": str(profile.d5) if profile.d5 is not None else "0.00",
+        }
+
+        return Response(data)
+
+
+class SystemEventsSummaryView(APIView):
+    """
+    GET /api/ik/system-events/summary/
+
+    Resumen de eventos del sistema (SystemEvent) para informes y auditoría.
+    Staff ve todos los puntos; usuarios normales solo los suyos.
+
+    Query params:
+        - days: int (default 7) — días hacia atrás desde hoy
+        - point_id: int (opcional) — filtrar por punto específico
+
+    Response:
+    {
+        "period_days": 7,
+        "total_events": 45,
+        "by_severity": {"CRITICAL": 3, "WARNING": 20, "INFO": 22},
+        "by_type": {"MEASUREMENT_ERROR": 15, ...},
+        "by_point": [
+            {"point_id": 152, "point_title": "P2", "event_count": 12, "critical_count": 1, "warning_count": 8}
+        ],
+        "timeline": [
+            {"date": "2026-05-25", "count": 5, "by_type": {"MEASUREMENT_ERROR": 3}}
+        ],
+        "recent_events": [
+            {"id": 123, "event_type": "...", "title": "...", "severity": "...",
+             "created": "...", "point_id": 152, "point_title": "P2", "extra_data": {...}}
+        ]
+    }
+    """
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [DashboardRateThrottle]
+
+    def get(self, request):
+        from django.db.models.functions import TruncDate
+        from django.utils import timezone
+        from datetime import timedelta
+
+        user = request.user
+        days = int(request.query_params.get("days", 7))
+        point_id = request.query_params.get("point_id")
+
+        # Determinar puntos visibles
+        if user.is_staff or user.is_superuser:
+            visible_points = CatchmentPoint.objects.all()
+        else:
+            visible_points = CatchmentPoint.objects.filter(
+                Q(owner_user=user) | Q(users_viewers=user)
+            ).distinct()
+
+        visible_point_ids = list(visible_points.values_list("id", flat=True))
+        if not visible_point_ids:
+            return Response({
+                "period_days": days,
+                "total_events": 0,
+                "by_severity": {},
+                "by_type": {},
+                "by_point": [],
+                "timeline": [],
+                "recent_events": [],
+            })
+
+        # Filtro base de eventos
+        cutoff = timezone.now() - timedelta(days=days)
+        events_qs = SystemEvent.objects.filter(
+            created__gte=cutoff,
+            point_catchment_id__in=visible_point_ids,
+        )
+        if point_id:
+            try:
+                pid = int(point_id)
+                if pid in visible_point_ids:
+                    events_qs = events_qs.filter(point_catchment_id=pid)
+                else:
+                    return Response(
+                        {"error": "Punto no encontrado o sin permisos"},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        # Total
+        total_events = events_qs.count()
+
+        # Por severidad
+        by_severity = dict(
+            events_qs.values("severity")
+            .annotate(count=Count("id"))
+            .values_list("severity", "count")
+        )
+
+        # Por tipo
+        by_type = dict(
+            events_qs.values("event_type")
+            .annotate(count=Count("id"))
+            .values_list("event_type", "count")
+        )
+
+        # Por punto
+        by_point_raw = (
+            events_qs.values("point_catchment_id", "point_catchment__title")
+            .annotate(
+                event_count=Count("id"),
+                critical_count=Count("id", filter=Q(severity="CRITICAL")),
+                warning_count=Count("id", filter=Q(severity="WARNING")),
+            )
+            .order_by("-event_count")[:20]
+        )
+        by_point = [
+            {
+                "point_id": row["point_catchment_id"],
+                "point_title": row["point_catchment__title"] or f"Punto {row['point_catchment_id']}",
+                "event_count": row["event_count"],
+                "critical_count": row["critical_count"],
+                "warning_count": row["warning_count"],
+            }
+            for row in by_point_raw
+        ]
+
+        # Timeline (por día)
+        timeline_raw = (
+            events_qs.annotate(date=TruncDate("created"))
+            .values("date")
+            .annotate(count=Count("id"))
+            .order_by("date")
+        )
+        # También necesitamos conteos por tipo por día
+        timeline = []
+        for row in timeline_raw:
+            date_str = str(row["date"])
+            day_qs = events_qs.filter(created__date=row["date"])
+            day_by_type = dict(
+                day_qs.values("event_type")
+                .annotate(count=Count("id"))
+                .values_list("event_type", "count")
+            )
+            timeline.append({
+                "date": date_str,
+                "count": row["count"],
+                "by_type": day_by_type,
+            })
+
+        # Eventos recientes (últimos 50)
+        recent_qs = events_qs.order_by("-created")[:50]
+        recent_events = []
+        for ev in recent_qs:
+            recent_events.append({
+                "id": ev.id,
+                "event_type": ev.event_type,
+                "title": ev.title,
+                "message": ev.message,
+                "severity": ev.severity,
+                "created": ev.created.isoformat() if ev.created else None,
+                "point_id": ev.point_catchment_id,
+                "point_title": ev.point_catchment.title if ev.point_catchment else None,
+                "extra_data": ev.extra_data,
+            })
+
+        return Response({
+            "period_days": days,
+            "total_events": total_events,
+            "by_severity": by_severity,
+            "by_type": by_type,
+            "by_point": by_point,
+            "timeline": timeline,
+            "recent_events": recent_events,
         })

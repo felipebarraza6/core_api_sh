@@ -41,7 +41,7 @@ class InteractionDetail(ModelApi):
     # Caudal
 
     flow = models.DecimalField(
-        default=0.0, verbose_name="Caudal(lt)", max_digits=5, decimal_places=2
+        default=0.0, verbose_name="Caudal(lt)", max_digits=10, decimal_places=2
     )
 
     # Totalizado
@@ -55,10 +55,10 @@ class InteractionDetail(ModelApi):
 
     # Nivel
     nivel = models.DecimalField(
-        default=0.0, verbose_name="Nivel(mt)", max_digits=5, decimal_places=2
+        default=0.0, verbose_name="Nivel(mt)", max_digits=10, decimal_places=2
     )
     water_table = models.DecimalField(
-        default=0.0, verbose_name="Nivel freático(mt)", max_digits=5, decimal_places=2
+        default=0.0, verbose_name="Nivel freático(mt)", max_digits=10, decimal_places=2
     )
 
     send_dga = models.BooleanField(default=False, verbose_name="Agregar a la cola DGA", db_index=True)
@@ -67,6 +67,16 @@ class InteractionDetail(ModelApi):
 
     n_voucher = models.TextField(max_length=3000, blank=True, null=True)
     is_error = models.BooleanField(default=False, verbose_name="Error", db_index=True)
+
+    # Retry persistente DGA (P1.6)
+    dga_retry_count = models.IntegerField(
+        default=0, verbose_name="Reintentos DGA persistentes",
+        help_text="Contador de ciclos de reintento persistente (fuera del loop de 3 intentos inmediatos).",
+    )
+    dga_last_retry_at = models.DateTimeField(
+        blank=True, null=True, verbose_name="Último reintento DGA",
+        help_text="Timestamp del último ciclo de reintento persistente.",
+    )
 
     notification = models.ForeignKey(
         NotificationsCatchment,
@@ -87,6 +97,7 @@ class InteractionDetail(ModelApi):
             models.Index(fields=['date_time_medition']),
             models.Index(fields=['send_dga', 'catchment_point', 'date_time_medition']),
             models.Index(fields=['is_error']),
+            models.Index(fields=['send_dga', 'is_error', 'date_time_medition'], name='core_interact_dga_err_dt'),
         ]
         unique_together = ("catchment_point", "date_time_medition")
 

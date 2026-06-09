@@ -1,66 +1,44 @@
 #!/usr/bin/env python3
 """
-Configuración de alertas - MODIFICA AQUÍ TUS CONFIGURACIONES
+Configuración de alertas legacy.
+
+⚠️  Este archivo solo es usado por alert_evaluator.py (subsistema legacy
+    cuyo cron está APAGADO). El motor nuevo de alertas (AlertRule / AlertTrigger)
+    no lee esta configuración.
+
+Todos los valores se leen desde variables de entorno. No agregar credenciales
+en texto plano en este archivo.
 """
 
-# CONFIGURACIÓN DE ALERTAS
+import json
+import os
+
+
+# Emails por punto: espera JSON en env, ej: '{"1": ["a@b.com"]}'
+_points_emails_raw = os.environ.get("ALERT_POINTS_EMAILS", "{}").strip()
+try:
+    _points_emails = json.loads(_points_emails_raw)
+    if not isinstance(_points_emails, dict):
+        _points_emails = {}
+except Exception:
+    _points_emails = {}
+
 ALERT_CONFIG = {
     # Configuración por punto: ID -> [correos]
-    "points_emails": {
-        1: ["soporte@smarthydro.app"],
-        2: ["constansa.hidd@iansa.cl", "soporte@smarthydro.app"],
-        # Agregar más puntos aquí:
-        # 5: ["correo1@empresa.com", "correo2@empresa.com"],
-        # 10: ["admin@empresa.com"],
-    },
-    # Configuración de umbrales
-    "dga_queue_threshold": 5,  # Si hay más de 5 registros en cola DGA
-    "disconnection_threshold": 1,  # Si days_not_conection > 1
-    # Configuración de correo cPanel
-    "smtp_server": "s1042.use1.mysecurecloudhost.com",  # Servidor SMTP de cPanel
-    "smtp_port": 465,
-    "smtp_user": "notify@smarthydro.app",
-    "smtp_password": "notify.2025",
+    "points_emails": _points_emails,
+    # Umbrales
+    "dga_queue_threshold": int(os.environ.get("ALERT_DGA_QUEUE_THRESHOLD", "5")),
+    "disconnection_threshold": int(os.environ.get("ALERT_DISCONNECTION_THRESHOLD", "1")),
+    # Configuración SMTP legacy (no usada por el motor nuevo)
+    "smtp_server": os.environ.get("ALERT_SMTP_SERVER", ""),
+    "smtp_port": int(os.environ.get("ALERT_SMTP_PORT", "465")),
+    "smtp_user": os.environ.get("ALERT_SMTP_USER", ""),
+    "smtp_password": os.environ.get("ALERT_SMTP_PASSWORD", ""),
 }
 
 # MAPEO DE TIPOS DE ALERTA DEL SISTEMA A VALORES DEL MODELO
-# Usamos los valores existentes del modelo para no alterar la DB
 ALERT_TYPE_MAPPING = {
-    "DGA_QUEUE": "MAX",  # Cola DGA -> MAX (mas)
-    "DISCONNECTION": "MIN",  # Desconexión -> MIN (menos)
-    "RECONNECTION": "EQUALS",  # Reconexión -> EQUALS (igual)
+    "DGA_QUEUE": "MAX",
+    "DISCONNECTION": "MIN",
+    "RECONNECTION": "EQUALS",
 }
-
-"""
-INSTRUCCIONES DE CONFIGURACIÓN:
-
-1. PUNTOS Y CORREOS:
-   - Cada punto tiene sus propios correos de alerta
-   - Formato: ID: [correo1, correo2, correo3]
-   - Ejemplo: 1: ["admin@empresa.com", "tecnico@empresa.com"]
-
-2. UMBRALES:
-   - "dga_queue_threshold": Cuántos registros en cola DGA antes de alertar
-   - "disconnection_threshold": Cuántos días desconectado antes de alertar
-
-3. CONFIGURACIÓN DE CORREO:
-   - Ya configurado para tu servidor cPanel
-   - Servidor: mail.smarthydro.app
-   - Usuario: notify@smarthydro.app
-   - Contraseña: notifiy.2025
-
-EJEMPLO DE CONFIGURACIÓN:
-ALERT_CONFIG = {
-    "points_emails": {
-        1: ["admin@miempresa.com", "tecnico@miempresa.com"],
-        5: ["admin@miempresa.com"],
-        10: ["soporte@miempresa.com", "emergencias@miempresa.com"],
-    },
-    "dga_queue_threshold": 3,
-    "disconnection_threshold": 1,
-    "smtp_server": "mail.smarthydro.app",
-    "smtp_port": 587,
-    "smtp_user": "notify@smarthydro.app",
-    "smtp_password": "notifiy.2025"
-}
-"""

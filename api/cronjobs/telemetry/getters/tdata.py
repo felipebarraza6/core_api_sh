@@ -2,12 +2,15 @@
 import base64
 import hashlib
 import json
+import logging
 import os
 import requests
 from datetime import datetime
 import time
 
 from django.core.cache import cache
+
+logger = logging.getLogger(__name__)
 
 
 def _provider_val(provider, key, default=None):
@@ -96,10 +99,10 @@ def get_token(provider=None):
 
 
 def get_data_tdata(provider, token_service, str_variable):
-    """Obtener datos de TDATA."""
+    """Obtener datos de TDATA (último valor)."""
     token_auth = get_token(provider)
     if not token_auth:
-        print("No se pudo obtener el token de autenticación.")
+        logger.error("No se pudo obtener el token de autenticación.")
         return {"date_time": None, "value": 0}
 
     token = token_service
@@ -109,21 +112,100 @@ def get_data_tdata(provider, token_service, str_variable):
         'Authorization': f"Bearer {token_auth}"
     }
     # Debug logs removidos para evitar fuga de tokens en producción
-    for _ in range(3):  # Intentar hasta 3 veces
-        try:
-            response = requests.request("GET", url, headers=headers, timeout=5)
-            response.raise_for_status()
-            data = response.json()
-            # Response data procesada sin log
-            if str_variable in data and data[str_variable]:
-                item = data[str_variable][-1]  # Obtener el último elemento
-                ts = datetime.fromtimestamp(item["ts"] / 1000)
-                formatted_ts = ts.strftime("%Y-%m-%dT%H:%M:%S")
-                value = item.get("value", 0)
-                return {"date_time": formatted_ts, "value": value}
-            else:
-                return {"date_time": None, "value": 0}
-        except requests.RequestException as e:
-            print(f"Error al obtener datos: {e}")
-            time.sleep(1)  # Esperar 1 segundo antes de reintentar
-    return {"date_time": None, "value": 0}
+    try:
+        response = requests.request("GET", url, headers=headers, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        # Response data procesada sin log
+        if str_variable in data and data[str_variable]:
+            item = data[str_variable][-1]  # Obtener el último elemento
+            ts = datetime.fromtimestamp(item["ts"] / 1000)
+            formatted_ts = ts.strftime("%Y-%m-%dT%H:%M:%S")
+            value = item.get("value", 0)
+            return {"date_time": formatted_ts, "value": value}
+        else:
+            return {"date_time": None, "value": 0}
+    except requests.RequestException as e:
+        logger.error(f"Error al obtener datos: {e}")
+        return {"date_time": None, "value": 0}
+
+
+def get_data_tdata_history(provider, token_service, str_variable, start_dt, end_dt, limit=10000):
+    """
+    Obtener histórico de datos de TDATA para un rango de fechas.
+
+    Args:
+        provider: Instancia del proveedor de telemetría.
+        token_service: Token del dispositivo en TDATA.
+        str_variable: Clave de la variable (ej: '5001', '5003').
+        start_dt: datetime de inicio (timezone-aware o naive UTC).
+        end_dt: datetime de fin (timezone-aware o naive UTC).
+        limit: Máximo registros a obtener (ThingsBoard default=100).
+
+    Returns:
+        Lista de dicts: [{"ts_ms": int, "value": any, "date_time": "YYYY-MM-DDTHH:MM:SS"}, ...]
+        Ordenada cronológicamente (más antiguo primero).
+        Vacía si no hay datos o hay error.
+    """
+    token_auth = get_token(provider)
+    if not token_auth:
+        logger.error("No se pudo obtener el token de autenticación para histórico.")
+        return []
+
+    token = token_service
+    base_url = getattr(provider, 'base_url', None) or "https://api.twindimension.com/tdata/v1"
+
+    # ThingsBoard usa timestamps en milisegundos
+    start_ms = int(start_dt.timestamp() * 1000)
+    end_ms = int(end_dt.timestamp() * 1000)
+
+    all_results = []
+    current_start_ms = start_ms
+
+    while current_start_ms < end_ms:
+        url = (
+            f"{base_url.rstrip('/')}/telemetry/DEVICE/{token}/values/timeseries"
+            f"?keys={str_variable}&startTs={current_start_ms}&endTs={end_ms}"
+            f"&limit={limit}&asc=true"
+        )
+        headers = {'Authorization': f"Bearer {token_auth}"}
+
+        for attempt in range(3):
+            try:
+                response = requests.request("GET", url, headers=headers, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+
+                if str_variable not in data or not data[str_variable]:
+                    return all_results
+
+                batch = []
+                for item in data[str_variable]:
+                    ts = datetime.fromtimestamp(item["ts"] / 1000)
+                    formatted_ts = ts.strftime("%Y-%m-%dT%H:%M:%S")
+                    batch.append({
+                        "ts_ms": item["ts"],
+                        "value": item.get("value", 0),
+                        "date_time": formatted_ts,
+                    })
+
+                if not batch:
+                    return all_results
+
+                all_results.extend(batch)
+
+                # Si recibimos menos del límite, es el último batch
+                if len(batch) < limit:
+                    return all_results
+
+                # Paginar: el último timestamp + 1 ms como nuevo start
+                current_start_ms = batch[-1]["ts_ms"] + 1
+                break  # Salir del retry loop, continuar while
+
+            except requests.RequestException as e:
+                logger.error(f"Error al obtener histórico TDATA (intento {attempt + 1}): {e}")
+                if attempt == 2:
+                    return all_results
+                time.sleep(1)
+
+    return all_results

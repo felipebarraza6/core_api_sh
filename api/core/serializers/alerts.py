@@ -56,7 +56,7 @@ class AlertTriggerSerializer(serializers.ModelSerializer):
         model = AlertTrigger
         fields = [
             "id", "alert_rule", "alert_rule_name", "triggered_at",
-            "value_at_trigger", "threshold_breached", "interaction_detail",
+            "value_at_trigger", "threshold_breached", "interaction_detail_id",
             "point_catchment",
             "notification_sent", "notification_error", "notification_sent_at",
             "ai_diagnosis",

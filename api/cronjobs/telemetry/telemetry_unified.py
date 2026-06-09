@@ -16,8 +16,8 @@ import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-import pytz
 import requests
+from django.utils import timezone
 
 from django.db.models import Q
 
@@ -85,7 +85,7 @@ def run(frequency: str, dry_run: bool = False, point_id: Optional[int] = None, p
         point_id: Si se pasa, solo procesa este punto.
         point_type: Filtra por tipo de punto (tdata, thethings, novus).
     """
-    chile = pytz.timezone("America/Santiago")
+    chile = timezone.get_current_timezone()
     now = datetime.now(chile)
 
     # Buscar todos los puntos telemetría con la frecuencia dada
@@ -112,16 +112,40 @@ def run(frequency: str, dry_run: bool = False, point_id: Optional[int] = None, p
     processed = 0
     errors = 0
 
+    # Calcular TTL del lock dinámicamente según frecuencia:
+    # nunca debe expirar antes del siguiente ciclo del mismo punto.
+    try:
+        freq_minutes = int(frequency)
+    except (ValueError, TypeError):
+        freq_minutes = 60
+    lock_timeout = max(300, freq_minutes * 60 + 60)  # mínimo 5 minutos
+
     for point_data in serializer.data:
+        point_id = point_data.get("id")
+
+        # Adquirir lock por punto para prevenir race condition en total_m3
+        from api.cronjobs.telemetry.utils.locks import acquire_point_lock, release_point_lock
+        if not acquire_point_lock(point_id, timeout=lock_timeout):
+            telemetry_logger.warning(
+                f"[UNIFIED] Punto {point_id} bloqueado por otro proceso. "
+                f"Saltando para evitar race condition en totales."
+            )
+            continue
+
         try:
             _process_point(point_data, now, frequency, dry_run)
             processed += 1
         except Exception as e:
             errors += 1
             telemetry_logger.error(
-                f"[UNIFIED] Error procesando punto {point_data.get('id')}: {e}",
+                f"[UNIFIED] Error procesando punto {point_id}: {e}",
                 exc_info=True,
             )
+        finally:
+            try:
+                release_point_lock(point_id)
+            except Exception:
+                pass  # Ya logueado en locks.py; no enmascarar excepción original
 
     telemetry_logger.info(
         f"[UNIFIED] Frecuencia={frequency} | Procesados={processed} | Errores={errors} | dry_run={dry_run}"
@@ -179,6 +203,9 @@ def _process_point(
                 variable.get("str_variable"),
             )
 
+        # Detectar fallo de getter: si date_time es None y value es 0,
+        # es casi seguro un fallo de API/sensor, no una medición real.
+        # Para TOTALIZADO con historial previo, marcar como error de ingesta.
         if data is None:
             if variable.get("type_variable") == "TOTALIZADO":
                 data = {"value": 0, "date_time": None}
@@ -188,13 +215,56 @@ def _process_point(
         if not data.get("value") and data.get("value") != 0:
             data["value"] = 0
 
+        # Heurística de detección de fallo de getter:
+        # date_time=None indica que el getter no pudo contactar al sensor/API.
+        # value=0 en este contexto NO es una medición real.
+        if data.get("date_time") is None and data.get("value") == 0:
+            # Solo marcar is_error a nivel de registro si falla TOTALIZADO,
+            # que es la variable crítica. Si falla caudal o nivel, el registro
+            # sigue siendo válido porque el totalizado llegó bien.
+            if variable.get("type_variable") == "TOTALIZADO":
+                telemetry_logger.warning(
+                    f"[UNIFIED] Punto {point_id} - {variable.get('str_variable')}: "
+                    f"Getter retornó value=0 sin timestamp. Probable fallo de ingesta. "
+                    f"Marcando is_error=True."
+                )
+                from api.cronjobs.telemetry.utils.audit import emit_system_event
+                emit_system_event(
+                    event_type="API_ERROR",
+                    point_id=point_id,
+                    title="Getter retornó valor sin timestamp",
+                    message=f"Variable {variable.get('str_variable')}: getter retornó value=0 sin timestamp. Probable fallo de ingesta.",
+                    severity="CRITICAL",
+                    extra_data={
+                        "decision": "MARCAR_ERROR",
+                        "reason": "El getter de la API de telemetría no pudo obtener un timestamp válido junto con el valor. Para variables TOTALIZADO esto indica una falla de comunicación con el sensor o la plataforma. Se marca el registro como error para no usarlo como baseline.",
+                        "actual_value": 0,
+                        "expected_range": [1, None],
+                        "variable": variable.get('str_variable'),
+                        "value": 0,
+                        "date_time": None,
+                        "is_error": True,
+                        "source": "api.cronjobs.telemetry.telemetry_unified:_process_point",
+                    },
+                )
+                created_register["is_error"] = True
+            else:
+                telemetry_logger.warning(
+                    f"[UNIFIED] Punto {point_id} - {variable.get('str_variable')}: "
+                    f"Getter retornó value=0 sin timestamp. Variable secundaria fallida; "
+                    f"registro sigue válido."
+                )
+
         # Procesar variable usando unified_processing (ahora configurable)
+        # Pasar medition_str para garantizar coherencia de zonas horarias
+        # en total_day, total_hour y anti-salto.
         date_time_last_logger_total, created_register = process_variable_safely(
             variable=variable,
             data=data,
             point_catchment=point_catchment,
             created_register=created_register,
             date_time_last_logger_total=date_time_last_logger_total,
+            medition_str=medition_str,
         )
 
         # Tracking de días sin conexión (mismo patrón que legacy)
@@ -207,8 +277,8 @@ def _process_point(
                 dt_lg = datetime.strptime(created_register["date_time_last_logger"], "%Y-%m-%dT%H:%M:%S")
                 if best_date_time_last_logger is None or dt_lg > best_date_time_last_logger:
                     best_date_time_last_logger = dt_lg
-            except Exception:
-                pass
+            except Exception as e:
+                telemetry_logger.debug(f"[UNIFIED] Fecha logger inválida para punto {point_id}: {e}")
 
         # Guardar valor crudo en variable_values (esquema dinámico)
         var_id = variable.get("id")
@@ -218,11 +288,13 @@ def _process_point(
             created_register["variable_values"][str(var_id)] = data.get("value")
 
         # Detalle para variable_details (compatibilidad con legacy)
+        # ✅ FIX: success refleja si el getter realmente funcionó (date_time no es None)
+        getter_succeeded = data.get("date_time") is not None
         variable_details.append({
             "str_variable": variable.get("str_variable"),
             "type_variable": variable.get("type_variable"),
             "value": data.get("value"),
-            "success": True,
+            "success": getter_succeeded,
         })
 
     # Replicar último registro si no hay datos y está configurado (Nettra legacy)
@@ -236,8 +308,12 @@ def _process_point(
     try:
         dga_config = DgaDataConfigCatchment.objects.get(point_catchment_id=point_id)
         record_time = datetime.strptime(medition_str, "%Y-%m-%dT%H:%M:%S" if frequency != "60" else "%Y-%m-%dT%H:00:00")
-        created_register["send_dga"] = dga_config.send_dga and validate_frequency(point_catchment, record_time)
-    except Exception:
+        created_register["send_dga"] = dga_config.send_dga and validate_frequency(point_catchment, record_time, frequency)
+    except DgaDataConfigCatchment.DoesNotExist:
+        # Punto sin config DGA: normal, no loguear para evitar ruido
+        created_register["send_dga"] = False
+    except Exception as e:
+        telemetry_logger.warning(f"[UNIFIED] Error DGA config punto {point_id}: {e}")
         created_register["send_dga"] = False
 
     # Guardar en BD (o loguear si dry_run)
@@ -257,7 +333,7 @@ def _replicate_last_record(point_id: int, created_register: Dict[str, Any], now:
     try:
         last_valid = InteractionDetail.objects.filter(
             catchment_point_id=point_id,
-        ).exclude(date_time_last_logger__isnull=True).order_by("-created").first()
+        ).exclude(date_time_last_logger__isnull=True).exclude(is_error=True).order_by("-created").first()
 
         if last_valid:
             created_register["total"] = last_valid.total

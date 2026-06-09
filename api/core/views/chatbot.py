@@ -168,15 +168,15 @@ class ChatbotAppView(APIView):
 
         return " ".join(parts)
 
-    def _resolve_conversation_id(self, request_data: dict) -> str:
+    def _resolve_conversation_id(self, request_data: dict, user: User) -> str:
         """Genera o reutiliza un ID de conversación único por usuario."""
         provided = request_data.get("conversation_id", "").strip()
         if provided:
             # Sanitizar: solo alfanumérico, guiones y guiones bajos
             safe_id = "".join(c for c in provided if c.isalnum() or c in "-_")
-            return f"appchat:{request.user.id}:{safe_id}"
+            return f"appchat:{user.id}:{safe_id}"
         # Fallback: conversación anónima por usuario (sin ID explícito)
-        return f"appchat:{request.user.id}:default"
+        return f"appchat:{user.id}:default"
 
     def _is_not_found_or_denied(self, text: str) -> bool:
         """Detecta si la respuesta indica que no se encontró info o no hay acceso."""
@@ -215,8 +215,8 @@ class ChatbotAppView(APIView):
             )
 
         message = serializer.validated_data["message"].strip()
-        conversation_id = self._resolve_conversation_id(serializer.validated_data)
         user = request.user
+        conversation_id = self._resolve_conversation_id(serializer.validated_data, user)
 
         try:
             # 1. Obtener contexto conversacional previo (Redis)

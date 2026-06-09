@@ -5,6 +5,41 @@
 from django.db import migrations, models
 
 
+def _create_index(apps, schema_editor, name, fields, concurrent=True):
+    """Crea un índice de forma condicional según el backend."""
+    vendor = schema_editor.connection.vendor
+    concurrently = "CONCURRENTLY " if (concurrent and vendor == "postgresql") else ""
+    sql = (
+        f"CREATE INDEX {concurrently}IF NOT EXISTS {name} "
+        f"ON core_interactiondetail ({fields});"
+    )
+    schema_editor.execute(sql)
+
+
+def _drop_index(apps, schema_editor, name, concurrent=True):
+    """Elimina un índice de forma condicional según el backend."""
+    vendor = schema_editor.connection.vendor
+    concurrently = "CONCURRENTLY " if (concurrent and vendor == "postgresql") else ""
+    sql = f"DROP INDEX {concurrently}IF EXISTS {name};"
+    schema_editor.execute(sql)
+
+
+def create_idx1_fwd(apps, schema_editor):
+    _create_index(apps, schema_editor, "core_intera_send_dg_aae41a_idx", "send_dga, catchment_point_id, date_time_medition")
+
+
+def create_idx1_rev(apps, schema_editor):
+    _drop_index(apps, schema_editor, "core_intera_send_dg_aae41a_idx")
+
+
+def create_idx2_fwd(apps, schema_editor):
+    _create_index(apps, schema_editor, "core_intera_is_erro_f956b9_idx", "is_error")
+
+
+def create_idx2_rev(apps, schema_editor):
+    _drop_index(apps, schema_editor, "core_intera_is_erro_f956b9_idx")
+
+
 class Migration(migrations.Migration):
 
     atomic = False  # REQUIRED for CREATE INDEX CONCURRENTLY
@@ -49,18 +84,10 @@ class Migration(migrations.Migration):
                 db_index=True, default=False, verbose_name="Activar telemetría"
             ),
         ),
-        # Large table — use CONCURRENTLY to avoid write-locking
+        # Large table — use CONCURRENTLY to avoid write-locking (PostgreSQL only)
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql="""
-                    CREATE INDEX CONCURRENTLY IF NOT EXISTS core_intera_send_dg_aae41a_idx
-                    ON core_interactiondetail (send_dga, catchment_point_id, date_time_medition);
-                    """,
-                    reverse_sql="""
-                    DROP INDEX CONCURRENTLY IF EXISTS core_intera_send_dg_aae41a_idx;
-                    """,
-                ),
+                migrations.RunPython(create_idx1_fwd, create_idx1_rev),
             ],
             state_operations=[
                 migrations.AddIndex(
@@ -74,15 +101,7 @@ class Migration(migrations.Migration):
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunSQL(
-                    sql="""
-                    CREATE INDEX CONCURRENTLY IF NOT EXISTS core_intera_is_erro_f956b9_idx
-                    ON core_interactiondetail (is_error);
-                    """,
-                    reverse_sql="""
-                    DROP INDEX CONCURRENTLY IF EXISTS core_intera_is_erro_f956b9_idx;
-                    """,
-                ),
+                migrations.RunPython(create_idx2_fwd, create_idx2_rev),
             ],
             state_operations=[
                 migrations.AddIndex(

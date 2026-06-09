@@ -1,6 +1,6 @@
 from .users import UserProfile, UserModelSerializer, UserLoginSerializer, UserSignUpSerializer
 
-from .interaction_detail import InteractionDetailModelSerializer, InteractionDetailModelSerializerNoProcessing
+from .interaction_detail import InteractionDetailModelSerializer, InteractionDetailModelSerializerNoProcessing, InteractionDetailDgaXlsxSerializer
 from .catchment_points import (ClientSerializer,
                                ClientWithProjectsSerializer,
                                ProjectCatchmentsSerializer,
@@ -17,7 +17,9 @@ from .catchment_points import (ClientSerializer,
                                DgaDataConfigCatchmentSerializer,
                                SchemesCatchmentSerializer,
                                VariableSerializer,
-                               RegisterPersonsSerializer, CatchmentPointSerializerDetailCron, CatchmentPointIkoluSerializer,)
+                               RegisterPersonsSerializer, CounterResetLogSerializer,
+                               TelemetryProviderSerializer, ComplianceProviderSerializer,
+                               CatchmentPointSerializerDetailCron, CatchmentPointIkoluSerializer,)
 from .alerts import (
     AlertRuleListSerializer,
     AlertRuleDetailSerializer,

@@ -56,6 +56,12 @@ router.register(r'variable', views_catchment.VariableViewSet,
                 basename='variable')
 router.register(r'register_persons',
                 views_catchment.RegisterPersonsViewSet, basename='register_persons')
+router.register(r'counter_reset_logs',
+                views_catchment.CounterResetLogViewSet, basename='counter_reset_logs')
+router.register(r'telemetry_providers',
+                views_catchment.TelemetryProviderViewSet, basename='telemetry_providers')
+router.register(r'compliance_providers',
+                views_catchment.ComplianceProviderViewSet, basename='compliance_providers')
 
 # Endpoints de gestión y administración
 router.register(r'management', views_management.ManagementViewSet, basename='management')

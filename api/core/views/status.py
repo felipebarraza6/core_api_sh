@@ -6,11 +6,13 @@ from datetime import timedelta
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from django.db import connection
 from django.core.cache import cache
 
 
+@login_required
 @csrf_exempt
 def status_json(request):
     """JSON endpoint for monitoring tools and API integrations."""
@@ -41,6 +43,7 @@ def status_json(request):
     })
 
 
+@login_required
 @csrf_exempt
 def status_dashboard(request):
     """HTML dashboard for clients to view system status."""
@@ -140,7 +143,7 @@ def check_cronjobs():
     """Check cronjob status by reading log file timestamps."""
     try:
         log_files = [
-            '/tmp/smarthydro/twin_1.log',
+            '/tmp/smarthydro/unified_twin_1.log',
             '/tmp/smarthydro/dga.log',
             '/tmp/smarthydro/sma.log'
         ]
@@ -182,7 +185,10 @@ def get_system_statistics():
 
     try:
         total_points = CatchmentPoint.objects.count()
-        active_points = CatchmentPoint.objects.filter(active=True).count()
+        # 'Activo' = punto con telemetría habilitada (criterio usado por management)
+        active_points = CatchmentPoint.objects.filter(
+            data_config_profiles__is_telemetry=True
+        ).distinct().count()
 
         # Records in last 24h
         yesterday = timezone.now() - timedelta(hours=24)

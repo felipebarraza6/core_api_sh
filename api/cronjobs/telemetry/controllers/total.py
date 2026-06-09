@@ -8,6 +8,8 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+import uuid
+
 def _create_counter_reset_log(
     point_catchment_id,
     reset_type,
@@ -26,9 +28,13 @@ def _create_counter_reset_log(
     time_diff_hours=None,
     date_time_medition=None,
 ):
-    """Guarda auditoría de reset de contador. Nunca debe fallar el procesamiento principal."""
+    """Guarda auditoría de reset de contador. Nunca debe fallar el procesamiento principal.
+
+    Returns:
+        int | None: ID del CounterResetLog creado, o None si falló.
+    """
     try:
-        CounterResetLog.objects.create(
+        log = CounterResetLog.objects.create(
             point_catchment_id=point_catchment_id,
             date_time_medition=date_time_medition or timezone.now(),
             time_diff_hours=time_diff_hours,
@@ -47,8 +53,10 @@ def _create_counter_reset_log(
             days_not_connection=days_not_connection,
             detected_by="cron_unified",
         )
+        return log.id
     except Exception as e:
         logger.error(f"Error guardando CounterResetLog para punto {point_catchment_id}: {e}")
+        return None
 
 
 def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_full_details=False, current_dt=None, frecuency_minutes=None):
@@ -107,23 +115,11 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
         # ✅ CASO CRÍTICO: Pulsos negativos = Error de ingesta
         # Mantener último total válido en lugar de guardar basura
         if current_pulses < 0:
-            logger.warning(
-                f"🚨 ERROR DE INGESTA: Pulsos negativos ({current_pulses}) en Punto {point_catchment['id']}. "
-                f"Manteniendo último total válido."
-            )
-            emit_system_event(
-                event_type="MEASUREMENT_ERROR",
-                point_id=point_catchment["id"],
-                title="Pulsos negativos detectados",
-                message=f"Pulsos negativos ({current_pulses}) detectados. Manteniendo último total válido.",
-                severity="CRITICAL",
-                extra_data={"current_pulses": current_pulses, "last_total": float(last_interaction.total) if last_interaction and last_interaction.total else None, "logic": "kept_last_valid"},
-            )
             fallback_val = 0
             if last_interaction and last_interaction.total:
                 fallback_val = int(round(float(last_interaction.total)))
 
-            _create_counter_reset_log(
+            cr_log_id = _create_counter_reset_log(
                 point_catchment_id=point_catchment["id"],
                 reset_type="NEGATIVE_PULSES",
                 last_pulses=float(last_interaction.pulses) if last_interaction and last_interaction.pulses is not None else 0,
@@ -134,6 +130,29 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                 passed_anti_jump=True,
                 time_diff_hours=time_diff_hours,
                 date_time_medition=current_dt,
+            )
+
+            logger.warning(
+                f"🚨 ERROR DE INGESTA: Pulsos negativos ({current_pulses}) en Punto {point_catchment['id']}. "
+                f"Manteniendo último total válido."
+            )
+            emit_system_event(
+                event_type="MEASUREMENT_ERROR",
+                point_id=point_catchment["id"],
+                title="Pulsos negativos detectados",
+                message=f"Pulsos negativos ({current_pulses}) detectados. Manteniendo último total válido.",
+                severity="CRITICAL",
+                extra_data={
+                    "decision": "MANTENER",
+                    "reason": "Pulsos negativos son físicamente imposibles; se preserva el último total válido para no corromper la serie histórica.",
+                    "actual_value": current_pulses,
+                    "expected_range": [0, None],
+                    "kept_total": fallback_val,
+                    "last_total": float(last_interaction.total) if last_interaction and last_interaction.total else None,
+                    "logic": "kept_last_valid",
+                    "counter_reset_log_id": cr_log_id,
+                    "source": "api.cronjobs.telemetry.controllers.total:total_m3",
+                },
             )
 
             if return_full_details:
@@ -233,31 +252,14 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                         f"Aceptando nuevo total (reconexión legítima)."
                     )
                 elif m3_per_hour > max_diff_m3:
-                    # P1.8: BLOQUEO SEGURO sin congelar histórico.
-                    # Retornamos last_total con metadata. El caller guardará
-                    # el registro con is_error=True, por lo que el siguiente
-                    # ciclo saltará este registro al buscar last_interaction
-                    # (que ya excluye is_error=True). Recuperación automática.
-                    logger.warning(
-                        f"⚠️ SALTO MASIVO BLOQUEADO Punto {point_catchment['id']}: "
-                        f"Salto de {diff:.0f} m³ en {time_diff_hours:.1f} horas "
-                        f"({m3_per_hour:.1f} m³/h). "
-                        f"Límite {max_diff_m3} m³/h. "
-                        f"Manteniendo último total válido ({last_total:.0f}) "
-                        f"y marcando registro como error para no congelar baseline."
-                    )
-                    emit_system_event(
-                        event_type="MASSIVE_JUMP_BLOCKED",
-                        point_id=point_catchment["id"],
-                        title="Salto masivo bloqueado",
-                        message=f"Salto de {diff:.0f} m³ en {time_diff_hours:.1f} horas ({m3_per_hour:.1f} m³/h). Límite {max_diff_m3} m³/h. Manteniendo total={last_total:.0f}.",
-                        severity="WARNING",
-                        extra_data={"diff_m3": diff, "m3_per_hour": m3_per_hour, "limit_m3_per_hour": max_diff_m3, "time_diff_hours": time_diff_hours, "blocked": True, "kept_total": last_total},
-                    )
-
-                    _create_counter_reset_log(
+                    # ✅ FIX: Anti-salto ya NO bloquea el total.
+                    # Solo registra warning + evento para auditoría, pero permite
+                    # que el cálculo continúe con el valor real del sensor.
+                    # El bloqueo anterior causó efecto cascada: una vez congelado
+                    # el baseline, todos los saltos legítimos se bloqueaban.
+                    cr_log_id = _create_counter_reset_log(
                         point_catchment_id=point_catchment["id"],
-                        reset_type="MASSIVE_JUMP",
+                        reset_type="MASSIVE_JUMP_OK",
                         last_pulses=float(last_interaction.pulses) if last_interaction and last_interaction.pulses is not None else 0,
                         current_pulses=current_pulses,
                         pulses_factor=pulses_factor,
@@ -272,15 +274,37 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                         date_time_medition=current_dt,
                     )
 
-                    if return_full_details:
-                        return int(round(last_total)), {
-                            "raw_pulses": current_pulses,
-                            "status": "MASSIVE_JUMP_BLOCKED",
-                            "diff_detected": diff,
-                            "m3_per_hour": m3_per_hour,
-                            "logic": "kept_last_valid"
-                        }
-                    return int(round(last_total))
+                    logger.warning(
+                        f"⚠️ SALTO MASIVO DETECTADO Punto {point_catchment['id']}: "
+                        f"Salto de {diff:.0f} m³ en {time_diff_hours:.1f} horas "
+                        f"({m3_per_hour:.1f} m³/h). "
+                        f"Límite configurado {max_diff_m3} m³/h. "
+                        f"Registrando evento pero ACEPTANDO nuevo total."
+                    )
+                    emit_system_event(
+                        event_type="MASSIVE_JUMP_BLOCKED",
+                        point_id=point_catchment["id"],
+                        title="Salto masivo detectado",
+                        message=f"Salto de {diff:.0f} m³ en {time_diff_hours:.1f} horas ({m3_per_hour:.1f} m³/h). Límite {max_diff_m3} m³/h. Se acepta el nuevo total.",
+                        severity="WARNING",
+                        extra_data={
+                            "decision": "ACEPTAR",
+                            "reason": "El anti-salto está configurado para no bloquear totales. Se registra la anomalía pero se preserva el valor del sensor para evitar congelamiento de baseline.",
+                            "actual_value": round(m3_per_hour, 2),
+                            "threshold_value": max_diff_m3,
+                            "expected_range": [None, max_diff_m3],
+                            "diff_m3": diff,
+                            "time_diff_hours": round(time_diff_hours, 2),
+                            "is_reconnection": is_reconnection,
+                            "blocked": False,
+                            "accepted": True,
+                            "last_total": last_total,
+                            "counter_reset_log_id": cr_log_id,
+                            "source": "api.cronjobs.telemetry.controllers.total:total_m3",
+                        },
+                    )
+
+                    # NO retornamos — dejamos que el flujo continue al cálculo final
 
         # LÓGICA DE RESET (solo si pasó la validación anti-salto)
         # ✅ FIX: Detectar reset incluso durante reconexión, pero con umbral más permisivo
@@ -303,21 +327,7 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                 # monotonicidad. Un reset real del contador físico se maneja
                 # en reconexión (cuando el sensor vuelve con valor > 0).
                 if current_pulses == 0 and last_pulses > 0:
-                    logger.warning(
-                        f"⚠️  Punto {point_catchment['id']}: pulsos=0 detectado. "
-                        f"Tratando como error de ingesta / sensor desconectado. "
-                        f"Manteniendo total anterior {last_total_safe}."
-                    )
-                    emit_system_event(
-                        event_type="MEASUREMENT_ERROR",
-                        point_id=point_catchment["id"],
-                        title="Pulsos cero con histórico previo",
-                        message=f"Pulsos=0 detectado con histórico previo ({last_pulses}). Manteniendo total anterior {last_total_safe}.",
-                        severity="WARNING",
-                        extra_data={"current_pulses": current_pulses, "last_pulses": last_pulses, "total_kept": last_total_safe, "logic": "ZERO_KEPT"},
-                    )
-
-                    _create_counter_reset_log(
+                    cr_log_id = _create_counter_reset_log(
                         point_catchment_id=point_catchment["id"],
                         reset_type="ZERO_KEPT",
                         last_pulses=last_pulses,
@@ -332,6 +342,30 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                         days_not_connection=last_interaction.days_not_conection if last_interaction else None,
                         time_diff_hours=time_diff_hours,
                         date_time_medition=current_dt,
+                    )
+
+                    logger.warning(
+                        f"⚠️  Punto {point_catchment['id']}: pulsos=0 detectado. "
+                        f"Tratando como error de ingesta / sensor desconectado. "
+                        f"Manteniendo total anterior {last_total_safe}."
+                    )
+                    emit_system_event(
+                        event_type="MEASUREMENT_ERROR",
+                        point_id=point_catchment["id"],
+                        title="Pulsos cero con histórico previo",
+                        message=f"Pulsos=0 detectado con histórico previo ({last_pulses}). Manteniendo total anterior {last_total_safe}.",
+                        severity="WARNING",
+                        extra_data={
+                            "decision": "MANTENER",
+                            "reason": "Un valor cero en un totalizador con histórico previo es casi siempre una falla de comunicación o sensor desconectado, no un consumo real nulo. Se preserva la monotonicidad manteniendo el último total válido.",
+                            "actual_value": current_pulses,
+                            "expected_range": [1, None],
+                            "last_pulses": last_pulses,
+                            "total_kept": last_total_safe,
+                            "logic": "ZERO_KEPT",
+                            "counter_reset_log_id": cr_log_id,
+                            "source": "api.cronjobs.telemetry.controllers.total:total_m3",
+                        },
                     )
 
                     if return_full_details:
@@ -413,16 +447,7 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
 
                     total_after = int(round((current_pulses * float(pulses_factor)) / 1000.0 + offset))
 
-                    emit_system_event(
-                        event_type="COUNTER_RESET",
-                        point_id=point_catchment["id"],
-                        title="Reset de contador detectado",
-                        message=f"Reset real detectado: {last_pulses} -> {current_pulses}. Addition ajustado en {amount_to_add:.2f} m³.",
-                        severity="CRITICAL",
-                        extra_data={"last_pulses": last_pulses, "current_pulses": current_pulses, "amount_to_add": amount_to_add, "addition_before": addition_before, "addition_after": offset, "total_before": last_total_safe, "total_after": total_after},
-                    )
-
-                    _create_counter_reset_log(
+                    cr_log_id = _create_counter_reset_log(
                         point_catchment_id=point_catchment["id"],
                         reset_type="PARTIAL",
                         last_pulses=last_pulses,
@@ -439,6 +464,30 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                         days_not_connection=last_interaction.days_not_conection if last_interaction else None,
                         time_diff_hours=time_diff_hours,
                         date_time_medition=current_dt,
+                    )
+
+                    emit_system_event(
+                        event_type="COUNTER_RESET",
+                        point_id=point_catchment["id"],
+                        title="Reset de contador detectado",
+                        message=f"Reset real detectado: {last_pulses} -> {current_pulses}. Addition ajustado en {amount_to_add:.2f} m³.",
+                        severity="CRITICAL",
+                        extra_data={
+                            "decision": "AJUSTAR",
+                            "reason": "El contador físico se reinició (0 < valor_actual < valor_anterior). El sistema compensa sumando los pulsos perdidos al offset (addition) para preservar la continuidad del total acumulado.",
+                            "actual_value": current_pulses,
+                            "expected_range": [last_pulses, None],
+                            "last_pulses": last_pulses,
+                            "current_pulses": current_pulses,
+                            "amount_to_add": amount_to_add,
+                            "addition_before": addition_before,
+                            "addition_after": offset,
+                            "total_before": last_total_safe,
+                            "total_after": total_after,
+                            "is_reconnection": is_reconnection,
+                            "counter_reset_log_id": cr_log_id,
+                            "source": "api.cronjobs.telemetry.controllers.total:total_m3",
+                        },
                     )
 
                     # Crear Notificación

@@ -129,6 +129,7 @@ class Command(BaseCommand):
             is_active=legacy.is_active,
             start_date=legacy.start_date,
             end_date=legacy.end_date,
+            legacy_notification_id=legacy.id,
         )
 
         # Crear AlertChannel por cada email

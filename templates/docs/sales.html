@@ -1,0 +1,1887 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo de Capacidades Comercializables</title>
+    <style>
+        :root {
+            --sh-blue: #6ab0f0;
+            --sh-blue-dark: #4a9de0;
+            --sh-blue-light: rgba(106,176,240,0.12);
+            --sh-green: #5dd9c0;
+            --sh-green-dark: #3ec0a0;
+            --sh-green-light: rgba(93,217,192,0.12);
+            --sh-yellow: #e8c252;
+            --sh-yellow-dark: #c9a53e;
+            --sh-red: #ff9a82;
+            --sh-red-dark: #e0705a;
+            --sh-navy: #0f1a33;
+            --sh-navy-light: #1a2d52;
+            --sh-bg: #0b1120;
+            --sh-card: #151e2e;
+            --sh-text: #e2e8f0;
+            --sh-text-muted: #8899aa;
+            --sh-border: #2a3544;
+            --radius: 12px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.25);
+            --shadow-lg: 0 10px 30px rgba(0,0,0,0.35);
+            --max-width: 1200px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', 'Helvetica Neue', 'Arial', 'Segoe UI', 'Roboto', sans-serif;
+            background: var(--sh-bg);
+            color: var(--sh-text);
+            line-height: 1.65;
+            font-size: 15.5px;
+        }
+        h1, h2, h3, h4 {
+            font-family: 'Inter', 'Helvetica Neue', 'Arial', sans-serif;
+            letter-spacing: -0.025em;
+            font-weight: 700;
+        }
+        a { color: var(--sh-blue-dark); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        .header {
+            background: linear-gradient(90deg, var(--sh-navy) 0%, var(--sh-blue-dark) 100%);
+            color: #e2e8f0;
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow-lg);
+        }
+        .header-inner {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .logo { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px; }
+        .logo span { font-weight: 300; opacity: 0.85; margin-left: 0.5rem; }
+        .nav a {
+            color: rgba(255,255,255,0.9);
+            margin-left: 1.5rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        .nav a:hover { color: #e2e8f0; text-decoration: none; }
+
+        .hero {
+            background: var(--sh-navy);
+            color: #e2e8f0;
+            padding: 5rem 2rem 4rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero h1 {
+            font-size: 2.8rem;
+            font-weight: 800;
+            margin-bottom: 0.75rem;
+            letter-spacing: -1px;
+        }
+        .hero p {
+            font-size: 1.2rem;
+            opacity: 0.92;
+            max-width: 700px;
+            margin: 0 auto 1.5rem;
+            font-weight: 300;
+        }
+        .hero-badges {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .badge {
+            background: rgba(255,255,255,0.18);
+            padding: 0.35rem 1rem;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+
+        .container {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 2.5rem 2rem;
+        }
+        .section { margin-bottom: 4rem; }
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            color: var(--sh-text);
+            letter-spacing: -0.5px;
+        }
+        .section-subtitle {
+            color: var(--sh-text-muted);
+            margin-bottom: 2rem;
+            font-size: 1.05rem;
+        }
+
+        .official-note {
+            background: linear-gradient(135deg, var(--sh-blue-light), var(--sh-green-light));
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border: 1px solid rgba(86,156,214,0.15);
+        }
+        .official-note h4 {
+            color: var(--sh-text);
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .official-note p {
+            color: var(--sh-text);
+            font-size: 0.92rem;
+        }
+        .official-note .author {
+            margin-top: 0.75rem;
+            font-size: 0.85rem;
+            color: var(--sh-text-muted);
+            font-style: italic;
+        }
+
+        .segment-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+        .segment {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            transition: transform 0.25s, box-shadow 0.25s;
+            display: flex;
+            flex-direction: column;
+        }
+        .segment:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+        .segment-header {
+            padding: 1.5rem;
+            color: #e2e8f0;
+            position: relative;
+        }
+        .segment-header.mining { background: linear-gradient(135deg, var(--sh-navy), var(--sh-navy-light)); }
+        .segment-header.agri { background: linear-gradient(135deg, var(--sh-green), var(--sh-green-dark)); }
+        .segment-header.consult { background: linear-gradient(135deg, var(--sh-blue), var(--sh-blue-dark)); }
+        .segment-header.gov { background: linear-gradient(135deg, #7c6fae, #5e5385); }
+        .segment-header.econ { background: linear-gradient(135deg, var(--sh-red), var(--sh-red-dark)); }
+        .segment-header h3 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .segment-header .tag {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 0.15rem 0.6rem;
+            border-radius: 50px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-top: 0.4rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .segment-body {
+            padding: 1.5rem;
+            flex: 1;
+        }
+        .segment-body h4 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--sh-text);
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+        .segment-body p {
+            font-size: 0.92rem;
+            color: var(--sh-text);
+            margin-bottom: 0.75rem;
+        }
+        .segment-body ul {
+            list-style: none;
+            margin-bottom: 1rem;
+        }
+        .segment-body ul li {
+            font-size: 0.9rem;
+            color: var(--sh-text);
+            padding: 0.25rem 0;
+            padding-left: 1.2rem;
+            position: relative;
+        }
+        .segment-body ul li::before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: var(--sh-blue);
+            font-weight: 700;
+        }
+        .segment-footer {
+            padding: 1rem 1.5rem;
+            background: var(--sh-bg);
+            border-top: 1px solid var(--sh-border);
+            font-size: 0.85rem;
+            color: var(--sh-text-muted);
+            font-style: italic;
+        }
+
+        .use-case-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 1.5rem;
+        }
+        .use-case {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            transition: transform 0.25s, box-shadow 0.25s;
+            display: flex;
+            flex-direction: column;
+        }
+        .use-case:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+        .use-case-header {
+            padding: 1.25rem 1.5rem;
+            color: #e2e8f0;
+            position: relative;
+        }
+        .use-case-header.water { background: linear-gradient(135deg, var(--sh-blue), var(--sh-blue-dark)); }
+        .use-case-header.green { background: linear-gradient(135deg, var(--sh-green), var(--sh-green-dark)); }
+        .use-case-header.navy { background: linear-gradient(135deg, var(--sh-navy), var(--sh-navy-light)); }
+        .use-case-header.gold { background: linear-gradient(135deg, #d4a843, #b8932e); }
+        .use-case-header.red { background: linear-gradient(135deg, var(--sh-red), var(--sh-red-dark)); }
+        .use-case-header.purple { background: linear-gradient(135deg, #7c6fae, #5e5385); }
+        .use-case-header h3 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .use-case-header .tag {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 0.15rem 0.6rem;
+            border-radius: 50px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-top: 0.4rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .use-case-body {
+            padding: 1.25rem 1.5rem;
+            flex: 1;
+        }
+        .use-case-body h4 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--sh-text);
+            margin-bottom: 0.4rem;
+            font-weight: 700;
+        }
+        .use-case-body ul {
+            list-style: none;
+            margin-bottom: 1rem;
+        }
+        .use-case-body ul li {
+            font-size: 0.9rem;
+            color: var(--sh-text);
+            padding: 0.2rem 0;
+            padding-left: 1.2rem;
+            position: relative;
+        }
+        .use-case-body ul li::before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: var(--sh-blue);
+            font-weight: 700;
+        }
+        .use-case-metrics {
+            display: flex;
+            gap: 1rem;
+            margin-top: auto;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--sh-border);
+        }
+        .metric {
+            text-align: center;
+            flex: 1;
+        }
+        .metric-value {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: var(--sh-text);
+        }
+        .metric-label {
+            font-size: 0.7rem;
+            color: var(--sh-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+        .data-table th, .data-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--sh-border);
+        }
+        .data-table th {
+            background: var(--sh-navy);
+            color: #e2e8f0;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .data-table tr:hover {
+            background: rgba(106,176,240,0.04);
+        }
+        .data-table td {
+            color: var(--sh-text);
+        }
+        .data-table .cell-muted {
+            color: var(--sh-text-muted);
+            font-size: 0.85rem;
+        }
+
+        .feature-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+        .feature-item {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        .feature-item::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--sh-blue), var(--sh-green));
+            opacity: 0.6;
+        }
+        .feature-item:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-lg);
+        }
+        .feature-item h4 {
+            font-size: 0.95rem;
+            margin-bottom: 0.4rem;
+            color: var(--sh-text);
+        }
+        .feature-item p {
+            font-size: 0.85rem;
+            color: var(--sh-text-muted);
+            margin: 0;
+        }
+
+        /* Visual frequency bars */
+        .freq-visual {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin: 0.4rem 0;
+        }
+        .freq-label {
+            font-size: 0.8rem;
+            color: var(--sh-text-muted);
+            width: 60px;
+            text-align: right;
+            font-weight: 600;
+        }
+        .freq-track {
+            flex: 1;
+            height: 10px;
+            background: var(--sh-bg);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .freq-fill {
+            height: 100%;
+            border-radius: 5px;
+            background: linear-gradient(90deg, var(--sh-blue), var(--sh-green));
+        }
+        .freq-val {
+            font-size: 0.8rem;
+            color: var(--sh-text);
+            font-weight: 700;
+            width: 70px;
+        }
+
+        /* Comparison grid */
+        .check-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        .check-box {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            text-align: center;
+        }
+        .check-box h4 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--sh-border);
+        }
+        .check-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.4rem 0;
+            font-size: 0.88rem;
+            border-bottom: 1px solid rgba(42,53,68,0.4);
+        }
+        .check-row:last-child { border-bottom: none; }
+        .check-yes { color: var(--sh-green); font-weight: 700; }
+        .check-no { color: var(--sh-red-dark); font-weight: 700; opacity: 0.7; }
+
+        /* Flow diagram */
+        .flow-diagram {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            margin: 1.5rem 0;
+            flex-wrap: wrap;
+        }
+        .flow-step {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            padding: 1rem 1.25rem;
+            text-align: center;
+            flex: 1;
+            min-width: 140px;
+            box-shadow: var(--shadow);
+            position: relative;
+        }
+        .flow-step .flow-icon {
+            font-size: 1.6rem;
+            margin-bottom: 0.4rem;
+        }
+        .flow-step .flow-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--sh-text);
+        }
+        .flow-step .flow-desc {
+            font-size: 0.78rem;
+            color: var(--sh-text-muted);
+            margin-top: 0.2rem;
+        }
+        .flow-arrow {
+            color: var(--sh-blue);
+            font-size: 1.3rem;
+            font-weight: 700;
+            padding: 0 0.5rem;
+        }
+
+        /* Big stat numbers */
+        .big-stat {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 0.4rem;
+        }
+        .big-stat .num {
+            font-size: 2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--sh-blue), var(--sh-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1;
+        }
+        .big-stat .unit {
+            font-size: 0.85rem;
+            color: var(--sh-text-muted);
+            font-weight: 600;
+        }
+
+        /* Tag pills */
+        .tag-pill {
+            display: inline-block;
+            padding: 0.2rem 0.7rem;
+            border-radius: 50px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            margin-right: 0.4rem;
+            margin-bottom: 0.3rem;
+        }
+        .tag-blue { background: var(--sh-blue-light); color: var(--sh-blue); }
+        .tag-green { background: var(--sh-green-light); color: var(--sh-green-dark); }
+        .tag-yellow { background: rgba(232,194,82,0.15); color: #e8c252; }
+        .tag-red { background: rgba(255,154,130,0.15); color: #ff9a82; }
+        .tag-purple { background: rgba(167,139,250,0.15); color: #a78bfa; }
+
+        /* Timeline */
+        .report-timeline {
+            display: flex;
+            gap: 1rem;
+            margin: 1.5rem 0;
+            overflow-x: auto;
+            padding-bottom: 0.5rem;
+        }
+        .timeline-node {
+            flex: 1;
+            min-width: 120px;
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            padding: 1rem;
+            text-align: center;
+            box-shadow: var(--shadow);
+            position: relative;
+        }
+        .timeline-node::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            right: -1rem;
+            width: 1rem;
+            height: 2px;
+            background: linear-gradient(90deg, var(--sh-border), transparent);
+        }
+        .timeline-node:last-child::after { display: none; }
+        .timeline-badge {
+            display: inline-block;
+            padding: 0.15rem 0.6rem;
+            border-radius: 50px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        .timeline-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--sh-text);
+        }
+        .timeline-desc {
+            font-size: 0.78rem;
+            color: var(--sh-text-muted);
+            margin-top: 0.3rem;
+        }
+
+        .config-card {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .config-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-lg);
+        }
+        .config-card::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--sh-blue), var(--sh-green));
+            opacity: 0.7;
+        }
+        .config-card .spec-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            margin: 0.75rem 0 1rem;
+        }
+
+        .rubro-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin: 1.5rem 0;
+            flex-wrap: wrap;
+        }
+        .rubro-tab {
+            background: var(--sh-card);
+            border: 1px solid var(--sh-border);
+            border-radius: 50px;
+            padding: 0.6rem 1.1rem;
+            color: var(--sh-text-muted);
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-family: inherit;
+        }
+        .rubro-tab:hover {
+            border-color: var(--sh-blue);
+            color: var(--sh-text);
+        }
+        .rubro-tab.active {
+            background: linear-gradient(135deg, var(--sh-blue-dark), var(--sh-green-dark));
+            color: white;
+            border-color: transparent;
+            box-shadow: 0 4px 12px rgba(74,157,224,0.3);
+        }
+        .rubro-panel {
+            display: none;
+            animation: fadeIn 0.35s ease;
+        }
+        .rubro-panel.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .rubro-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }
+        .rubro-icon {
+            font-size: 2.5rem;
+            width: 64px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--sh-blue-light), var(--sh-green-light));
+            border-radius: 16px;
+        }
+        .rubro-title-block h3 {
+            font-size: 1.4rem;
+            margin: 0;
+        }
+        .rubro-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+        .rubro-metric {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            padding: 1rem;
+            text-align: center;
+            border: 1px solid var(--sh-border);
+            transition: transform 0.2s;
+        }
+        .rubro-metric:hover {
+            transform: translateY(-3px);
+            border-color: var(--sh-blue);
+        }
+        .rubro-metric-value {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--sh-blue), var(--sh-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .rubro-metric-label {
+            font-size: 0.75rem;
+            color: var(--sh-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 0.3rem;
+        }
+        .rubro-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.25rem;
+            margin-top: 1.5rem;
+        }
+        .rubro-col {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            border: 1px solid var(--sh-border);
+            transition: border-color 0.2s;
+        }
+        .rubro-col:hover {
+            border-color: var(--sh-blue);
+        }
+        .rubro-col h4 {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--sh-text);
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--sh-border);
+        }
+        .rubro-col ul {
+            list-style: none;
+        }
+        .rubro-col ul li {
+            font-size: 0.88rem;
+            color: var(--sh-text);
+            padding: 0.3rem 0;
+            padding-left: 1.3rem;
+            position: relative;
+        }
+        .rubro-col ul li::before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: var(--sh-green);
+            font-weight: 700;
+        }
+        .config-card h3 {
+            font-size: 1.15rem;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--sh-border);
+        }
+        .config-card h4 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--sh-text);
+            margin: 1rem 0 0.5rem;
+            font-weight: 700;
+        }
+        .config-card p, .config-card li {
+            font-size: 0.9rem;
+            color: var(--sh-text);
+        }
+        .config-card ul {
+            list-style: none;
+            margin-bottom: 0.75rem;
+        }
+        .config-card ul li {
+            padding: 0.15rem 0;
+            padding-left: 1.2rem;
+            position: relative;
+        }
+        .config-card ul li::before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: var(--sh-blue);
+            font-weight: 700;
+        }
+
+        .cost-badge {
+            display: inline-block;
+            background: rgba(93,217,192,0.15);
+            color: var(--sh-green);
+            padding: 0.2rem 0.6rem;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+
+        .footer {
+            background: linear-gradient(90deg, var(--sh-navy), var(--sh-blue-dark));
+            color: rgba(255,255,255,0.75);
+            padding: 2.5rem 2rem;
+            text-align: center;
+            font-size: 0.88rem;
+            margin-top: 3rem;
+        }
+        .footer a { color: rgba(255,255,255,0.9); font-weight: 500; }
+        .footer a:hover { color: #e2e8f0; }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 1.8rem; }
+            .header-inner { flex-direction: column; gap: 0.75rem; }
+            .nav a { margin: 0 0.4rem; font-size: 0.8rem; }
+            .container { padding: 1.5rem; }
+            .use-case-grid { grid-template-columns: 1fr; }
+            .segment-grid { grid-template-columns: 1fr; }
+            .data-table { font-size: 0.8rem; }
+            .data-table th, .data-table td { padding: 0.5rem; }
+        }
+        section[id] { scroll-margin-top: 80px; }
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <div class="header-inner">
+        <div class="logo">API <span>Catálogo de Capacidades</span></div>
+        <nav class="nav">
+            <a href="#telemetria">Telemetría</a>
+            <a href="#compliance">Cumplimiento</a>
+            <a href="#software">Software</a>
+            <a href="#rubros">Por Rubro</a>
+            <a href="#modulos">Módulos</a>
+
+            <a href="/docs/" style="background:rgba(255,255,255,0.15);padding:0.3rem 0.8rem;border-radius:50px;">📘 API Docs</a>
+        </nav>
+    </div>
+</header>
+
+<section class="hero">
+    <h1>Catálogo de Capacidades Comercializables</h1>
+    <p>Documento oficial del área de Software. Traduce cada funcionalidad del sistema a su equivalente comercial.</p>
+    <div class="hero-badges">
+        <span class="badge">6 Variables</span>
+        <span class="badge">5 Estándares DGA</span>
+        <span class="badge">7 Módulos Ikolu</span>
+        <span class="badge">6 Rubros</span>
+    </div>
+    <div style="display:flex; justify-content:center; gap:2.5rem; margin-top:1.5rem; flex-wrap:wrap;">
+        <div style="text-align:center;">
+            <div class="big-stat"><span class="num">8</span><span class="unit">variables</span></div>
+            <div style="font-size:0.8rem; color:rgba(255,255,255,0.6); margin-top:0.2rem;">medibles</div>
+        </div>
+        <div style="text-align:center;">
+            <div class="big-stat"><span class="num">1.440</span><span class="unit">lecturas/día</span></div>
+            <div style="font-size:0.8rem; color:rgba(255,255,255,0.6); margin-top:0.2rem;">máxima frecuencia</div>
+        </div>
+        <div style="text-align:center;">
+            <div class="big-stat"><span class="num">4</span><span class="unit">protocolos</span></div>
+            <div style="font-size:0.8rem; color:rgba(255,255,255,0.6); margin-top:0.2rem;">TWIN / NETTRA / NOVUS / REST</div>
+        </div>
+        <div style="text-align:center;">
+            <div class="big-stat"><span class="num">5</span><span class="unit">estándares</span></div>
+            <div style="font-size:0.8rem; color:rgba(255,255,255,0.6); margin-top:0.2rem;">DGA + SMA</div>
+        </div>
+    </div>
+</section>
+
+<div class="container">
+
+    <div class="official-note">
+        <h4>📋 Acerca de este documento</h4>
+        <p>Este catálogo no es una guía de ventas. Es un traductor técnico-comercial de un <strong>API de monitoreo hidrológico</strong>: cada sección describe lo que esta API puede entregar, cómo se configura en el sistema y qué recibe el cliente final. La gama es amplia — en la práctica, la diferencia entre una propuesta y otra radica principalmente en la <strong>frecuencia de telemetría</strong>, las <strong>variables medidas</strong> y el <strong>nivel de cumplimiento</strong> requerido.</p>
+        <p class="author">Documento creado por Felipe Barraza — Líder de Software, SmartHydro.</p>
+    </div>
+
+    <!-- SECCIÓN 1: MENÚ DE TELEMETRÍA -->
+    <section class="section" id="telemetria">
+        <h2 class="section-title">Menú de Telemetría</h2>
+        <p class="section-subtitle">Variables que el sistema puede medir, registrar y entregar. Cada variable se activa independientemente por punto.</p>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Variable</th>
+                    <th>Unidad</th>
+                    <th>Origen</th>
+                    <th>Hardware requerido</th>
+                    <th>Tipo de dato</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Caudal instantáneo</strong></td>
+                    <td>L/s</td>
+                    <td>Calculado desde pulsos / Δt</td>
+                    <td>Sensor de pulsos (totalizador)</td>
+                    <td>Decimal (float)</td>
+                </tr>
+                <tr>
+                    <td><strong>Caudal promedio</strong></td>
+                    <td>L/s</td>
+                    <td>Promedio ventana temporal</td>
+                    <td>Derivado de caudal instantáneo</td>
+                    <td>Decimal (float)</td>
+                </tr>
+                <tr>
+                    <td><strong>Total acumulado</strong></td>
+                    <td>m³</td>
+                    <td>Pulsos × factor de pulsos</td>
+                    <td>Sensor de pulsos (totalizador)</td>
+                    <td>Decimal (float)</td>
+                </tr>
+                <tr>
+                    <td><strong>Pulsos</strong></td>
+                    <td>count</td>
+                    <td>Crudo del sensor</td>
+                    <td>Sensor de pulsos (totalizador)</td>
+                    <td>Entero (int)</td>
+                </tr>
+                <tr>
+                    <td><strong>Nivel</strong></td>
+                    <td>m</td>
+                    <td>Sensor de presión / ultrasonido</td>
+                    <td>Sensor de nivel adicional</td>
+                    <td>Decimal (float)</td>
+                </tr>
+                <tr>
+                    <td><strong>Nivel freático</strong></td>
+                    <td>m</td>
+                    <td>Cálculo desde nivel + referencia</td>
+                    <td>Sensor de nivel + configuración</td>
+                    <td>Decimal (float)</td>
+                </tr>
+                <tr>
+                    <td><strong>Consumo horario</strong></td>
+                    <td>m³/h</td>
+                    <td>Diferencia total entre lecturas</td>
+                    <td>Derivado de total acumulado</td>
+                    <td>Decimal (float)</td>
+                </tr>
+                <tr>
+                    <td><strong>Consumo diario</strong></td>
+                    <td>m³</td>
+                    <td>Acumulado desde medianoche</td>
+                    <td>Derivado de total acumulado</td>
+                    <td>Decimal (float)</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3 style="margin-top:2rem; font-size:1.2rem;">Frecuencias de telemetría disponibles</h3>
+        <p style="color:var(--sh-text-muted); margin-bottom:1rem; font-size:0.95rem;">El campo <code>frecuency</code> en el sistema acepta valores en minutos. A mayor frecuencia, mayor resolución temporal y mayor volumen de datos procesados. La densidad de datos determina directamente el grado de detalle de análisis posible.</p>
+
+        <div style="background:var(--sh-card); border-radius:var(--radius); padding:1.5rem; box-shadow:var(--shadow); margin-bottom:1.5rem;">
+            <div class="freq-visual">
+                <span class="freq-label">1 min</span>
+                <div class="freq-track"><div class="freq-fill" style="width:100%"></div></div>
+                <span class="freq-val">1.440 / día</span>
+            </div>
+            <div class="freq-visual">
+                <span class="freq-label">5 min</span>
+                <div class="freq-track"><div class="freq-fill" style="width:60%"></div></div>
+                <span class="freq-val">288 / día</span>
+            </div>
+            <div class="freq-visual">
+                <span class="freq-label">10 min</span>
+                <div class="freq-track"><div class="freq-fill" style="width:35%"></div></div>
+                <span class="freq-val">144 / día</span>
+            </div>
+            <div class="freq-visual">
+                <span class="freq-label">15 min</span>
+                <div class="freq-track"><div class="freq-fill" style="width:25%"></div></div>
+                <span class="freq-val">96 / día</span>
+            </div>
+            <div class="freq-visual">
+                <span class="freq-label">30 min</span>
+                <div class="freq-track"><div class="freq-fill" style="width:15%"></div></div>
+                <span class="freq-val">48 / día</span>
+            </div>
+            <div class="freq-visual">
+                <span class="freq-label">60 min</span>
+                <div class="freq-track"><div class="freq-fill" style="width:8%"></div></div>
+                <span class="freq-val">24 / día</span>
+            </div>
+        </div>
+
+        <h3 style="margin-top:2rem; font-size:1.2rem;">Flujo de ingreso de datos</h3>
+        <p style="color:var(--sh-text-muted); margin-bottom:1rem; font-size:0.95rem;">El sistema acepta datos de tres vías diferentes. Cada modo tiene una cadena de procesamiento distinta.</p>
+
+        <div class="flow-diagram">
+            <div class="flow-step">
+                <div class="flow-icon">📡</div>
+                <div class="flow-title">Sensor IoT</div>
+                <div class="flow-desc">TWIN / NETTRA / NOVUS</div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+                <div class="flow-icon">🔄</div>
+                <div class="flow-title">Ingesta API</div>
+                <div class="flow-desc">HTTP / MQTT</div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+                <div class="flow-icon">🧮</div>
+                <div class="flow-title">Motor</div>
+                <div class="flow-desc">Validación + Cálculo</div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+                <div class="flow-icon">💾</div>
+                <div class="flow-title">PostgreSQL</div>
+                <div class="flow-desc">Almacenamiento</div>
+            </div>
+        </div>
+
+        <div class="check-grid" style="margin-top:1.5rem;">
+            <div class="check-box">
+                <h4 style="color:var(--sh-green);">📝 Formulario manual</h4>
+                <div class="check-row">
+                    <span>Intervención humana</span>
+                    <span class="check-yes">✓ Requerida</span>
+                </div>
+                <div class="check-row">
+                    <span>Hardware sensor</span>
+                    <span class="check-no">✗ Ninguno</span>
+                </div>
+                <div class="check-row">
+                    <span>Validación de rangos</span>
+                    <span class="check-yes">✓ Automática</span>
+                </div>
+                <div class="check-row">
+                    <span>Ideal para</span>
+                    <span class="check-yes">Software-Only</span>
+                </div>
+            </div>
+            <div class="check-box">
+                <h4 style="color:var(--sh-blue);">🔀 Mixto</h4>
+                <div class="check-row">
+                    <span>Intervención humana</span>
+                    <span class="check-yes">✓ Confirmación</span>
+                </div>
+                <div class="check-row">
+                    <span>Hardware sensor</span>
+                    <span class="check-yes">✓ Requerido</span>
+                </div>
+                <div class="check-row">
+                    <span>Validación de rangos</span>
+                    <span class="check-yes">✓ Automática</span>
+                </div>
+                <div class="check-row">
+                    <span>Ideal para</span>
+                    <span class="check-yes">Alta criticidad</span>
+                </div>
+            </div>
+        </div>
+
+        <h3 style="margin-top:2rem; font-size:1.2rem;">Comparación de configuraciones de hardware</h3>
+
+        <div class="check-grid" style="grid-template-columns: 1fr 1fr; gap: 0;">
+            <div class="check-box" style="border-radius: var(--radius) 0 0 var(--radius); border-right: 1px solid var(--sh-border);">
+                <h4 style="color: var(--sh-green);">🔌 Con sensor de nivel</h4>
+                <p style="font-size:0.85rem; color:var(--sh-text-muted); margin-bottom:1rem;">Visión completa del pozo</p>
+                <div class="check-row"><span>Caudal instantáneo</span><span class="check-yes">✓</span></div>
+                <div class="check-row"><span>Total acumulado</span><span class="check-yes">✓</span></div>
+                <div class="check-row"><span>Nivel</span><span class="check-yes">✓</span></div>
+                <div class="check-row"><span>Nivel freático</span><span class="check-yes">✓</span></div>
+                <div class="check-row"><span>Hardware extra</span><span class="check-yes">Presión/Ultrasonido</span></div>
+            </div>
+            <div class="check-box" style="border-radius: 0 var(--radius) var(--radius) 0;">
+                <h4 style="color: var(--sh-red);">🔌 Sin sensor de nivel</h4>
+                <p style="font-size:0.85rem; color:var(--sh-text-muted); margin-bottom:1rem;">Cumplimiento económico</p>
+                <div class="check-row"><span>Caudal instantáneo</span><span class="check-yes">✓</span></div>
+                <div class="check-row"><span>Total acumulado</span><span class="check-yes">✓</span></div>
+                <div class="check-row"><span>Nivel</span><span class="check-no">✗</span></div>
+                <div class="check-row"><span>Nivel freático</span><span class="check-no">✗</span></div>
+                <div class="check-row"><span>Hardware extra</span><span class="check-no">Ninguno</span></div>
+            </div>
+        </div>
+        <p style="text-align:center; font-size:0.85rem; color:var(--sh-text-muted); margin-top:0.75rem;">La configuración sin nivel reduce ~30% el costo de comunicación manteniendo cumplimiento DGA.</p>
+    </section>
+
+    <!-- SECCIÓN 2: MENÚ DE CUMPLIMIENTO -->
+    <section class="section" id="compliance">
+        <h2 class="section-title">Menú de Cumplimiento</h2>
+        <p class="section-subtitle">Estándares regulatorios que el sistema puede cumplir de forma automática. Cada estándar tiene requisitos técnicos distintos.</p>
+
+        <h3 style="font-size:1.1rem; margin-bottom:0.75rem;">Cadencia de reportes por estándar</h3>
+        <p style="color:var(--sh-text-muted); margin-bottom:1rem; font-size:0.95rem;">La granularidad del reporte aumenta con la criticidad del estándar. DGA Mayor exige la cadencia más alta.</p>
+
+        <div class="report-timeline">
+            <div class="timeline-node">
+                <div class="timeline-badge" style="background:rgba(255,154,130,0.15); color:#ff9a82;">DGA Mayor</div>
+                <div class="timeline-title">Horario</div>
+                <div class="timeline-desc">Un reporte cada hora</div>
+            </div>
+            <div class="timeline-node">
+                <div class="timeline-badge" style="background:var(--sh-blue-light); color:var(--sh-blue);">DGA Medio</div>
+                <div class="timeline-title">Diario</div>
+                <div class="timeline-desc">Un reporte al día</div>
+            </div>
+            <div class="timeline-node">
+                <div class="timeline-badge" style="background:rgba(232,194,82,0.15); color:#e8c252;">DGA Menor</div>
+                <div class="timeline-title">Mensual</div>
+                <div class="timeline-desc">Un reporte al mes</div>
+            </div>
+            <div class="timeline-node">
+                <div class="timeline-badge" style="background:rgba(167,139,250,0.15); color:#a78bfa;">DGA CMP</div>
+                <div class="timeline-title">Semestral</div>
+                <div class="timeline-desc">Un reporte al semestre</div>
+            </div>
+            <div class="timeline-node">
+                <div class="timeline-badge" style="background:var(--sh-green-light); color:var(--sh-green-dark);">SMA</div>
+                <div class="timeline-title">Anual</div>
+                <div class="timeline-desc">Un reporte al año</div>
+            </div>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Estándar</th>
+                    <th>Reporte</th>
+                    <th>Frecuencia mínima</th>
+                    <th>Variables requeridas</th>
+                    <th>Automático</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>DGA Mayor</strong></td>
+                    <td>Horario</td>
+                    <td>≤ 10 min</td>
+                    <td>Caudal + Total</td>
+                    <td><span class="tag-pill tag-green">Sí + retry</span></td>
+                </tr>
+                <tr>
+                    <td><strong>DGA Medio</strong></td>
+                    <td>Diario</td>
+                    <td>≤ 60 min</td>
+                    <td>Caudal + Total</td>
+                    <td><span class="tag-pill tag-green">Sí + retry</span></td>
+                </tr>
+                <tr>
+                    <td><strong>DGA Menor</strong></td>
+                    <td>Mensual / Semestral</td>
+                    <td>≤ 60 min</td>
+                    <td>Caudal + Total</td>
+                    <td><span class="tag-pill tag-green">Sí + retry</span></td>
+                </tr>
+                <tr>
+                    <td><strong>DGA CMP</strong></td>
+                    <td>Mensual / Semestral</td>
+                    <td>≤ 60 min</td>
+                    <td>Caudal + Total</td>
+                    <td><span class="tag-pill tag-green">Sí + retry</span></td>
+                </tr>
+                <tr>
+                    <td><strong>SMA</strong></td>
+                    <td>Mensual / Semestral</td>
+                    <td>Según DGA asociado</td>
+                    <td>Caudal + Total</td>
+                    <td><span class="tag-pill tag-blue">Sí, comprimido</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Software-Only</strong></td>
+                    <td>Excel / PDF bajo demanda</td>
+                    <td>N/A (manual)</td>
+                    <td>Según ingreso</td>
+                    <td><span class="tag-pill tag-yellow">Bajo demanda</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="official-note" style="margin-top:1.5rem;">
+            <h4>🔗 Agregación de puntos DGA</h4>
+            <p>El sistema permite configurar que un punto sume (agregue) los totales de otros puntos al momento de generar el reporte DGA. Esto es útil cuando un cliente tiene múltiples pozos bajo una misma resolución. La agregación se configura en el campo <code>dga_aggregate_points</code>.</p>
+        </div>
+    </section>
+
+    <!-- SECCIÓN 3: MENÚ DE SOFTWARE -->
+    <section class="section" id="software">
+        <h2 class="section-title">Menú de Software</h2>
+        <p class="section-subtitle">Capacidades de la plataforma que el cliente puede contratar. Cada funcionalidad se activa o desactiva independientemente.</p>
+
+        <h3 style="font-size:1.2rem; margin-bottom:0.75rem;">Portal Web</h3>
+        <div class="feature-list">
+            <div class="feature-item">
+                <h4>📊 Dashboard multi-proyecto</h4>
+                <p>Vista consolidada de todos los puntos del cliente. KPIs: puntos activos, alertas pendientes, total acumulado del mes, caudal promedio.</p>
+            </div>
+            <div class="feature-item">
+                <h4>🗺️ Mapa de puntos</h4>
+                <p>Geolocalización de cada punto de captación. Clic en un punto muestra resumen en vivo: caudal, nivel, total y estado de conexión.</p>
+            </div>
+            <div class="feature-item">
+                <h4>📈 Histórico y gráficos</h4>
+                <p>Vistas de 7 días, 30 días, 90 días y personalizadas. Tendencias de caudal, nivel y consumo. Exportación a CSV/Excel.</p>
+            </div>
+            <div class="feature-item">
+                <h4>📁 Gestión documental</h4>
+                <p>Archivos asociados a cada punto con tipos configurables: permisos, resoluciones, fotos, certificados.</p>
+            </div>
+        </div>
+
+        <h3 style="font-size:1.2rem; margin:2rem 0 0.75rem;">App Móvil Ikolu</h3>
+        <p style="color:var(--sh-text-muted); margin-bottom:1rem;">La app móvil Ikolu consume los mismos endpoints que el portal web. Su funcionalidad se organiza en 7 módulos suscriptibles por punto:</p>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Módulo</th>
+                    <th>Nombre</th>
+                    <th>Qué muestra</th>
+                    <th>Disponibilidad</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>m1</strong></td>
+                    <td>Mi Pozo</td>
+                    <td>Resumen en vivo del punto: caudal, nivel, total, estado</td>
+                    <td>Incluido siempre</td>
+                </tr>
+                <tr>
+                    <td><strong>m2</strong></td>
+                    <td>DGA</td>
+                    <td>Reportes DGA descargables, estado de envíos, comprobantes</td>
+                    <td>Suscripción opcional</td>
+                </tr>
+                <tr>
+                    <td><strong>m3</strong></td>
+                    <td>Datos y Reportes</td>
+                    <td>Tablas de datos históricos, exportación Excel/PDF</td>
+                    <td>Suscripción opcional</td>
+                </tr>
+                <tr>
+                    <td><strong>m4</strong></td>
+                    <td>Gráficos</td>
+                    <td>Visualización temporal de variables, comparativas</td>
+                    <td>Suscripción opcional</td>
+                </tr>
+                <tr>
+                    <td><strong>m5</strong></td>
+                    <td>Indicadores</td>
+                    <td>KPIs calculados: eficiencia, cumplimiento, tendencias</td>
+                    <td>Suscripción opcional</td>
+                </tr>
+                <tr>
+                    <td><strong>m6</strong></td>
+                    <td>Alarmas</td>
+                    <td>Alertas en tiempo real, historial de eventos</td>
+                    <td>Suscripción opcional</td>
+                </tr>
+                <tr>
+                    <td><strong>m7</strong></td>
+                    <td>Documentos</td>
+                    <td>Acceso a archivos del punto desde el móvil</td>
+                    <td>Suscripción opcional</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3 style="font-size:1.2rem; margin:2rem 0 0.75rem;">APIs disponibles</h3>
+        <div class="feature-list">
+            <div class="feature-item">
+                <h4>🔌 API Legacy /api/</h4>
+                <p>REST completo con DefaultRouter. CRUD de puntos, lecturas, alertas, reportes. Incluye throttling por endpoint para control de uso.</p>
+            </div>
+            <div class="feature-item">
+                <h4>🔌 API Ikolu /api/ik/</h4>
+                <p>Endpoints batch optimizados para móvil: batch/telemetry/, batch/stats/, login/. Menos llamadas, menos datos transferidos.</p>
+            </div>
+        </div>
+
+        <h3 style="font-size:1.2rem; margin:2rem 0 0.75rem;">Sistema de alertas</h3>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Tipo de alerta</th>
+                    <th>Descripción</th>
+                    <th>Canales disponibles</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Umbral máximo / mínimo</td>
+                    <td>Se dispara cuando una variable supera o baja de un valor configurado</td>
+                    <td>Email, Google Chat, Webhook, SMS</td>
+                </tr>
+                <tr>
+                    <td>Sin datos</td>
+                    <td>Se dispara cuando no llegan lecturas en un tiempo configurado</td>
+                    <td>Email, Google Chat, Webhook, SMS</td>
+                </tr>
+                <tr>
+                    <td>Desconexión</td>
+                    <td>El sensor deja de comunicarse con la plataforma</td>
+                    <td>Email, Google Chat, Webhook, SMS</td>
+                </tr>
+                <tr>
+                    <td>Reconexión</td>
+                    <td>El sensor vuelve a comunicarse después de una desconexión</td>
+                    <td>Email, Google Chat, Webhook, SMS</td>
+                </tr>
+                <tr>
+                    <td>Error de procesamiento</td>
+                    <td>Los datos llegan pero no pasan validación de calidad</td>
+                    <td>Email, Google Chat, Webhook, SMS</td>
+                </tr>
+                <tr>
+                    <td>Tasa de cambio</td>
+                    <td>La variable cambia más rápido de lo esperado</td>
+                    <td>Email, Google Chat, Webhook, SMS</td>
+                </tr>
+                <tr>
+                    <td>Desviación</td>
+                    <td>La variable se desvía del comportamiento histórico normal</td>
+                    <td>Email, Google Chat, Webhook, SMS</td>
+                </tr>
+                <tr>
+                    <td>Reportes programados</td>
+                    <td>Envío automático de reportes periódicos a destinatarios configurados</td>
+                    <td>Email, Google Chat, Webhook, SMS</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3 style="font-size:1.2rem; margin:2rem 0 0.75rem;">Reportes generados por el sistema</h3>
+        <div class="feature-list">
+            <div class="feature-item">
+                <h4>📊 Excel DGA</h4>
+                <p>Reporte formateado listo para envío a la DGA. Incluye caudal promedio horario, total acumulado, código DGA, SHAC, región.</p>
+            </div>
+            <div class="feature-item">
+                <h4>📄 PDF</h4>
+                <p>Reporte visual para presentaciones internas o auditorías. Incluye gráficos y tablas resumen.</p>
+            </div>
+            <div class="feature-item">
+                <h4>📰 Boletín diario</h4>
+                <p>Resumen automático enviado cada mañana con el estado de todos los puntos, alertas activas y totales del día anterior.</p>
+            </div>
+            <div class="feature-item">
+                <h4>📅 Reportes programados</h4>
+                <p>Reportes personalizados con frecuencia configurable (diaria, semanal, mensual) y destinatarios múltiples.</p>
+            </div>
+        </div>
+
+        <h3 style="font-size:1.2rem; margin:2rem 0 0.75rem;">Usuarios y permisos</h3>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Rol</th>
+                    <th>Permisos</th>
+                    <th>Límite típico</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Superadmin</strong></td>
+                    <td>Acceso total a todos los proyectos, puntos y configuraciones</td>
+                    <td>Equipo interno del motor</td>
+                </tr>
+                <tr>
+                    <td><strong>Admin de cliente</strong></td>
+                    <td>Administra sus proyectos, puntos, usuarios y alertas</td>
+                    <td>1 por proyecto típicamente</td>
+                </tr>
+                <tr>
+                    <td><strong>Viewer</strong></td>
+                    <td>Visualiza datos y reportes sin poder editar</td>
+                    <td>Ilimitado por punto (ManyToMany)</td>
+                </tr>
+                <tr>
+                    <td><strong>Owner de punto</strong></td>
+                    <td>Propietario de un punto específico, recibe alertas directas</td>
+                    <td>1 por punto</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- SECCIÓN 4: CONFIGURACIONES POR RUBRO -->
+    <section class="section" id="rubros">
+        <h2 class="section-title">Configuraciones Comercializables por Rubro</h2>
+        <p class="section-subtitle">Estas son las configuraciones técnicas que típicamente contrata cada tipo de cliente. No son límites: cualquier rubro puede contratar cualquier configuración. Se presentan como referencia de lo que suele solicitarse.</p>
+
+        <div class="rubro-tabs">
+            <button class="rubro-tab active" onclick="showRubro('minera', this)">🏭 Minera</button>
+            <button class="rubro-tab" onclick="showRubro('agricola', this)">🌾 Agrícola</button>
+            <button class="rubro-tab" onclick="showRubro('consultora', this)">📋 Consultora</button>
+            <button class="rubro-tab" onclick="showRubro('muni', this)">🏛️ Estado</button>
+            <button class="rubro-tab" onclick="showRubro('masivo', this)">⚡ Masivo</button>
+            <button class="rubro-tab" onclick="showRubro('software', this)">💻 Software-Only</button>
+        </div>
+
+        <div id="rubro-minera" class="rubro-panel active">
+            <div class="rubro-header">
+                <div class="rubro-icon">🏭</div>
+                <div class="rubro-title-block">
+                    <h3>Minera / Industrial Grande</h3>
+                    <div class="spec-tags">
+                        <span class="tag-pill tag-blue">4 variables</span>
+                        <span class="tag-pill tag-red">5 min</span>
+                        <span class="tag-pill tag-green">DGA Mayor + SMA</span>
+                        <span class="tag-pill tag-purple">Telemetría</span>
+                    </div>
+                </div>
+            </div>
+            <div class="rubro-metrics">
+                <div class="rubro-metric"><div class="rubro-metric-value">4</div><div class="rubro-metric-label">Variables</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">288</div><div class="rubro-metric-label">Lecturas/día</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">5 min</div><div class="rubro-metric-label">Frecuencia</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">7/7</div><div class="rubro-metric-label">Módulos app</div></div>
+            </div>
+            <div class="rubro-grid">
+                <div class="rubro-col">
+                    <h4>⚙️ Configuración</h4>
+                    <ul>
+                        <li>Caudal + total + nivel + nivel freático</li>
+                        <li>Frecuencia 5 minutos</li>
+                        <li>DGA Mayor horario + SMA mensual</li>
+                        <li>Sensor pulsos + nivel</li>
+                        <li>Telemetría automática</li>
+                    </ul>
+                </div>
+                <div class="rubro-col">
+                    <h4>📦 Qué recibe</h4>
+                    <ul>
+                        <li>Dashboard multi-proyecto con KPIs</li>
+                        <li>Reporte horario DGA automático</li>
+                        <li>Reporte SMA comprimido</li>
+                        <li>Alertas email + app tiempo real</li>
+                        <li>API Legacy lectura + escritura</li>
+                        <li>Histórico ilimitado auditorías</li>
+                    </ul>
+                </div>
+                <div class="rubro-col">
+                    <h4>🎯 Diferenciador</h4>
+                    <p style="font-size:0.88rem; color:var(--sh-text); line-height:1.6;">Configuración más completa del catálogo. Cumplimiento regulatorio exigente con monitoreo intensivo del acuífero. Orientada a clientes que necesitan trazabilidad total y soporte dedicado.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="rubro-agricola" class="rubro-panel">
+            <div class="rubro-header">
+                <div class="rubro-icon">🌾</div>
+                <div class="rubro-title-block">
+                    <h3>Agrícola / Mediano</h3>
+                    <div class="spec-tags">
+                        <span class="tag-pill tag-blue">3 variables</span>
+                        <span class="tag-pill tag-yellow">10-60 min</span>
+                        <span class="tag-pill tag-green">DGA Medio</span>
+                        <span class="tag-pill tag-purple">Telemetría</span>
+                    </div>
+                </div>
+            </div>
+            <div class="rubro-metrics">
+                <div class="rubro-metric"><div class="rubro-metric-value">3</div><div class="rubro-metric-label">Variables</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">24-144</div><div class="rubro-metric-label">Lecturas/día</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">10-60 min</div><div class="rubro-metric-label">Frecuencia</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">4/7</div><div class="rubro-metric-label">Módulos app</div></div>
+            </div>
+            <div class="rubro-grid">
+                <div class="rubro-col">
+                    <h4>⚙️ Configuración</h4>
+                    <ul>
+                        <li>Caudal + total + nivel</li>
+                        <li>Frecuencia 10-60 minutos</li>
+                        <li>DGA Medio diario</li>
+                        <li>Sensor pulsos + nivel</li>
+                        <li>Telemetría automática</li>
+                    </ul>
+                </div>
+                <div class="rubro-col">
+                    <h4>📦 Qué recibe</h4>
+                    <ul>
+                        <li>Dashboard consumo del mes</li>
+                        <li>Reporte diario DGA automático</li>
+                        <li>Alerta desconexión temporada riego</li>
+                        <li>Histórico 2+ años planificación</li>
+                        <li>1 admin + 2-3 viewers</li>
+                    </ul>
+                </div>
+                <div class="rubro-col">
+                    <h4>🎯 Diferenciador</h4>
+                    <p style="font-size:0.88rem; color:var(--sh-text); line-height:1.6;">Menor complejidad regulatoria que DGA Mayor. Menos datos procesados y menor infraestructura de envío. Ideal para segmento agrícola y clientes medianos.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="rubro-consultora" class="rubro-panel">
+            <div class="rubro-header">
+                <div class="rubro-icon">📋</div>
+                <div class="rubro-title-block">
+                    <h3>Consultora Ambiental</h3>
+                    <div class="spec-tags">
+                        <span class="tag-pill tag-blue">2-3 variables</span>
+                        <span class="tag-pill tag-yellow">10-30 min</span>
+                        <span class="tag-pill tag-green">DGA Medio/Mayor</span>
+                        <span class="tag-pill tag-purple">Mixto</span>
+                    </div>
+                </div>
+            </div>
+            <div class="rubro-metrics">
+                <div class="rubro-metric"><div class="rubro-metric-value">2-3</div><div class="rubro-metric-label">Variables</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">48-144</div><div class="rubro-metric-label">Lecturas/día</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">10-30 min</div><div class="rubro-metric-label">Frecuencia</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">7/7</div><div class="rubro-metric-label">Módulos app</div></div>
+            </div>
+            <div class="rubro-grid">
+                <div class="rubro-col">
+                    <h4>⚙️ Configuración</h4>
+                    <ul>
+                        <li>Caudal + total (sin nivel 1ª etapa)</li>
+                        <li>Frecuencia 10-30 minutos</li>
+                        <li>DGA Medio/Mayor según cliente</li>
+                        <li>Sensor pulsos por punto</li>
+                        <li>Telemetría + formulario manual</li>
+                    </ul>
+                </div>
+                <div class="rubro-col">
+                    <h4>📦 Qué recibe</h4>
+                    <ul>
+                        <li>Portal multi-cliente unificado</li>
+                        <li>Reportes Excel DGA listos</li>
+                        <li>Alertas agrupadas por cliente</li>
+                        <li>API Ikolu integración propia</li>
+                        <li>White-label opcional</li>
+                    </ul>
+                </div>
+                <div class="rubro-col">
+                    <h4>🎯 Diferenciador</h4>
+                    <p style="font-size:0.88rem; color:var(--sh-text); line-height:1.6;">Orientada a consultoras con múltiples clientes. Escalable bajo una misma cuenta. Opción white-label para ofrecer la plataforma con marca propia.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="rubro-muni" class="rubro-panel">
+            <div class="rubro-header">
+                <div class="rubro-icon">🏛️</div>
+                <div class="rubro-title-block">
+                    <h3>Municipalidad / Estado</h3>
+                    <div class="spec-tags">
+                        <span class="tag-pill tag-blue">3 variables</span>
+                        <span class="tag-pill tag-red">5-15 min</span>
+                        <span class="tag-pill tag-green">DGA Mayor + SMA</span>
+                        <span class="tag-pill tag-purple">Telemetría</span>
+                    </div>
+                </div>
+            </div>
+            <div class="rubro-metrics">
+                <div class="rubro-metric"><div class="rubro-metric-value">3</div><div class="rubro-metric-label">Variables</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">96-288</div><div class="rubro-metric-label">Lecturas/día</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">5-15 min</div><div class="rubro-metric-label">Frecuencia</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">7/7</div><div class="rubro-metric-label">Módulos app</div></div>
+            </div>
+            <div class="rubro-grid">
+                <div class="rubro-col">
+                    <h4>⚙️ Configuración</h4>
+                    <ul>
+                        <li>Caudal + total + nivel</li>
+                        <li>Frecuencia 5-15 minutos</li>
+                        <li>DGA Mayor + SMA dual</li>
+                        <li>Sensor pulsos + nivel</li>
+                        <li>Telemetría automática</li>
+                    </ul>
+                </div>
+                <div class="rubro-col">
+                    <h4>📦 Qué recibe</h4>
+                    <ul>
+                        <li>Dashboard público / semi-público</li>
+                        <li>Reportes DGA + SMA automáticos</li>
+                        <li>Trazabilidad completa timestamp</li>
+                        <li>Histórico ilimitado auditorías</li>
+                        <li>API lectura portales gubernamentales</li>
+                    </ul>
+                </div>
+                <div class="rubro-col">
+                    <h4>🎯 Diferenciador</h4>
+                    <p style="font-size:0.88rem; color:var(--sh-text); line-height:1.6;">Cumplimiento dual, transparencia activa e integración con sistemas gubernamentales. Trazabilidad completa para auditorías Contraloría.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="rubro-masivo" class="rubro-panel">
+            <div class="rubro-header">
+                <div class="rubro-icon">⚡</div>
+                <div class="rubro-title-block">
+                    <h3>Cliente Masivo / Económico</h3>
+                    <div class="spec-tags">
+                        <span class="tag-pill tag-blue">2 variables</span>
+                        <span class="tag-pill tag-yellow">30-60 min</span>
+                        <span class="tag-pill tag-green">DGA Medio</span>
+                        <span class="tag-pill tag-purple">Telemetría</span>
+                    </div>
+                </div>
+            </div>
+            <div class="rubro-metrics">
+                <div class="rubro-metric"><div class="rubro-metric-value">2</div><div class="rubro-metric-label">Variables</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">24-48</div><div class="rubro-metric-label">Lecturas/día</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">30-60 min</div><div class="rubro-metric-label">Frecuencia</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">3/7</div><div class="rubro-metric-label">Módulos app</div></div>
+            </div>
+            <div class="rubro-grid">
+                <div class="rubro-col">
+                    <h4>⚙️ Configuración</h4>
+                    <ul>
+                        <li>Caudal + total (sin nivel)</li>
+                        <li>Frecuencia 30-60 minutos</li>
+                        <li>DGA Medio diario</li>
+                        <li>Solo sensor pulsos</li>
+                        <li>Telemetría automática</li>
+                    </ul>
+                </div>
+                <div class="rubro-col">
+                    <h4>📦 Qué recibe</h4>
+                    <ul>
+                        <li>Dashboard 50+ puntos consolidado</li>
+                        <li>Reporte diario DGA todos puntos</li>
+                        <li>Alertas desconexión / caudal</li>
+                        <li>Instalación plug & play &lt;1h</li>
+                        <li>Escalamiento sin límite</li>
+                    </ul>
+                </div>
+                <div class="rubro-col">
+                    <h4>🎯 Diferenciador</h4>
+                    <p style="font-size:0.88rem; color:var(--sh-text); line-height:1.6;">Despliegue masivo 50+ pozos. Sin sensor nivel y frecuencias bajas reduce datos procesados. Cada punto adicional usa misma infraestructura login y reportes.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="rubro-software" class="rubro-panel">
+            <div class="rubro-header">
+                <div class="rubro-icon">💻</div>
+                <div class="rubro-title-block">
+                    <h3>Software-Only</h3>
+                    <div class="spec-tags">
+                        <span class="tag-pill tag-blue">Variables libres</span>
+                        <span class="tag-pill tag-yellow">Ingreso manual</span>
+                        <span class="tag-pill tag-green">Reportes bajo demanda</span>
+                        <span class="tag-pill tag-purple">Sin hardware</span>
+                    </div>
+                </div>
+            </div>
+            <div class="rubro-metrics">
+                <div class="rubro-metric"><div class="rubro-metric-value">N/A</div><div class="rubro-metric-label">Variables</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">Manual</div><div class="rubro-metric-label">Ingreso</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">0</div><div class="rubro-metric-label">Hardware</div></div>
+                <div class="rubro-metric"><div class="rubro-metric-value">Full</div><div class="rubro-metric-label">Portal + app</div></div>
+            </div>
+            <div class="rubro-grid">
+                <div class="rubro-col">
+                    <h4>⚙️ Configuración</h4>
+                    <ul>
+                        <li>Variables según ingreso manual</li>
+                        <li>Sin frecuencia definida</li>
+                        <li>Reportes descargables bajo demanda</li>
+                        <li>Sin hardware</li>
+                        <li>Formulario manual</li>
+                    </ul>
+                </div>
+                <div class="rubro-col">
+                    <h4>📦 Qué recibe</h4>
+                    <ul>
+                        <li>Portal web + app Ikolu completo</li>
+                        <li>Reportes DGA Excel descargables</li>
+                        <li>Dashboard histórico y gráficos</li>
+                        <li>Alertas configurables</li>
+                        <li>Transición sin fricción a telemetría</li>
+                    </ul>
+                </div>
+                <div class="rubro-col">
+                    <h4>🎯 Diferenciador</h4>
+                    <p style="font-size:0.88rem; color:var(--sh-text); line-height:1.6;">Entrada más accesible. El cliente conoce el valor del sistema antes de invertir en hardware y telemetría. Datos históricos se mantienen al migrar.</p>
+                </div>
+            </div>
+        </div>
+
+        <script>
+        function showRubro(id, btn) {
+            document.querySelectorAll('.rubro-panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.rubro-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('rubro-' + id).classList.add('active');
+            btn.classList.add('active');
+        }
+        </script>
+    </section>
+
+    <!-- SECCIÓN 5: MÓDULOS IKOLU Y PERIODICIDADES -->
+    <section class="section" id="modulos">
+        <h2 class="section-title">Módulos Ikolu y Periodicidades</h2>
+        <p class="section-subtitle">Cada punto puede suscribir módulos de la app móvil de forma independiente. El módulo m1 es obligatorio; los demás son opcionales.</p>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Módulo</th>
+                    <th>Nombre</th>
+                    <th>Descripción</th>
+                    <th>Obligatorio</th>
+                    <th>Periodicidades</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>m1</td>
+                    <td>Mi Pozo</td>
+                    <td>Resumen en vivo: caudal, nivel, total, estado de conexión</td>
+                    <td>Sí</td>
+                    <td>—</td>
+                </tr>
+                <tr>
+                    <td>m2</td>
+                    <td>DGA</td>
+                    <td>Reportes DGA descargables, estado de envíos, comprobantes</td>
+                    <td>No</td>
+                    <td>Mensual, Trimestral, Semestral, Anual</td>
+                </tr>
+                <tr>
+                    <td>m3</td>
+                    <td>Datos y Reportes</td>
+                    <td>Tablas históricas, exportación Excel/PDF</td>
+                    <td>No</td>
+                    <td>Mensual, Trimestral, Semestral, Anual</td>
+                </tr>
+                <tr>
+                    <td>m4</td>
+                    <td>Gráficos</td>
+                    <td>Visualización temporal, comparativas entre períodos</td>
+                    <td>No</td>
+                    <td>Mensual, Trimestral, Semestral, Anual</td>
+                </tr>
+                <tr>
+                    <td>m5</td>
+                    <td>Indicadores</td>
+                    <td>KPIs calculados: eficiencia, cumplimiento, tendencias</td>
+                    <td>No</td>
+                    <td>Mensual, Trimestral, Semestral, Anual</td>
+                </tr>
+                <tr>
+                    <td>m6</td>
+                    <td>Alarmas</td>
+                    <td>Alertas en tiempo real, historial de eventos</td>
+                    <td>No</td>
+                    <td>Mensual, Trimestral, Semestral, Anual</td>
+                </tr>
+                <tr>
+                    <td>m7</td>
+                    <td>Documentos</td>
+                    <td>Acceso a archivos del punto desde el móvil</td>
+                    <td>No</td>
+                    <td>Mensual, Trimestral, Semestral, Anual</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="official-note" style="margin-top:1.5rem;">
+            <h4>📝 Sobre las suscripciones</h4>
+            <p>Cada módulo opcional (m2-m7) tiene una fecha de inicio de suscripción y una periodicidad. El sistema permite activar o desactivar módulos en cualquier momento. Al desactivar, el módulo deja de aparecer en la app pero los datos históricos se mantienen.</p>
+        </div>
+    </section>
+
+    <!-- SECCIÓN 6: GLOSARIO -->
+    <section class="section" id="glosario">
+        <h2 class="section-title">Glosario Técnico-Comercial</h2>
+        <p class="section-subtitle">Traducción de términos del sistema a términos que aparecen en una propuesta comercial.</p>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Término técnico</th>
+                    <th>Traducción comercial</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Frecuencia de telemetría</td>
+                    <td>Cada cuánto tiempo llega un dato al sistema (1, 5, 10, 15, 30, 60 minutos)</td>
+                </tr>
+                <tr>
+                    <td>Variable caudal</td>
+                    <td>Litros por segundo (L/s) instantáneo, calculado desde pulsos del sensor</td>
+                </tr>
+                <tr>
+                    <td>Variable total</td>
+                    <td>Metros cúbicos (m³) acumulados desde el inicio del monitoreo</td>
+                </tr>
+                <tr>
+                    <td>Variable nivel</td>
+                    <td>Metros (m) de profundidad del agua en el pozo, requiere sensor adicional</td>
+                </tr>
+                <tr>
+                    <td>DGA Mayor</td>
+                    <td>Reporte horario obligatorio a la Dirección General de Aguas. Requiere frecuencia ≤ 10 min.</td>
+                </tr>
+                <tr>
+                    <td>DGA Medio</td>
+                    <td>Reporte diario obligatorio a la DGA. Requiere frecuencia ≤ 60 min.</td>
+                </tr>
+                <tr>
+                    <td>SMA</td>
+                    <td>Reporte mensual/semestral al Servicio de Evaluación Ambiental. Usa los mismos sensores que DGA.</td>
+                </tr>
+                <tr>
+                    <td>Software-Only</td>
+                    <td>Plataforma sin sensores: el cliente ingresa datos manualmente y descarga reportes.</td>
+                </tr>
+                <tr>
+                    <td>Sensor de pulsos</td>
+                    <td>Dispositivo que cuenta revoluciones del medidor de agua. Base para caudal y total.</td>
+                </tr>
+                <tr>
+                    <td>Sensor de nivel</td>
+                    <td>Dispositivo de presión o ultrasonido que mide la altura del agua en el pozo.</td>
+                </tr>
+                <tr>
+                    <td>Alerta de umbral</td>
+                    <td>Notificación automática cuando una variable supera o baja de un valor configurado.</td>
+                </tr>
+                <tr>
+                    <td>Alerta de desconexión</td>
+                    <td>Notificación cuando el sensor deja de comunicarse con la plataforma.</td>
+                </tr>
+                <tr>
+                    <td>Retry persistente</td>
+                    <td>Si un envío a DGA falla, el sistema lo reintenta automáticamente hasta que llegue.</td>
+                </tr>
+                <tr>
+                    <td>API Legacy</td>
+                    <td>Interfaz de programación REST completa para integrar esta API con otros sistemas.</td>
+                </tr>
+                <tr>
+                    <td>API Ikolu</td>
+                    <td>Interfaz optimizada para la app móvil. Endpoints batch que reducen tráfico de datos.</td>
+                </tr>
+                <tr>
+                    <td>White-label</td>
+                    <td>La plataforma se muestra con el logo y colores de la consultora o cliente.</td>
+                </tr>
+                <tr>
+                    <td>Boletín diario</td>
+                    <td>Email automático cada mañana con el resumen del estado de todos los puntos.</td>
+                </tr>
+                <tr>
+                    <td>Agregación de puntos</td>
+                    <td>Sumar los totales de varios pozos para reportar a DGA como un solo punto.</td>
+                </tr>
+                <tr>
+                    <td>Modo FORM</td>
+                    <td>Ingreso manual de datos por el cliente desde web o app.</td>
+                </tr>
+                <tr>
+                    <td>Modo TELEMETRY</td>
+                    <td>Datos que llegan automáticamente desde el sensor vía internet.</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+</div>
+
+<footer class="footer">
+    <p><strong>Catálogo de Capacidades Comercializables</strong></p>
+    <p style="margin-top:0.5rem;">
+        <a href="/docs/">Documentación API</a> ·
+        <a href="/docs/math/">SmartMath</a> ·
+        <a href="/api/schema/redoc/">Redoc Técnico</a> ·
+        <a href="/health/">Health Check</a>
+    </p>
+    <p style="margin-top:0.5rem; opacity:0.6;">Documento oficial del área de Software · Creado por Felipe Barraza, Líder de Software · SmartHydro</p>
+    <p style="margin-top:0.25rem; opacity:0.5; font-size:0.8rem;">Empresa B Certificada · Motor matemático para telemetría y cumplimiento normativo</p>
+</footer>
+
+</body>
+</html>

@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.utils import timezone
 from api.core.models.catchment_points import (
     Client,
+    CounterResetLog,
     ProjectCatchments,
     CatchmentPoint,
     ProfileIkoluCatchment,
@@ -15,6 +16,7 @@ from api.core.models.catchment_points import (
     Variable,
     RegisterPersons
 )
+from api.core.models.compliance_providers import ComplianceProvider
 from api.core.models.interaction_detail import InteractionDetail
 from api.core.models.telemetry_providers import TelemetryProvider
 from datetime import datetime, timedelta
@@ -98,7 +100,20 @@ class NotificationsCatchmentDetailSerializer(serializers.ModelSerializer):
         Calcular estadísticas analíticas de la alerta umbral.
         Basado en las ResponseNotificationsCatchment asociadas (disparos históricos).
         Incluye historial de mediciones de telemetría asociadas a cada disparo.
+
+        Si esta alerta está sincronizada con el nuevo subsistema (AlertRule),
+        también incluye los AlertTrigger como fuente de disparos.
         """
+        # ── Fallback al nuevo subsistema si es alerta umbral sincronizada ──
+        if obj.type_notification == "ALERT" and obj.type_alert:
+            from api.core.views.alert_adapter import get_alert_rule_stats
+            from api.core.models.alerts import AlertRule
+            try:
+                rule = AlertRule.objects.get(legacy_notification_id=obj.id)
+                return get_alert_rule_stats(rule)
+            except AlertRule.DoesNotExist:
+                pass  # No está migrada, seguir con cálculo legacy tradicional
+
         responses = obj.responses.all().order_by('created')
         total = responses.count()
 
@@ -294,6 +309,16 @@ class TelemetryProviderSerializer(serializers.ModelSerializer):
         )
 
 
+class ComplianceProviderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ComplianceProvider
+        fields = (
+            'id', 'code', 'name', 'protocol', 'base_url', 'auth_url',
+            'auth_type', 'auth_username', 'auth_password', 'auth_token', 'auth_header_name',
+            'protocol_config', 'timeout_seconds', 'retry_attempts', 'is_active',
+        )
+
+
 class VariableCronSerializer(serializers.ModelSerializer):
     provider = TelemetryProviderSerializer(read_only=True)
 
@@ -371,6 +396,14 @@ class VariableSerializer(serializers.ModelSerializer):
 class RegisterPersonsSerializer(serializers.ModelSerializer):
     class Meta:
         model = RegisterPersons
+        fields = '__all__'
+
+
+class CounterResetLogSerializer(serializers.ModelSerializer):
+    point_title = serializers.CharField(source='point_catchment.title', read_only=True)
+
+    class Meta:
+        model = CounterResetLog
         fields = '__all__'
 
 

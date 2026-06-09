@@ -84,6 +84,7 @@ class CatchmentPoint(ModelApi):
         related_name="points",
         verbose_name="Proveedor de telemetría",
         help_text="Proveedor configurable. Reemplaza los campos booleanos legacy (is_tdata, is_thethings, is_novus).",
+        db_index=True,
     )
 
     lat = models.CharField(
@@ -136,21 +137,24 @@ class CatchmentPoint(ModelApi):
         super().clean()
 
         # 1. No puede ser telemetría y formulario al mismo tiempo
-        has_telemetry = self.data_config_profiles.filter(is_telemetry=True).exists()
-        has_form = self.ikolu_profiles.filter(entry_by_form=True).exists()
+        # ✅ FIX: Solo validar relaciones si el objeto ya existe (tiene PK).
+        # En creación (sin PK) las relaciones inversas aún no están disponibles.
+        if self.pk:
+            has_telemetry = self.data_config_profiles.filter(is_telemetry=True).exists()
+            has_form = self.ikolu_profiles.filter(entry_by_form=True).exists()
 
-        if has_telemetry and has_form:
-            raise ValidationError(
-                "Un punto no puede ser simultáneamente telemetría automática y formulario. "
-                "Desactive 'is_telemetry' o 'entry_by_form'."
-            )
+            if has_telemetry and has_form:
+                raise ValidationError(
+                    "Un punto no puede ser simultáneamente telemetría automática y formulario. "
+                    "Desactive 'is_telemetry' o 'entry_by_form'."
+                )
 
-        # 2. Si es telemetría, debe tener al menos un tipo definido (legacy) o provider (nuevo)
-        has_provider_legacy = self.is_tdata or self.is_thethings or self.is_novus
-        has_provider_new = self.telemetry_provider_id is not None
-        if has_telemetry and not (has_provider_legacy or has_provider_new):
-            # Advertencia suave: puntos sin tipo pueden ser nuevos o en configuración
-            pass
+            # 2. Si es telemetría, debe tener al menos un tipo definido (legacy) o provider (nuevo)
+            has_provider_legacy = self.is_tdata or self.is_thethings or self.is_novus
+            has_provider_new = self.telemetry_provider_id is not None
+            if has_telemetry and not (has_provider_legacy or has_provider_new):
+                # Advertencia suave: puntos sin tipo pueden ser nuevos o en configuración
+                pass
 
     def __str__(self):
         return f"{self.title} - {self.owner_user}"
@@ -164,6 +168,7 @@ class ProfileIkoluCatchment(ModelApi):
         related_name="ikolu_profiles",
         on_delete=models.CASCADE,
         verbose_name="Punto de captacion",
+        db_index=True,
     )
     entry_by_form = models.BooleanField(
         default=False, verbose_name="Ingreso por formulario"
@@ -685,6 +690,7 @@ class Variable(ModelApi):
         related_name="variables",
         on_delete=models.CASCADE,
         verbose_name="Esquema",
+        db_index=True,
     )
 
     PROVIDERS_CHOICES = [
@@ -798,3 +804,126 @@ class RegisterPersons(ModelApi):
 
     def __str__(self):
         return str(self.name)
+
+
+class CounterResetLog(ModelApi):
+    """Log de auditoría para resets de contadores totalizados.
+
+    Guarda el contexto completo de cada reset detectado para permitir:
+    - Diagnóstico de resets falsos vs reales
+    - Reversión precisa de compensaciones mal aplicadas
+    - Trazabilidad para auditorías DGA
+    """
+
+    RESET_TYPE_CHOICES = [
+        ("ZERO", "Reset a 0"),
+        ("ZERO_KEPT", "Reset a 0 - total preservado"),
+        ("PARTIAL", "Reset parcial (0 < actual < anterior)"),
+        ("PARTIAL_REJECTED", "Reset parcial rechazado (sin evidencia de desconexión)"),
+        ("MASSIVE_JUMP", "Salto masivo bloqueado"),
+        ("NEGATIVE_PULSES", "Pulsos negativos (error de ingesta)"),
+    ]
+
+    point_catchment = models.ForeignKey(
+        CatchmentPoint,
+        related_name="counter_reset_logs",
+        on_delete=models.CASCADE,
+        verbose_name="Punto de captación",
+        db_index=True,
+    )
+
+    # Contexto temporal
+    date_time_medition = models.DateTimeField(
+        verbose_name="Fecha/hora de la medición",
+        help_text="Timestamp del registro InteractionDetail que disparó el reset",
+    )
+    time_diff_hours = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        blank=True, null=True,
+        verbose_name="Horas desde última medición",
+    )
+
+    # Tipo y valores del reset
+    reset_type = models.CharField(
+        max_length=20,
+        choices=RESET_TYPE_CHOICES,
+        verbose_name="Tipo de reset",
+    )
+    last_pulses = models.DecimalField(
+        max_digits=20, decimal_places=2,
+        verbose_name="Pulsos anteriores",
+    )
+    current_pulses = models.DecimalField(
+        max_digits=20, decimal_places=2,
+        verbose_name="Pulsos actuales",
+    )
+    pulses_factor = models.IntegerField(
+        verbose_name="Factor de pulsos",
+    )
+
+    # Compensación aplicada
+    addition_before = models.DecimalField(
+        max_digits=15, decimal_places=3,
+        blank=True, null=True,
+        verbose_name="Addition antes del reset",
+    )
+    amount_to_add = models.DecimalField(
+        max_digits=15, decimal_places=3,
+        blank=True, null=True,
+        verbose_name="Volumen compensado (m³)",
+    )
+    addition_after = models.DecimalField(
+        max_digits=15, decimal_places=3,
+        blank=True, null=True,
+        verbose_name="Addition después del reset",
+    )
+
+    # Totales calculados
+    total_before = models.DecimalField(
+        max_digits=15, decimal_places=3,
+        blank=True, null=True,
+        verbose_name="Total anterior (m³)",
+    )
+    total_after = models.DecimalField(
+        max_digits=15, decimal_places=3,
+        blank=True, null=True,
+        verbose_name="Total calculado post-reset (m³)",
+    )
+
+    # Validaciones aplicadas
+    passed_anti_jump = models.BooleanField(
+        default=True,
+        verbose_name="Pasó validación anti-salto",
+    )
+    reconnection_threshold = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        blank=True, null=True,
+        verbose_name="Umbral de reconexión (horas)",
+    )
+    is_reconnection = models.BooleanField(
+        default=False,
+        verbose_name="Detectado como reconexión",
+    )
+    days_not_connection = models.IntegerField(
+        blank=True, null=True,
+        verbose_name="Días sin conexión (último registro)",
+    )
+
+    # Fuente
+    detected_by = models.CharField(
+        max_length=100,
+        default="cron_unified",
+        verbose_name="Detectado por",
+    )
+
+    class Meta:
+        verbose_name = "Log de Reset de Contador"
+        verbose_name_plural = "Logs de Resets de Contadores"
+        ordering = ["-date_time_medition"]
+        indexes = [
+            models.Index(fields=["point_catchment", "date_time_medition"]),
+            models.Index(fields=["reset_type", "date_time_medition"]),
+        ]
+
+    def __str__(self):
+        return f"Reset {self.reset_type} Punto {self.point_catchment_id} @ {self.date_time_medition}"

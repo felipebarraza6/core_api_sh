@@ -160,6 +160,16 @@ class AlertRule(ModelApi):
         help_text="Documenta el propósito de esta regla. Visible solo en admin.",
     )
 
+    legacy_notification_id = models.IntegerField(
+        blank=True,
+        db_index=True,
+        null=True,
+        unique=True,
+        verbose_name="ID de notificación legacy vinculada",
+        help_text="Si esta regla fue creada desde una NotificationsCatchment legacy, "
+                  "guarda el ID original para poder sincronizar endpoints legacy.",
+    )
+
     def clean(self):
         errors = {}
 
@@ -348,11 +358,11 @@ class AlertTrigger(ModelApi):
         blank=True, null=True,
         verbose_name="Umbral que se rompió",
     )
-    interaction_detail = models.ForeignKey(
-        "core.InteractionDetail",
-        on_delete=models.SET_NULL,
+    interaction_detail_id = models.IntegerField(
         null=True, blank=True,
-        verbose_name="Registro de telemetría relacionado",
+        verbose_name="ID de registro de telemetría relacionado",
+        db_index=True,
+        help_text="Referencia blanda a InteractionDetail (IntegerField para compatibilidad con particionamiento).",
     )
     point_catchment = models.ForeignKey(
         CatchmentPoint,
@@ -360,6 +370,7 @@ class AlertTrigger(ModelApi):
         null=True, blank=True,
         verbose_name="Punto que disparó",
         help_text="Para reglas globales, indica qué punto específico causó el trigger.",
+        db_index=True,
     )
 
     notification_sent = models.BooleanField(

@@ -18,8 +18,10 @@ from api.core.models.alerts import AlertRule, AlertTrigger
 from api.core.models.catchment_points import CatchmentPoint
 from api.core.models.interaction_detail import InteractionDetail
 from api.cronjobs.utils.logging_config import telemetry_logger
+from api.cronjobs.utils.locks import cron_job_lock
 
 
+@cron_job_lock("alert_engine", timeout=90)
 def run(dry_run: bool = False) -> dict:
     """Wrapper para django-crontab."""
     return run_engine(dry_run=dry_run)
@@ -67,7 +69,7 @@ def run_engine(dry_run: bool = False) -> dict:
                             triggered_at=now,
                             value_at_trigger=value,
                             threshold_breached=threshold,
-                            interaction_detail=interaction,
+                            interaction_detail_id=interaction.id if interaction else None,
                             point_catchment_id=point_id,
                             notification_sent=False,
                         )

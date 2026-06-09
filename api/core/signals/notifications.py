@@ -1,6 +1,6 @@
 import logging
 import threading
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, pre_delete
 from django.dispatch import receiver
 from django.conf import settings
 from django.core.mail import send_mail
@@ -96,3 +96,37 @@ def notify_new_ticket(sender, instance, created, **kwargs):
     # Use threading to avoid blocking the main request (prevent Timeouts in Admin)
     thread = threading.Thread(target=send_async_notifications, args=(instance.id,))
     thread.start()
+
+
+
+@receiver(post_save, sender=NotificationsCatchment)
+def sync_threshold_alert_to_new_system(sender, instance, created, **kwargs):
+    """
+    Sincroniza alertas umbral (ALERT + MAX/MIN/EQUALS) con AlertRule.
+    Tickets de soporte (SUPPORT) y anuncios no se sincronizan.
+    Se ejecuta automáticamente al crear o modificar desde Admin o API.
+    """
+    from api.core.views.alert_adapter import (
+        is_threshold_alert,
+        create_alert_rule_from_legacy,
+        update_alert_rule_from_legacy,
+    )
+
+    if not is_threshold_alert(instance):
+        return
+
+    if created:
+        create_alert_rule_from_legacy({}, instance)
+    else:
+        update_alert_rule_from_legacy(instance)
+
+
+@receiver(pre_delete, sender=NotificationsCatchment)
+def delete_threshold_alert_from_new_system(sender, instance, **kwargs):
+    """
+    Elimina la AlertRule vinculada cuando se borra una alerta umbral legacy.
+    """
+    from api.core.views.alert_adapter import is_threshold_alert, delete_alert_rule_by_legacy
+
+    if is_threshold_alert(instance):
+        delete_alert_rule_by_legacy(instance)

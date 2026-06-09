@@ -1898,3 +1898,250 @@ def telemetry_point_records_api(request, point_id):
         'point_name': str(point),
         'records': records_data
     })
+
+
+
+@staff_member_required
+def dga_compliance_report_view(request):
+    """
+    Reporte de cumplimiento DGA.
+    Muestra todos los puntos con configuración DGA, indicando:
+    - Código DGA
+    - Cumplimiento activo (badge verde)
+    - Caudal autorizado (config DGA) vs caudal actual
+    - Total anual autorizado (config DGA) vs consumo del año en curso
+    - % gastado y % por gastar (complemento)
+    - Alerta visual si está próximo a superar el límite (>= 80%)
+    """
+    from django.db.models import Sum
+    from api.core.serializers.interaction_detail import InteractionDetailModelSerializer
+
+    chile_tz = pytz.timezone("America/Santiago")
+    now = timezone.now()
+    current_year = now.year
+
+    # Filtro opcional por proyecto
+    project_id = request.GET.get('project', None)
+    selected_project = None
+    if project_id:
+        try:
+            selected_project = ProjectCatchments.objects.get(id=int(project_id))
+        except (ValueError, TypeError, ProjectCatchments.DoesNotExist):
+            project_id = None
+
+    all_projects = ProjectCatchments.objects.all().order_by('name')
+
+    # Obtener configuraciones DGA con datos del punto
+    dga_configs = DgaDataConfigCatchment.objects.select_related(
+        'point_catchment',
+        'point_catchment__project'
+    ).prefetch_related(
+        'point_catchment__data_config_profiles',
+        Prefetch(
+            'point_catchment__schemes',
+            queryset=SchemesCatchment.objects.prefetch_related(
+                Prefetch(
+                    'variables',
+                    queryset=Variable.objects.only('id', 'type_variable', 'label', 'scheme_catchment_id')
+                )
+            )
+        )
+    )
+
+    if project_id and selected_project:
+        dga_configs = dga_configs.filter(point_catchment__project=selected_project)
+
+    report_data = []
+    total_puntos = 0
+    puntos_activos = 0
+    puntos_sin_caudal_conf = 0
+    puntos_sin_total_conf = 0
+    puntos_proximos_caudal = 0
+    puntos_superados_caudal = 0
+    puntos_proximos_total = 0
+    puntos_superados_total = 0
+
+    for dga_config in dga_configs:
+        point = dga_config.point_catchment
+        if not point:
+            continue
+
+        total_puntos += 1
+        if dga_config.send_dga:
+            puntos_activos += 1
+
+        # Último registro de telemetría
+        last_interaction = InteractionDetail.objects.filter(
+            catchment_point=point
+        ).order_by('-date_time_medition').first()
+
+        # Perfil de datos para d6
+        profile = point.data_config_profiles.first()
+        has_d6 = False
+        if profile and profile.d6:
+            d6_safe = safe_float(profile.d6)
+            if d6_safe > 0:
+                has_d6 = True
+
+        # Variables configuradas
+        variables = Variable.objects.filter(
+            scheme_catchment__points_catchment=point
+        )
+        variable_types = [v.type_variable for v in variables if v.type_variable]
+        has_caudal_promedio = "CAUDAL_PROMEDIO" in variable_types
+
+        # Calcular caudal actual (con lógica dinámica igual que el dashboard)
+        flow_value = None
+        if last_interaction:
+            flow_value = last_interaction.flow or 0.0
+            if has_caudal_promedio and has_d6:
+                try:
+                    serializer = InteractionDetailModelSerializer(last_interaction)
+                    serialized_data = serializer.data
+                    flow_value = serialized_data.get('flow', 0.0)
+                    if not flow_value or flow_value == 0:
+                        from api.cronjobs.telemetry.controllers.flow import average_flow
+                        date_lg = last_interaction.date_time_last_logger or last_interaction.date_time_medition
+                        if date_lg and last_interaction.total is not None:
+                            point_catchment_dict = {"id": point.id}
+                            total_safe = safe_float(last_interaction.total)
+                            flow_value = average_flow(
+                                point_catchment=point_catchment_dict,
+                                total=total_safe,
+                                date_lg=date_lg
+                            ) or 0.0
+                except Exception:
+                    try:
+                        from api.cronjobs.telemetry.controllers.flow import average_flow
+                        date_lg = last_interaction.date_time_last_logger or last_interaction.date_time_medition
+                        if date_lg and last_interaction.total is not None:
+                            point_catchment_dict = {"id": point.id}
+                            total_safe = safe_float(last_interaction.total)
+                            flow_value = average_flow(
+                                point_catchment=point_catchment_dict,
+                                total=total_safe,
+                                date_lg=date_lg
+                            ) or 0.0
+                        else:
+                            flow_value = last_interaction.flow or 0.0
+                    except Exception:
+                        flow_value = last_interaction.flow or 0.0
+            elif has_caudal_promedio and not has_d6:
+                flow_value = None  # N/A
+
+        # Caudal autorizado vs actual
+        caudal_autorizado = safe_float(dga_config.flow_granted_dga)
+        flow_safe = safe_float(flow_value)
+        pct_usado_caudal = None
+        diferencia_caudal = None
+        caudal_status = 'ok'
+        tiene_caudal_configurado = caudal_autorizado > 0
+
+        if not tiene_caudal_configurado:
+            puntos_sin_caudal_conf += 1
+
+        if tiene_caudal_configurado and flow_safe > 0:
+            diferencia_caudal = caudal_autorizado - flow_safe
+            pct_usado_caudal = (flow_safe / caudal_autorizado) * 100
+            if pct_usado_caudal >= 100:
+                caudal_status = 'superado'
+                puntos_superados_caudal += 1
+            elif pct_usado_caudal >= 80:
+                caudal_status = 'proximo'
+                puntos_proximos_caudal += 1
+
+        # Consumo del año en curso (suma de total_diff)
+        consumo_anio = InteractionDetail.objects.filter(
+            catchment_point=point,
+            date_time_medition__year=current_year
+        ).aggregate(sum_diff=Sum('total_diff'))['sum_diff'] or 0
+
+        total_autorizado = safe_float(dga_config.total_granted_dga)
+        pct_gastado_total = None
+        pct_por_gastar_total = None
+        total_status = 'ok'
+        tiene_total_configurado = total_autorizado > 0
+
+        if not tiene_total_configurado:
+            puntos_sin_total_conf += 1
+
+        if tiene_total_configurado and consumo_anio > 0:
+            pct_gastado_total = (consumo_anio / total_autorizado) * 100
+            pct_por_gastar_total = 100 - pct_gastado_total
+            if pct_gastado_total >= 100:
+                total_status = 'superado'
+                puntos_superados_total += 1
+            elif pct_gastado_total >= 80:
+                total_status = 'proximo'
+                puntos_proximos_total += 1
+
+        # Tiempo desde última medición
+        tiempo_desconectado = None
+        if last_interaction and last_interaction.date_time_medition:
+            try:
+                if last_interaction.date_time_medition.tzinfo is None:
+                    medition_dt = chile_tz.localize(last_interaction.date_time_medition)
+                else:
+                    medition_dt = last_interaction.date_time_medition.astimezone(chile_tz)
+                diff = now - medition_dt
+                if diff.total_seconds() > 3600:
+                    tiempo_desconectado = f"{diff.days}d {(diff.seconds // 3600)}h"
+            except Exception:
+                pass
+
+        report_data.append({
+            'point': point,
+            'project': point.project.name if point.project else 'Sin proyecto',
+            'dga_config': dga_config,
+            'send_dga': dga_config.send_dga,
+            'code_dga': dga_config.code_dga or '—',
+            'standard': dga_config.get_standard_display() if hasattr(dga_config, 'get_standard_display') else (dga_config.standard or '—'),
+            'tiene_caudal_configurado': tiene_caudal_configurado,
+            'caudal_autorizado': caudal_autorizado if tiene_caudal_configurado else None,
+            'caudal_actual': flow_safe if flow_safe > 0 else None,
+            'diferencia_caudal': diferencia_caudal,
+            'pct_usado_caudal': round(pct_usado_caudal, 1) if pct_usado_caudal is not None else None,
+            'caudal_status': caudal_status,
+            'tiene_total_configurado': tiene_total_configurado,
+            'total_autorizado': int(total_autorizado) if tiene_total_configurado else None,
+            'consumo_anio': int(consumo_anio) if consumo_anio > 0 else 0,
+            'pct_gastado_total': round(pct_gastado_total, 1) if pct_gastado_total is not None else None,
+            'pct_por_gastar_total': round(pct_por_gastar_total, 1) if pct_por_gastar_total is not None else None,
+            'total_status': total_status,
+            'last_medition': last_interaction.date_time_medition if last_interaction else None,
+            'tiempo_desconectado': tiempo_desconectado,
+        })
+
+    # Ordenar: primero superados, luego proximos, luego sin configurar, luego por % usado descendente
+    def sort_key(item):
+        status_order = {'superado': 0, 'proximo': 1, 'ok': 2}
+        # Prioridad 1: caudal status
+        # Prioridad 2: puntos sin configurar de caudal o total
+        # Prioridad 3: % usado caudal descendente
+        sin_conf = 0 if (item['tiene_caudal_configurado'] and item['tiene_total_configurado']) else 1
+        return (
+            status_order.get(item['caudal_status'], 3),
+            sin_conf,
+            -(item['pct_usado_caudal'] or 0)
+        )
+
+    report_data.sort(key=sort_key)
+
+    context = {
+        'report_data': report_data,
+        'total_puntos': total_puntos,
+        'puntos_activos': puntos_activos,
+        'puntos_sin_caudal_conf': puntos_sin_caudal_conf,
+        'puntos_sin_total_conf': puntos_sin_total_conf,
+        'puntos_proximos_caudal': puntos_proximos_caudal,
+        'puntos_superados_caudal': puntos_superados_caudal,
+        'puntos_proximos_total': puntos_proximos_total,
+        'puntos_superados_total': puntos_superados_total,
+        'all_projects': all_projects,
+        'selected_project': selected_project,
+        'selected_project_id': int(project_id) if project_id else None,
+        'current_year': current_year,
+        'now': now,
+    }
+
+    return render(request, 'admin/dga_compliance_report.html', context)

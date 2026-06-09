@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartHydro API — Documentación</title>
+    <style>
+        :root {
+            --sh-blue: #6ab0f0;
+            --sh-blue-dark: #4a9de0;
+            --sh-blue-light: rgba(106,176,240,0.12);
+            --sh-green: #5dd9c0;
+            --sh-green-dark: #3ec0a0;
+            --sh-green-light: rgba(93,217,192,0.12);
+            --sh-yellow: #e8c252;
+            --sh-yellow-dark: #c9a53e;
+            --sh-red: #ff9a82;
+            --sh-red-dark: #e0705a;
+            --sh-navy: #0f1a33;
+            --sh-navy-light: #1a2d52;
+            --sh-bg: #0b1120;
+            --sh-card: #151e2e;
+            --sh-text: #e2e8f0;
+            --sh-text-muted: #8899aa;
+            --sh-border: #2a3544;
+            --radius: 12px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.25);
+            --shadow-lg: 0 10px 30px rgba(0,0,0,0.35);
+            --max-width: 1200px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', 'SF Pro Display', 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            background: var(--sh-bg);
+            color: var(--sh-text);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+        h1, h2, h3, h4 {
+            font-family: 'Inter', 'SF Pro Display', 'Segoe UI', sans-serif;
+            letter-spacing: -0.03em;
+        }
+        .path, code, .eq-block, .code-block {
+            font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        }
+        a { color: var(--sh-blue-dark); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        .header {
+            background: linear-gradient(90deg, var(--sh-navy) 0%, var(--sh-blue-dark) 100%);
+            color: #e2e8f0;
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow-lg);
+        }
+        .header-inner {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+        .logo span {
+            font-weight: 300;
+            opacity: 0.85;
+            margin-left: 0.5rem;
+        }
+        .nav a {
+            color: rgba(255,255,255,0.9);
+            margin-left: 1.5rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        .nav a:hover { color: #e2e8f0; text-decoration: none; }
+        .nav-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            background: linear-gradient(135deg, rgba(93,217,192,0.18), rgba(106,176,240,0.18)) !important;
+            border: 1px solid rgba(93,217,192,0.25);
+            padding: 0.35rem 0.9rem !important;
+            border-radius: 50px;
+            font-size: 0.85rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.2px;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(4px);
+        }
+        .nav-btn:hover {
+            background: linear-gradient(135deg, rgba(93,217,192,0.28), rgba(106,176,240,0.28)) !important;
+            border-color: rgba(93,217,192,0.45);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .hero {
+            background: var(--sh-navy);
+            color: #e2e8f0;
+            padding: 5rem 2rem 4rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero h1 {
+            font-size: 2.8rem;
+            font-weight: 800;
+            margin-bottom: 0.75rem;
+            letter-spacing: -1px;
+        }
+        .hero p {
+            font-size: 1.2rem;
+            opacity: 0.92;
+            max-width: 650px;
+            margin: 0 auto 1.5rem;
+            font-weight: 300;
+        }
+        .hero-badges {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .badge {
+            background: rgba(255,255,255,0.18);
+            padding: 0.35rem 1rem;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .btn-group {
+            margin-top: 2.5rem;
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            position: relative;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.85rem 1.75rem;
+            border-radius: var(--radius);
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background: var(--sh-green);
+            color: #0b1120;
+            box-shadow: 0 4px 14px rgba(78,201,176,0.35);
+        }
+        .btn-primary:hover { background: var(--sh-green-dark); transform: translateY(-1px); text-decoration: none; }
+        .btn-outline {
+            background: rgba(255,255,255,0.1);
+            color: #e2e8f0;
+            border: 2px solid rgba(255,255,255,0.35);
+        }
+        .btn-outline:hover { border-color: #e2e8f0; background: rgba(255,255,255,0.2); text-decoration: none; }
+
+        .container {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 2.5rem 2rem;
+        }
+        .section { margin-bottom: 4rem; }
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            color: var(--sh-text);
+            letter-spacing: -0.5px;
+        }
+        .section-subtitle {
+            color: var(--sh-text-muted);
+            margin-bottom: 2rem;
+            font-size: 1.05rem;
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+        .step {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            padding: 1.75rem;
+            box-shadow: var(--shadow);
+            border-top: 4px solid var(--sh-blue);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .step:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-lg);
+        }
+        .step-num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--sh-blue), var(--sh-green));
+            color: #e2e8f0;
+            border-radius: 50%;
+            font-weight: 800;
+            font-size: 0.9rem;
+            margin-bottom: 0.75rem;
+        }
+        .step h3 {
+            font-size: 1.15rem;
+            margin-bottom: 0.5rem;
+            color: var(--sh-text);
+        }
+        .step p {
+            font-size: 0.92rem;
+            color: var(--sh-text-muted);
+        }
+        .step code {
+            background: var(--sh-bg);
+            padding: 0.2rem 0.45rem;
+            border-radius: 5px;
+            font-size: 0.82rem;
+            color: var(--sh-red-dark);
+            font-family: "SFMono-Regular", Consolas, monospace;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1.25rem;
+        }
+        .card {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            padding: 1.75rem;
+            box-shadow: var(--shadow);
+            transition: box-shadow 0.25s, transform 0.25s;
+            border: none;
+        }
+        .card:hover {
+            box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+            transform: translateY(-5px);
+        }
+        .card-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            position: relative;
+            z-index: 1;
+        }
+        .card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            color: var(--sh-text);
+            letter-spacing: -0.02em;
+        }
+        .card p {
+            font-size: 0.9rem;
+            color: var(--sh-text-muted);
+            line-height: 1.55;
+        }
+
+        .endpoint-group {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+        .endpoint-header {
+            background: linear-gradient(90deg, var(--sh-navy), var(--sh-navy-light));
+            color: #e2e8f0;
+            padding: 1rem 1.5rem;
+            font-weight: 700;
+            font-size: 1.05rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .endpoint-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        .endpoint-table th {
+            text-align: left;
+            padding: 0.85rem 1.5rem;
+            background: var(--sh-bg);
+            color: var(--sh-text-muted);
+            font-weight: 700;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        .endpoint-table td {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--sh-border);
+            vertical-align: top;
+        }
+        .endpoint-table tr:hover { background: rgba(86,156,214,0.03); }
+        .method {
+            display: inline-block;
+            padding: 0.2rem 0.55rem;
+            border-radius: 5px;
+            font-weight: 700;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .method-get { background: var(--sh-blue-light); color: var(--sh-blue-dark); }
+        .method-post { background: var(--sh-green-light); color: var(--sh-green-dark); }
+        .method-put { background: rgba(232,194,82,0.15); color: #e8c252; }
+        .method-patch { background: rgba(136,153,170,0.15); color: #8899aa; }
+        .method-delete { background: rgba(255,154,130,0.15); color: #ff9a82; }
+        .path {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.82rem;
+            color: var(--sh-text);
+            font-weight: 600;
+        }
+        .desc {
+            color: var(--sh-text-muted);
+            font-size: 0.88rem;
+        }
+        .code-block {
+            background: #0a0f1a;
+            color: #e2e8f0;
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            overflow-x: auto;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.82rem;
+            line-height: 1.6;
+            margin: 1rem 0;
+        }
+        .code-block .comment { color: #6a9955; }
+        .code-block .string { color: #ce9178; }
+        .code-block .keyword { color: #569cd6; }
+        .code-block .number { color: #b5cea8; }
+
+        .glossary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        .glossary-item {
+            background: var(--sh-card);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            box-shadow: var(--shadow);
+            border-left: 3px solid var(--sh-green);
+        }
+        .glossary-item dt {
+            font-weight: 700;
+            color: var(--sh-text);
+            margin-bottom: 0.25rem;
+            font-size: 1rem;
+        }
+        .glossary-item dd {
+            color: var(--sh-text-muted);
+            font-size: 0.9rem;
+        }
+
+        .error-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        .error-table th, .error-table td {
+            padding: 0.85rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--sh-border);
+        }
+        .error-table th {
+            background: var(--sh-bg);
+            color: var(--sh-text-muted);
+            font-weight: 700;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+        }
+        .status-2xx { color: var(--sh-green-dark); font-weight: 700; }
+        .status-4xx { color: #b8932e; font-weight: 700; }
+        .status-5xx { color: var(--sh-red-dark); font-weight: 700; }
+
+        .footer {
+            background: linear-gradient(90deg, var(--sh-navy), var(--sh-blue-dark));
+            color: rgba(255,255,255,0.75);
+            padding: 2.5rem 2rem;
+            text-align: center;
+            font-size: 0.88rem;
+            margin-top: 3rem;
+        }
+        .footer a { color: rgba(255,255,255,0.9); font-weight: 500; }
+        .footer a:hover { color: #e2e8f0; }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2rem; }
+            .header-inner { flex-direction: column; gap: 0.75rem; }
+            .nav a { margin: 0 0.6rem; }
+            .btn-group { flex-direction: column; align-items: center; }
+            .container { padding: 1.5rem; }
+            .endpoint-table th, .endpoint-table td { padding: 0.75rem; }
+        }
+        section[id] { scroll-margin-top: 80px; }
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <div class="header-inner">
+        <div class="logo">SmartHydro <span>API Docs</span></div>
+        <nav class="nav">
+            <a href="#que-es">¿Qué es?</a>
+            <a href="#empezar">Empezar</a>
+            <a href="#conceptos">Conceptos</a>
+            <a href="#endpoints">Endpoints</a>
+            <a href="#errores">Errores</a>
+            <a href="#glosario">Glosario</a>
+            <a href="/docs/sales/" class="nav-btn">📋 Catálogo</a>
+            <a href="/docs/math/" class="nav-btn">📐 SmartMath</a>
+        </nav>
+    </div>
+</header>
+
+<section class="hero">
+    <h1>Documentación SmartHydro API</h1>
+    <p>API REST de monitoreo hidrológico en tiempo real. Expone endpoints para ingestar telemetría desde sensores IoT, gestionar puntos de captación, configurar alertas inteligentes, generar reportes regulatorios DGA/SMA y consultar históricos de consumo. Autenticación vía Bearer Token, formatos JSON, documentación OpenAPI 3.0.</p>
+    <div class="hero-badges">
+        <span class="badge">v2.0.0</span>
+        <span class="badge">OpenAPI 3.0</span>
+        <span class="badge">REST + JSON</span>
+        <span class="badge">Bearer Token</span>
+    </div>
+    <div class="btn-group">
+        <a href="/api/schema/redoc/" class="btn btn-primary">📘 Ver Redoc Técnico</a>
+        <a href="/api/schema/swagger-ui/" class="btn btn-outline">🔧 Probar en Swagger</a>
+    </div>
+</section>
+
+<div class="container">
+
+    <section class="section" id="que-es">
+        <h2 class="section-title">¿Qué es esta API?</h2>
+        <p class="section-subtitle">Una introducción para quienes se conectan por primera vez.</p>
+        <div class="cards">
+            <div class="card">
+                <div class="card-icon" style="background:linear-gradient(135deg, var(--sh-blue), var(--sh-blue-dark));color:#fff;">🔌</div>
+                <h3>Una API es el puente</h3>
+                <p>La API permite que tu aplicación o sistema interno se comunique con el motor de monitoreo. Es la interfaz por donde entran y salen datos: telemetría, alertas, reportes y configuraciones. Todo via HTTP con respuestas en JSON.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon" style="background:linear-gradient(135deg, var(--sh-green), var(--sh-green-dark));color:#fff;">📡</div>
+                <h3>Qué entrega esta API</h3>
+                <p>Datos de caudal, nivel y volumen acumulado desde sensores instalados en pozos, ríos y canales. También gestiona alertas, reportes regulatorios (DGA/SMA), usuarios y tickets de soporte. Todo via HTTP con respuestas en formato JSON.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon" style="background:linear-gradient(135deg, #e8c252, #c9a53e);color:#0b1120;">👤</div>
+                <h3>Quién la usa</h3>
+                <p>Desarrolladores que integran telemetría en plataformas de clientes, consultoras ambientales que automatizan reportes, y equipos internos que necesitan extraer datos para análisis o Business Intelligence.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon" style="background:linear-gradient(135deg, #a78bfa, #7c6fae);color:#fff;">🛡️</div>
+                <h3>Cómo se protege</h3>
+                <p>Toda comunicación usa HTTPS. Para acceder se requiere un <strong>token Bearer</strong> que se obtiene al hacer login. Cada token tiene un tiempo de expiración y puede revocarse. Los endpoints sensibles están protegidos por autenticación.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="empezar">
+        <h2 class="section-title">Empezar en 3 pasos</h2>
+        <p class="section-subtitle">Conexión a la API en menos de 5 minutos.</p>
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">1</div>
+                <h3>Obtener token de acceso</h3>
+                <p>Envía tus credenciales al endpoint de login. Recibirás un <code>access_token</code> JWT.</p>
+                <div class="code-block">
+<span class="comment"># Login (Ikolu optimized)</span>
+curl -X POST https://api.smarthydro.app/api/ik/login/ \\
+  -H <span class="string">"Content-Type: application/json"</span> \\
+  -d <span class="string">'{"email":"tu@email.cl","password":"***"}'</span>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <h3>Hacer tu primera llamada</h3>
+                <p>Incluye el token en el header <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+                <div class="code-block">
+<span class="comment"># Listar tus puntos de captación</span>
+curl -X GET https://api.smarthydro.app/api/ik/points_summary/ \\
+  -H <span class="string">"Authorization: Bearer eyJ..."</span>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <h3>Explorar funcionalidades</h3>
+                <p>Consulta telemetría, configura alertas, descarga reportes o gestiona tickets de soporte.</p>
+                <div class="code-block">
+<span class="comment"># Últimos 7 días de un punto</span>
+curl -X GET <span class="string">"https://api.smarthydro.app/api/ik/point/42/calendar/?days=7"</span> \\
+  -H <span class="string">"Authorization: Bearer eyJ..."</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="conceptos">
+        <h2 class="section-title">Conceptos Clave</h2>
+        <p class="section-subtitle">Entiende el dominio antes de integrar.</p>
+        <div class="cards">
+            <div class="card">
+                <div class="card-icon" style="background:linear-gradient(135deg, var(--sh-blue), var(--sh-blue-dark));color:#fff;">📍</div>
+                <h3>Punto de Captación</h3>
+                <p>Ubicación física donde se mide agua (río, pozo, canal). Tiene un dispositivo de telemetría asociado que envía datos periódicamente.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon" style="background:linear-gradient(135deg, var(--sh-green), var(--sh-green-dark));color:#fff;">📡</div>
+                <h3>Telemetría</h3>
+                <p>Datos enviados automáticamente por sensores: caudal (L/s), nivel (m), total acumulado (m³), y estado de conexión.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon" style="background:linear-gradient(135deg, #e8c252, #c9a53e);color:#0b1120;">⚠️</div>
+                <h3>Alerta (AlertRule)</h3>
+                <p>Regla configurable que monitorea un punto. Puede detectar: umbral superado, desconexión, reconexión o errores de procesamiento.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon" style="background:linear-gradient(135deg, #a78bfa, #7c6fae);color:#fff;">📊</div>
+                <h3>DGA / SMA</h3>
+                <p>Compliance regulatorio chileno. DGA = Dirección General de Aguas. SMA = Superintendencia del Medio Ambiente. La API envía datos automáticamente según estándar (Mayor, Medio, Menor).</p>
+            </div>
+            <div class="card">
+                <div class="card-icon" style="background:linear-gradient(135deg, #ff9a82, #e0705a);color:#0b1120;">🎫</div>
+                <h3>Ticket de Soporte</h3>
+                <p>Solicitud de ayuda técnica vinculada a un punto. Incluye comentarios, adjuntos, asignación y seguimiento de estado.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon" style="background:linear-gradient(135deg, #5dd9c0, #3ec0a0);color:#0b1120;">📈</div>
+                <h3>Reporte</h3>
+                <p>Exportación de datos en Excel o JSON por proyecto, punto o período. Incluye consumos, caudales, niveles y estadísticas.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="endpoints">
+        <h2 class="section-title">Endpoints por Funcionalidad</h2>
+        <p class="section-subtitle">Todos los endpoints usan <code>https://api.smarthydro.app</code> y requieren <code>Authorization: Bearer &lt;token&gt;</code> salvo donde se indique.</p>
+
+        <div class="endpoint-group">
+            <div class="endpoint-header">🔐 Autenticación</div>
+            <table class="endpoint-table">
+                <tr><th>Método</th><th>Ruta</th><th>Descripción</th></tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/ik/login/</td>
+                    <td class="desc">Login optimizado (menos datos). Devuelve token + perfil.<br><strong>Auth:</strong> <span style="color:var(--sh-green-dark);font-weight:700;">Público</span></td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/users/login/</td>
+                    <td class="desc">Login legacy. Devuelve token + perfil completo.<br><strong>Auth:</strong> <span style="color:var(--sh-green-dark);font-weight:700;">Público</span></td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/users/me/</td>
+                    <td class="desc">Perfil del usuario autenticado.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/users/change-password/</td>
+                    <td class="desc">Cambio de contraseña. Body: <code>current_password</code>, <code>new_password</code>.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/password_reset/</td>
+                    <td class="desc">Solicitar email de reset de contraseña.<br><strong>Auth:</strong> <span style="color:var(--sh-green-dark);font-weight:700;">Público</span></td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="endpoint-group">
+            <div class="endpoint-header">📱 Ikolu App (Centro de Control)</div>
+            <table class="endpoint-table">
+                <tr><th>Método</th><th>Ruta</th><th>Descripción</th></tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/ik/points_summary/</td>
+                    <td class="desc">Resumen de todos los puntos del usuario + última telemetría. Opcional: <code>?limit=&offset=</code></td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/ik/point/&lt;id&gt;/summary/</td>
+                    <td class="desc">Detalle completo de un punto: estado, últimos valores, config.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/ik/dashboard_stats/</td>
+                    <td class="desc">KPIs del Centro de Control: totales, activos, alertas, desconectados.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/ik/point/&lt;id&gt;/calendar/</td>
+                    <td class="desc">Datos diarios últimos N días. <code>?days=7</code> (max 30). Útil para calendario/visualización.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/ik/point/&lt;id&gt;/variables/</td>
+                    <td class="desc">Mapeo de variables del punto (id → display_key).</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/ik/my_points/</td>
+                    <td class="desc">Lista liviana (id + title) para dropdowns.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/ik/batch/telemetry/</td>
+                    <td class="desc">Telemetría multi-punto. Body: <code>point_ids</code>, <code>hours</code> (max 168).</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/ik/batch/stats/</td>
+                    <td class="desc">Stats agregados multi-punto. Body: <code>point_ids</code>, <code>days</code> (max 365).</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="endpoint-group">
+            <div class="endpoint-header">🎫 Tickets de Soporte</div>
+            <table class="endpoint-table">
+                <tr><th>Método</th><th>Ruta</th><th>Descripción</th></tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/ik/tickets/</td>
+                    <td class="desc">Listar tickets. Soporta filtros por estado, tipo, punto.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/ik/tickets/</td>
+                    <td class="desc">Crear ticket. Body: <code>title</code>, <code>message</code>, <code>point_catchment</code> (opcional), <code>emails</code> (opcional).</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/ik/tickets/&lt;id&gt;/</td>
+                    <td class="desc">Detalle de ticket.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-patch">PATCH</span></td>
+                    <td class="path">/api/ik/tickets/&lt;id&gt;/</td>
+                    <td class="desc">Actualizar ticket.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/ik/tickets/&lt;id&gt;/comments/</td>
+                    <td class="desc">Agregar comentario.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/ik/tickets/&lt;id&gt;/assign/</td>
+                    <td class="desc">Asignar ticket a un usuario.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/ik/tickets/&lt;id&gt;/status/</td>
+                    <td class="desc">Cambiar estado (abierto, en progreso, cerrado).</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/ik/tickets/&lt;id&gt;/attachments/</td>
+                    <td class="desc">Subir archivo adjunto.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/ik/tickets/stats/</td>
+                    <td class="desc">Estadísticas de tickets (por estado, por usuario, por período).</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="endpoint-group">
+            <div class="endpoint-header">📡 Telemetría (InteractionDetail)</div>
+            <table class="endpoint-table">
+                <tr><th>Método</th><th>Ruta</th><th>Descripción</th></tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/interaction_detail_json/</td>
+                    <td class="desc">CRUD de registros de telemetría (JSON). Filtros: <code>catchment_point</code>, <code>date_time_medition__gte</code>, <code>hour</code>, <code>year</code>, <code>month</code>, <code>is_error</code>, <code>send_dga</code>. Default últimas 24h si no hay filtro de fecha.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/interaction_detail/</td>
+                    <td class="desc">Descarga XLSX de telemetría. Mismos filtros.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/interaction_detail_dga/</td>
+                    <td class="desc">Descarga XLSX filtrado solo registros DGA.</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="endpoint-group">
+            <div class="endpoint-header">⚠️ Alertas</div>
+            <table class="endpoint-table">
+                <tr><th>Método</th><th>Ruta</th><th>Descripción</th></tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/alert_rules/</td>
+                    <td class="desc">Listar reglas de alerta. Filtros: <code>point_catchment</code>, <code>target_type</code>, <code>is_active</code>, <code>check_frequency_minutes__gte</code>.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/alert_rules/</td>
+                    <td class="desc">Crear regla. Tipos: <code>THRESHOLD_MAX</code>, <code>THRESHOLD_MIN</code>, <code>NO_DATA</code>, <code>DISCONNECTION</code>, <code>RECONNECTION</code>, <code>PROCESSING_ERROR</code>.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/alert_channels/</td>
+                    <td class="desc">Canales de notificación (EMAIL, GOOGLE_CHAT, WEBHOOK, SMS).</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/alert_triggers/</td>
+                    <td class="desc">Historial de disparos. Filtros: <code>alert_rule</code>, <code>notification_sent</code>, <code>is_acknowledged</code>.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/system_events/</td>
+                    <td class="desc">Eventos del sistema: resets, errores de medición, cambios de config.</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="endpoint-group">
+            <div class="endpoint-header">📊 Reportes</div>
+            <table class="endpoint-table">
+                <tr><th>Método</th><th>Ruta</th><th>Descripción</th></tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/reports/json/by-project/</td>
+                    <td class="desc">JSON resumen por proyecto últimos 30 días. <code>?project_id=&point_ids=</code></td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/reports/json/by-point/</td>
+                    <td class="desc">JSON datos diarios agregados. <code>?point_id=&year=&month=</code></td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/reports/by-project/</td>
+                    <td class="desc">Excel análisis por proyecto. <code>?project_id=</code></td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/reports/by-point/</td>
+                    <td class="desc">Excel análisis por punto. <code>?point_id=&year=&month=</code></td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/reports/active-points/</td>
+                    <td class="desc">Excel con todos los puntos activos y última telemetría.</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="endpoint-group">
+            <div class="endpoint-header">🔧 Management (Admin)</div>
+            <table class="endpoint-table">
+                <tr><th>Método</th><th>Ruta</th><th>Descripción</th></tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/management/points_status/</td>
+                    <td class="desc">Estado de puntos: activos, desconectados, sin datos. <code>?days=7</code></td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/management/system_status/</td>
+                    <td class="desc">Estado general: contenedores, DB, Redis, colas DGA/SMA.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/management/telemetry_metrics/</td>
+                    <td class="desc">Métricas de ingesta: registros/hora, errores, latencia.</td>
+                </tr>
+                <tr>
+                    <td><span class="method method-get">GET</span></td>
+                    <td class="path">/api/management/dga_queue_status/</td>
+                    <td class="desc">Estado cola DGA (pendientes, errores, último envío). <strong>Staff only</strong></td>
+                </tr>
+                <tr>
+                    <td><span class="method method-post">POST</span></td>
+                    <td class="path">/api/management/requeue_dga/</td>
+                    <td class="desc">Reencolar registros DGA fallidos. <strong>Staff only</strong></td>
+                </tr>
+            </table>
+        </div>
+    </section>
+
+    <section class="section" id="errores">
+        <h2 class="section-title">Errores Comunes</h2>
+        <p class="section-subtitle">Códigos de respuesta frecuentes y cómo resolverlos.</p>
+        <table class="error-table">
+            <tr><th>Código</th><th>Significado</th><th>Qué hacer</th></tr>
+            <tr><td class="status-2xx">200 OK</td><td>Solicitud exitosa.</td><td>—</td></tr>
+            <tr><td class="status-2xx">201 Created</td><td>Recurso creado exitosamente.</td><td>—</td></tr>
+            <tr><td class="status-4xx">400 Bad Request</td><td>Parámetros inválidos o faltantes.</td><td>Revisa el body y query params. Usa <code>limit</code> numérico.</td></tr>
+            <tr><td class="status-4xx">401 Unauthorized</td><td>Token ausente, inválido o expirado.</td><td>Renueva el token vía <code>/api/ik/login/</code>.</td></tr>
+            <tr><td class="status-4xx">403 Forbidden</td><td>Sesión válida pero sin permisos.</td><td>Verifica que el usuario sea owner/viewer del punto o staff.</td></tr>
+            <tr><td class="status-4xx">404 Not Found</td><td>Recurso no existe.</td><td>Verifica el ID. Algunos endpoints filtran por permisos de usuario.</td></tr>
+            <tr><td class="status-4xx">429 Too Many Requests</td><td>Límite de rate excedido.</td><td>Reduce frecuencia. Límites: anon 100/h, user 1000/h.</td></tr>
+            <tr><td class="status-5xx">500 Internal Error</td><td>Error del servidor.</td><td>Reintenta en 30 segundos. Si persiste, contactar soporte.</td></tr>
+        </table>
+    </section>
+
+    <section class="section" id="glosario">
+        <h2 class="section-title">Glosario</h2>
+        <p class="section-subtitle">Términos del dominio hidrológico y técnico.</p>
+        <div class="glossary">
+            <div class="glossary-item">
+                <dt>Caudal</dt>
+                <dd>Volumen de agua que pasa por una sección en un tiempo determinado. Medido en litros por segundo (L/s).</dd>
+            </div>
+            <div class="glossary-item">
+                <dt>Counter Reset</dt>
+                <dd>Evento en que el contador de pulsos de un sensor vuelve a cero (por reinicio, cambio de batería o desbordamiento).</dd>
+            </div>
+            <div class="glossary-item">
+                <dt>DGA</dt>
+                <dd>Dirección General de Aguas. Entidad reguladora chilena que exige reportes periódicos de extracción de agua.</dd>
+            </div>
+            <div class="glossary-item">
+                <dt>InteractionDetail</dt>
+                <dd>Registro individual de telemetría. Contiene fecha, caudal, nivel, total, variables y metadatos de procesamiento.</dd>
+            </div>
+            <div class="glossary-item">
+                <dt>Nivel</dt>
+                <dd>Altura del agua medida desde un punto de referencia. Medido en metros (m).</dd>
+            </div>
+            <div class="glossary-item">
+                <dt>Punto de Captación</dt>
+                <dd>Ubicación física donde se extrae o mide agua. Puede tener múltiples variables (caudal, nivel, total).</dd>
+            </div>
+            <div class="glossary-item">
+                <dt>Pulso</dt>
+                <dd>Señal eléctrica generada por el sensor por cada unidad de volumen medida. Se convierte a m³ mediante un factor.</dd>
+            </div>
+            <div class="glossary-item">
+                <dt>SMA</dt>
+                <dd>Superintendencia del Medio Ambiente. Entidad fiscalizadora que también recibe reportes de extracción de agua.</dd>
+            </div>
+            <div class="glossary-item">
+                <dt>Telemetría</dt>
+                <dd>Transmisión automática de datos desde sensores en campo hacia el servidor central.</dd>
+            </div>
+            <div class="glossary-item">
+                <dt>Totalizado</dt>
+                <dd>Volumen acumulado de agua extraída desde el inicio de la medición. Medido en metros cúbicos (m³).</dd>
+            </div>
+            <div class="glossary-item">
+                <dt>Variable</dt>
+                <dd>Magnitud medida por un sensor. Tipos: TOTALIZADO (pulsos), CAUDAL (L/s), NIVEL (m), CAUDAL_PROMEDIO.</dd>
+            </div>
+            <div class="glossary-item">
+                <dt>Esquema (Scheme)</dt>
+                <dd>Configuración de variables asociadas a un punto. Define qué sensores tiene y cómo se procesan.</dd>
+            </div>
+        </div>
+    </section>
+
+</div>
+
+<footer class="footer">
+    <p><strong>SmartHydro API v2.0.0</strong></p>
+    <p style="margin-top:0.5rem;">
+        <a href="/api/schema/redoc/">Redoc</a> ·
+        <a href="/api/schema/swagger-ui/">Swagger UI</a> ·
+        <a href="/api/schema/">Schema JSON</a> ·
+        <a href="/health/">Health Check</a>
+    </p>
+    <p style="margin-top:0.5rem; opacity:0.6;">© SmartHydro — Sistema de Monitoreo Hidrológico · Empresa B Certificada</p>
+</footer>
+
+</body>
+</html>

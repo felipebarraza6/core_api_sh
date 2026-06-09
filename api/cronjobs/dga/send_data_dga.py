@@ -10,7 +10,7 @@ from api.core.utils.compliance import ComplianceConfig
 from api.cronjobs.utils.logging_config import dga_logger
 
 
-def send(response):
+def send(response, delay_seconds=2):
     """Envio DGA via API REST."""
 
     def convertir_a_int(cadena):
@@ -48,7 +48,7 @@ def send(response):
     )
     hora_medicion = response["date_time_medition"][11:19]
     totalizador = convertir_a_int(response["total"])
-    caudal = float(response["flow"]) if response["flow"] is not None else 0.0
+    caudal = round(float(response["flow"]), 2) if response["flow"] is not None else 0.0
     rut = response["rut"]
     password = response["password"]
     id_interaction = response["id_data"]
@@ -132,6 +132,9 @@ def send(response):
             "Content-Type": "application/json",
         }
 
+    had_connection_error = False
+    MAX_PERSISTENT_RETRIES = 5
+
     for _ in range(3):  # Intentar hasta 3 veces
         try:
             response_api = requests.post(url, headers=headers, data=payload, timeout=10)
@@ -160,7 +163,7 @@ def send(response):
                             is_error=False,  # Es éxito (ya estaba enviado)
                         )
                         
-                        time.sleep(2)  # Rate limit reducido para evitar acumulación
+                        time.sleep(delay_seconds)  # Rate limit configurable
                         dga_logger.debug("Retornando True por duplicado exitoso")
                         return True
                     else:
@@ -220,7 +223,7 @@ def send(response):
                 )
 
                 if is_send:
-                    time.sleep(2)  # Espera reducida para evitar acumulación de procesos
+                    time.sleep(delay_seconds)  # Espera configurable
                 dga_logger.debug(f"Retornando is_send={is_send}")
                 return is_send
 
@@ -240,6 +243,7 @@ def send(response):
                 return False
 
         except requests.RequestException as e:
+            had_connection_error = True
             dga_logger.error(f"ERROR de conexión - Exception: {e}")
             time.sleep(2)  # Espera reducida para evitar acumulación de procesos
         except Exception as e:
@@ -247,11 +251,43 @@ def send(response):
             break
 
     # Si llegamos aquí, es porque fallaron los 3 intentos
-    InteractionDetail.objects.filter(id=id_interaction).update(
-        return_dga="Error: El servidor DGA no está respondiendo tras 3 intentos.",
-        n_voucher="No se pudo obtener el comprobante",
-        send_dga=False,  # Ya no reintentar para no saturar la cola
-        is_error=True,
-    )
+    if had_connection_error:
+        # Error transitorio de red: ir al retry queue persistente
+        from django.utils import timezone
+        reg = InteractionDetail.objects.get(id=id_interaction)
+        new_retry_count = reg.dga_retry_count + 1
+        if new_retry_count < MAX_PERSISTENT_RETRIES:
+            InteractionDetail.objects.filter(id=id_interaction).update(
+                return_dga=f"Error de conexión DGA (reintento persistente {new_retry_count}/{MAX_PERSISTENT_RETRIES}). Reintentando en próximo ciclo.",
+                n_voucher="No se pudo obtener el comprobante",
+                send_dga=True,  # Mantener en cola para reintento persistente
+                is_error=False,
+                dga_retry_count=new_retry_count,
+                dga_last_retry_at=timezone.now(),
+            )
+            dga_logger.warning(
+                f"DGA retry queue: punto {catchment_point} "
+                f"reintento persistente {new_retry_count}/{MAX_PERSISTENT_RETRIES}"
+            )
+        else:
+            InteractionDetail.objects.filter(id=id_interaction).update(
+                return_dga="Error: El servidor DGA no está respondiendo tras todos los intentos persistentes.",
+                n_voucher="No se pudo obtener el comprobante",
+                send_dga=False,
+                is_error=True,
+                dga_retry_count=new_retry_count,
+                dga_last_retry_at=timezone.now(),
+            )
+            dga_logger.error(
+                f"DGA retry queue: punto {catchment_point} "
+                f"agotados todos los reintentos persistentes ({MAX_PERSISTENT_RETRIES})."
+            )
+    else:
+        InteractionDetail.objects.filter(id=id_interaction).update(
+            return_dga="Error: El servidor DGA no está respondiendo tras 3 intentos.",
+            n_voucher="No se pudo obtener el comprobante",
+            send_dga=False,  # Ya no reintentar para no saturar la cola
+            is_error=True,
+        )
     dga_logger.debug("Retornando False por fallos en intentos")
     return False

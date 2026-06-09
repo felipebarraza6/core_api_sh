@@ -212,6 +212,36 @@ class InteractionDetailModelSerializer(serializers.ModelSerializer):
         return representation
 
 
+class InteractionDetailDgaXlsxSerializer(serializers.ModelSerializer):
+    """
+    Serializer específico para exportación Excel DGA.
+    Solo expone los campos necesarios en el orden correcto para alinear con column_header.
+    """
+    class Meta:
+        model = InteractionDetail
+        fields = [
+            'date_time_medition',
+            'flow',
+            'total',
+            'water_table',
+            'n_voucher',
+        ]
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+
+        # Asegurar que flow nunca sea None (mostrar 0.00 en vez de vacío)
+        if representation.get('flow') is None:
+            representation['flow'] = 0.0
+
+        # Formatear comprobante: '-' si no tiene voucher
+        n_voucher = representation.get('n_voucher')
+        if not n_voucher or n_voucher == '':
+            representation['n_voucher'] = '-'
+
+        return representation
+
+
 class InteractionDetailModelSerializerNoProcessing(serializers.ModelSerializer):
     class Meta:
         model = InteractionDetail

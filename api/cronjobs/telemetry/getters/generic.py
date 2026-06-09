@@ -1,9 +1,11 @@
 """Getter genérico JSON configurable via parser_config."""
 
 import json
-import time
+import logging
 import requests
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 def _provider_val(provider, key, default=None):
@@ -73,6 +75,8 @@ def _build_headers(provider):
     return headers
 
 
+import time
+
 def get_data_generic(provider, token_service, str_variable):
     """Obtener datos usando configuración genérica del proveedor."""
     base_url = (_provider_val(provider, "base_url") or "").rstrip("/")
@@ -96,6 +100,7 @@ def get_data_generic(provider, token_service, str_variable):
 
     headers = _build_headers(provider)
 
+    last_error = None
     for attempt in range(retries):
         try:
             response = requests.get(url, headers=headers, timeout=timeout)
@@ -131,9 +136,12 @@ def get_data_generic(provider, token_service, str_variable):
             return {"value": value, "date_time": timestamp}
 
         except Exception as e:
-            if attempt == retries - 1:
-                print(f"Error genérico getter {url}: {e}")
+            last_error = e
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)  # backoff exponencial: 1s, 2s, 4s...
+            else:
+                logger.error(f"Error genérico getter {url} tras {retries} intentos: {e}")
                 return {"value": 0, "date_time": None}
-            time.sleep(1)
 
+    logger.error(f"Error genérico getter {url} tras {retries} intentos: {last_error}")
     return {"value": 0, "date_time": None}

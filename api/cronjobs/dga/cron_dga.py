@@ -1,12 +1,13 @@
 # TIMESTAMP FIX APPLIED - Version 2025-08-06-04:36 - No Z in timestamp
 """Cron SEND DATA DGA."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 import pytz
 
 from django.conf import settings
+from django.utils import timezone
 
 from api.core.models import (
     DgaDataConfigCatchment,
@@ -21,6 +22,7 @@ from api.cronjobs.telemetry.controllers.flow import average_flow
 
 # ✅ Logging estructurado
 from api.cronjobs.utils.logging_config import dga_logger
+from api.cronjobs.utils.locks import cron_job_lock
 
 from .send_data_dga import send
 
@@ -88,6 +90,7 @@ def _calculate_dynamic_flow(register: InteractionDetail) -> float:
         return 0.0
 
 
+@cron_job_lock("dga", timeout=300)
 def run():
     # Fix aplicado para detectar fallos en DGA - Versión actualizada
     """
@@ -101,22 +104,57 @@ def run():
             send_dga=True
         ).values_list('point_catchment_id', flat=True)
 
-        data_for_send = InteractionDetail.objects.filter(
+        if not puntos_con_dga_activo.exists():
+            dga_logger.info("No hay puntos con DGA activo")
+            return
+
+        ahora = timezone.now()
+        limite_reciente = ahora - timedelta(hours=24)
+
+        # ============================================================
+        # DOBLE ESTRATEGIA: Prioridad a recientes, backlog en paralelo
+        # ============================================================
+        BATCH_TOTAL = 30
+        BATCH_RECIENTES = 20
+        BATCH_BACKLOG = 10
+
+        # Excluir registros que están en backoff de retry persistente
+        from django.db.models import Q
+        backoff_conditions = Q()
+        for retry_count in range(1, 6):  # MAX_PERSISTENT_RETRIES = 5
+            minutes = 15 * (2 ** retry_count)
+            backoff_conditions |= Q(
+                dga_retry_count=retry_count,
+                dga_last_retry_at__gt=ahora - timedelta(minutes=minutes),
+            )
+
+        base_qs = InteractionDetail.objects.filter(
             send_dga=True,
             catchment_point_id__in=puntos_con_dga_activo
-        ).exclude(catchment_point=1).order_by(
-            "-created"
-        )
+        ).exclude(catchment_point=1).exclude(backoff_conditions)
 
-        if not data_for_send.exists():
+        # GRUPO A — Prioridad máxima: registros de últimas 24h
+        recientes = base_qs.filter(
+            date_time_medition__gte=limite_reciente
+        ).order_by("date_time_medition")[:BATCH_RECIENTES]
+
+        # GRUPO B — Backlog antiguo (todo lo anterior a 24h)
+        ids_recientes = {r.id for r in recientes}
+        backlog = base_qs.filter(
+            date_time_medition__lt=limite_reciente
+        ).exclude(id__in=ids_recientes).order_by("date_time_medition")[:BATCH_BACKLOG]
+
+        # Unir: recientes primero, luego backlog
+        data_for_send = list(recientes) + list(backlog)
+
+        if not data_for_send:
             dga_logger.info("No hay registros pendientes de envío a DGA")
             return
 
-        # Batch reducido a 15 registros para evitar acumulación de procesos.
-        # Con rate limit de 2s, son ~30s por batch (aceptable para cron cada 3 min)
-        data_for_send = data_for_send[:15]
-
-        dga_logger.info(f"Procesando {len(data_for_send)} registros para envío a DGA")
+        dga_logger.info(
+            f"Procesando {len(data_for_send)} registros para envío a DGA "
+            f"({len(recientes)} recientes + {len(backlog)} backlog)"
+        )
 
         # Contadores para el reporte final
         success_count = 0

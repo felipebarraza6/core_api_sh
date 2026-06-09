@@ -1,13 +1,23 @@
 # SmartHydro — Guía Maestra para Agentes de Kimi
 
-> **Última auditoría:** 2026-05-17
+> **Última auditoría:** 2026-06-03
 > **Estado:** Producción activa — CAUTELA MÁXIMA en todo cambio
 >
-> **Cambios recientes (2026-05-17):**
-> - Modelo `ComplianceProvider` creado para DGA/SMA (eliminados hardcodeados)
-> - FK `telemetry_provider` agregada a `CatchmentPoint` (172 puntos migrados)
-> - Webhooks Google Chat movidos a settings/env (ya no en código)
-> - 52 tests regresión pasando
+> **Cambios recientes (2026-05-24):**
+> - **Fix `variable_details` honesto:** `success=True` solo cuando el getter realmente trae datos (`date_time is not None`)
+> - **Fix reconexión bypass:** `is_reconnection=True` ya no salta detección de reset. Durante reconexión, caídas de pulsos se tratan como reset real (el sensor probablemente se reinició offline)
+> - **Fix DecimalField precision:** `InteractionDetail.flow/nivel/water_table` ampliados de `max_digits=5` a `10` (evita errores en valores >999.99)
+> - **Índice compuesto DGA:** `['send_dga', 'is_error', 'date_time_medition']` agregado para queries de retry queue
+> - **Fix crisis Redis:** `requirepass` activado, auth funcionando en todos los contenedores
+> - **Fix monotonicidad total:** 1,786 registros NULL corregidos en 8 puntos TWIN + 134 registros NOVUS
+> - **Fix cronjob `total.py`:** `pulses=0` nunca detecta reset falso → preserva monotonicidad
+> - **Fix backfill:** `recalc_totals_for_range()` propaga último total válido cuando `pulses=0`
+> - **Throttling API Ikolu:** Todos los endpoints ahora tienen rate limiting
+> - **Tests Ikolu:** 10 tests nuevos cubriendo endpoints críticos del Centro de Control
+> - **Auditoría telemetría:** Script `audit_telemetry_health.py` para monitoreo continuo
+> - **Auditoría APIs:** Documentación de paginación y estado de Legacy vs Ikolu
+> - **Documentación endpoints actualizada:** `docs/API_ENDPOINTS.md`, `docs/API_IKOLU_ENDPOINTS.md`, `API_AUDIT_AND_ROADMAP.md` actualizados con todos los endpoints actuales (tickets, backfill, chat, system events, admin dashboards, schema OpenAPI)
+> - 120 tests pasando (115 regresión + 5 DGA)
 
 ---
 
@@ -20,6 +30,25 @@
 - Alertas a clientes
 
 **Si no estás 100% seguro de un cambio, NO LO HAGAS.** Pregunta primero.
+
+---
+
+## ⚡ Eficiencia Operativa (lecciones aprendidas 2026-05-31)
+
+### Debug en contenedores
+- El bind mount es **restringido** (`./api:/app/api`, no `./:/app`). Gunicorn **no recarga** automáticamente.
+- Los `.pyc` pueden quedar con fecha más nueva que los `.py` → Python nunca recompila. Si hay `AttributeError` en un campo que existe en el archivo, usar `getattr()` defensivo **inmediatamente** en vez de intentar limpiar cachés.
+- Ante un 500, el primer paso es siempre: `docker logs --tail 30 django_api_secure`.
+
+### Tipos numéricos en Python 3
+- `DecimalField` devuelve `Decimal`, no `float`.
+- `sum([float, Decimal])` → `TypeError`. Siempre convertir a `float()` antes de sumar/promediar.
+- `max(0.0, Decimal('x'))` produce tipos mixtos. Convertir ambos a `float`.
+
+### Cambios mínimos
+- Un solo propósito por edición.
+- No refactorizar lo que no está roto.
+- No pedirle al usuario que haga debugging que puedo hacer yo con `docker exec` / `docker logs`.
 
 ---
 
@@ -99,8 +128,8 @@ python manage.py test tests.dga
 |---|----------|-----------|
 | 8 | **N+1 Query severo** | `views/management.py:155-188` — 1 query por punto + 1 por perfil |
 | 9 | **Endpoints sin paginación** | `catchment_points.py` — `all()` sin límite |
-| 10 | **DecimalField con `max_length`** | `models/catchment_points.py:475` — inválido en Django |
-| 11 | **Modelos sin índices DB** | Ningún FK tiene `db_index=True` |
+| 10 | **DecimalField con `max_length`** | ~~`models/catchment_points.py:475`~~ ✅ Corregido |
+| 11 | **Modelos sin índices DB** | Parcialmente resuelto: FKs recientes tienen `db_index=True`; índice compuesto `send_dga+is_error+date_time_medition` agregado |
 | 12 | **100+ prints de debug** | Todo `api/cronjobs/` |
 | 13 | **X_FRAME_OPTIONS = SAMEORIGIN** | `settings.py:462` — anula DENY en producción |
 | 14 | **CORS permite localhost en prod** | `settings.py:249-257` |
@@ -142,16 +171,13 @@ python manage.py test tests.dga
 
 ## 📋 PLAN DE MEJORAS TÉCNICAS (NO APLICAR SIN PLAN DETALLADO)
 
-### Fase 1: Performance DB (requiere migraciones)
-- Agregar `db_index=True` a FKs frecuentemente filtrados:
-  - `CatchmentPoint.project`, `owner_user`
-  - `NotificationsCatchment.point_catchment`
-  - `ProfileDataConfigCatchment.point_catchment`
-  - `DgaDataConfigCatchment.point_catchment`
-  - `FileCatchment.point_catchment`
-  - `ResponseNotificationsCatchment.notification`, `user`
-- Corregir `DecimalField(max_length=1200)` → usar `max_digits` + `decimal_places`
-- Corregir `IntegerField(default=0.0)` → `default=0`
+### Fase 1: Performance DB (parcialmente completada)
+- ✅ Agregar `db_index=True` a FKs frecuentemente filtrados (migraciones 0032+)
+- ✅ Corregir `DecimalField(max_length=1200)` → usar `max_digits` + `decimal_places`
+- ✅ Corregir `IntegerField(default=0.0)` → `default=0`
+- ✅ Ampliar `DecimalField(max_digits=5→10)` en `InteractionDetail.flow/nivel/water_table`
+- ✅ Índice compuesto `['send_dga', 'is_error', 'date_time_medition']` agregado
+- Pendiente: `ResponseNotificationsCatchment.notification`, `user` (baja frecuencia)
 
 ### Fase 2: Optimización API
 - Resolver N+1 en `management.py:points_status` con `prefetch_related`
@@ -164,8 +190,10 @@ python manage.py test tests.dga
 - Pin versiones de imágenes (`nginx-proxy:1.x` en vez de `latest`)
 - Revisar si `DAC_OVERRIDE` es realmente necesario
 
-### Fase 4: Lógica crítica
-- Fix race condition en `controllers/total.py` usando `select_for_update()` + `F()` expressions
+### Fase 4: Lógica crítica (parcialmente completada)
+- ✅ Fix race condition en `controllers/total.py` usando `select_for_update()` + `F()` expressions
+- ✅ Fix reconexión bypass: reset detection ya no se salta en `is_reconnection=True`
+- ✅ Fix `variable_details` honesto: `success` refleja estado real del getter
 - Revisar truncamiento `int(amount_to_add)` en cálculo de totales
 - Mover credenciales TDATA a variables de entorno
 
