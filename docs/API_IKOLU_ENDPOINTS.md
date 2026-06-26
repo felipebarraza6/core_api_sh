@@ -16,11 +16,16 @@
 | 3 | `/api/ik/point/<id>/summary/` | GET | Token | `SummaryRateThrottle` | ✅ Sí | **Detalle de un punto específico.** Similar a `points_summary` pero para un solo punto. Incluye última telemetría, esquemas, variables, config DGA, y conteo de alertas. Devuelve 404 si el usuario no es owner ni viewer del punto. |
 | 4 | `/api/ik/my_points/` | GET | Token | — | ✅ Sí | **Dropdown/select liviano.** Retorna id, título, proyecto, cliente, frecuencia, telemetry flag, DGA compliance, owner/viewer. Útil para selects, filtros, o cuando no necesitas toda la telemetría. Soporta `?limit`. |
 | 5 | `/api/ik/dashboard_stats/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **KPIs del Centro de Control.** Retorna métricas agregadas: total de puntos, conectados/desconectados hoy, últimos 7 días con consumo/caudal/nivel por punto, warnings (resets/system events), reglas de alerta activas, chat quota. |
+| 5a | `/api/ik/control_center/list/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **Lista paginada de puntos para un día.** Retorna métricas del día, estado, variables y `warnings_count`. Query: `?date=YYYY-MM-DD`, `?project_id`, `?order_by=consumption/-consumption/avg_flow/-avg_flow/avg_level/-avg_level/warnings_count_desc/warnings_count_asc`, `?page`, `?page_size`. |
 | 6 | `/api/ik/point/<id>/calendar/` | GET | Token | — | ✅ Sí | **Histórico de consumo por día.** Retorna los últimos N días (`?days`, default 7, max 30) de un punto con: fecha, total acumulado, caudal promedio/máx, nivel promedio, consumo del día, registros por día. Útil para gráficos de barras de consumo diario. |
 | 7 | `/api/ik/point/<id>/variables/` | GET | Token | `SummaryRateThrottle` | ✅ Sí | **Mapeo de variables del punto.** Retorna la lista de variables configuradas en los esquemas del punto (id, str_variable, label, type_variable, display_key, min_value, max_value). El cliente usa esto para interpretar el payload dinámico de `variable_values` en la telemetría. |
 | 8 | `/api/ik/point/<id>/records/` | GET | Token | — | ✅ Sí | **Registros de telemetría por rango.** Devuelve campos esenciales + `total_raw` (sin addition). Query: `?start=&end=`. Límites: máx 31 días, máx 500 registros. |
-| 9 | `/api/ik/point/<id>/config/` | GET | Token | — | ✅ Sí | **Config liviana del punto.** Retorna d1-d6, addition, is_telemetry, offsets, límites de procesamiento (max_diff, max_flow, max_gap, reconnection_threshold). |
-| 10 | `/api/ik/compliance/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **Compliance DGA/SMA detallado.** Retorna listado completo de puntos con compliance configurado: código DGA/SMA, estándar, tipo de captación, caudal/total autorizados, consumo anual, % consumido, historial de excedencias de caudal (`flow_history`), warning enriquecido con `level` (`safe`/`warning`/`critical`/`unknown`), `status` descriptivo y `messages`, último envío exitoso (voucher, fecha). Stats globales: `with_warnings`, `with_critical`. |
+| 9 | `/api/ik/point/<id>/config/` (`/api/ik/points/<id>/config/`) | GET/PATCH | Token | `DashboardRateThrottle` | ✅ Sí | **Config del punto.** GET retorna d1-d6, addition, is_telemetry, offset nivel y límites de procesamiento. PATCH actualiza esos campos (solo owner o staff); body JSON parcial. Alias plural disponible. |
+| 10 | `/api/ik/compliance/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **Compliance DGA/SMA.** Por defecto lista los puntos accesibles que tienen compliance **configurado** (código DGA o SMA), activo o inactivo. Filtros: `?active_only=true` (solo activos), `?standard=MAYOR` o `?standard=MAYOR,MEDIO`, `?type_dga=SUPERFICIAL` o `?type_dga=SUPERFICIAL,SUBTERRANEO`, `?search` (nombre o código DGA/SMA), `?project_id`. Orden: `order_by=default` (activos primero, luego % consumido desc), `pct_consumed_desc/asc`, `point_name_asc/desc`, `exceedances_desc`, `near_limit_desc`. Paginación `?page`/`?page_size`. |
+| 10a | `/api/ik/compliance/<point_id>/flow_history/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **Detalle de excedencias de caudal.** Registros con `flow > caudal_autorizado` en los últimos `?days=90` (max 365). Paginado (`?page`, `?page_size`). |
+| 10b | `/api/ik/compliance/<point_id>/near_limit/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **Detalle de mediciones cercanas al límite.** Registros entre el 90% y 100% del caudal autorizado en los últimos `?days=90` (max 365). Paginado. |
+| 10c | `/api/ik/control_center/system_events/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **Listado paginado de eventos del sistema.** Filtra por puntos accesibles. Query: `?point_id`, `?event_type`, `?severity`, `?start`, `?end`, `?search`, `?page`, `?page_size`. |
+| 10d | `/api/ik/control_center/system_events/<point_id>/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **Vista detallada de eventos de un punto.** Mismos filtros y paginación que 10c, pero fijando el punto en la URL. Incluye `point` en la respuesta. |
 | 11 | `/api/ik/batch/telemetry/` | POST | Token | `BatchRateThrottle` | ✅ Sí | **Telemetría multi-punto.** Body: `{"point_ids": [1,2,3], "hours": 24}`. Valida que el usuario sea owner/viewer de cada punto. Útil para dashboards que muestran varios puntos a la vez. |
 | 12 | `/api/ik/batch/stats/` | POST | Token | `BatchRateThrottle` | ✅ Sí | **Stats agregados multi-punto.** Body: `{"point_ids": [1,2,3], "days": 30}`. Retorna consumo total, conteo de registros, último registro por punto. |
 | 13 | `/api/ik/point/<id>/gaps/` | GET | Token | — | ✅ Sí (staff amplía) | **Gap detection.** Muestra huecos de telemetría sin modificar BD. Query opcional: `?start=YYYY-MM-DDTHH:MM:SS&end=YYYY-MM-DDTHH:MM:SS`. Si no se pasan, detecta entre primer y último registro. |
@@ -246,42 +251,175 @@
 
 ---
 
+### Point Config (`GET/PATCH /api/ik/point/<id>/config/`)
+
+**GET Response:**
+```json
+{
+  "d1": "1.00",
+  "d2": "2.00",
+  "d3": "3.00",
+  "d4": "4.00",
+  "d5": "5.00",
+  "d6": 10,
+  "addition": "100.000",
+  "is_telemetry": true,
+  "nivel_offset": "-17.000",
+  "max_diff_m3_per_hour": "600.00",
+  "max_flow_ls": "200.00",
+  "max_time_gap_hours": "3.00",
+  "reconnection_threshold_hours": "2.50",
+  "replicate_on_missing": false,
+  "use_transaction_atomic": true
+}
+```
+
+**PATCH Request:**
+```json
+{
+  "d1": "9.50",
+  "d6": 42,
+  "is_telemetry": false,
+  "max_flow_ls": "99.99"
+}
+```
+
+Campos editables: `d1`-`d6`, `addition`, `is_telemetry`, `nivel_offset`, `max_diff_m3_per_hour`, `max_flow_ls`, `max_time_gap_hours`, `reconnection_threshold_hours`, `replicate_on_missing`, `use_transaction_atomic`.
+
+- Solo el **owner** del punto o **staff/superuser** pueden editar.
+- Viewers solo lectura.
+- Campos desconocidos o tipos inválidos retornan 400.
+
 ### Compliance (`GET /api/ik/compliance/`)
+
+**Query params:**
+- `?active_only=true` — solo puntos con compliance activo (default `false`, muestra configurados activos o inactivos).
+- `?standard=<estandar>` — filtrar por estándar. Soporta múltiples separados por coma: `?standard=MAYOR,MEDIO`. Opciones: `SIN_ESTANDAR`, `MAYOR`, `MEDIO`, `MENOR`, `CAUDALES_MUY_PEQUENOS`.
+- `?project_id=<id>` — filtrar por proyecto.
+- `?search=<texto>` — filtrar por nombre de punto **o código DGA/SMA** (`icontains`). Ej: `?search=OB-0702` o `?search=0702`.
+- `?order_by=default|pct_consumed_desc|pct_consumed_asc|point_name_asc|point_name_desc|exceedances_desc|near_limit_desc`. Siempre activos primero; luego el criterio elegido.
+- `?page=<n>&page_size=<n>` (default 10, max 100).
 
 **Response:**
 ```json
 {
-  "stats": {
-    "total_with_compliance": 5,
-    "with_warnings": 1,
-    "with_critical": 0
-  },
+  "count": 2,
+  "next": null,
+  "previous": null,
   "points": [
     {
       "point_id": 1,
-      "point_title": "Pozo Norte",
+      "project_id": 3,
+      "point_name": "Pozo Norte",
+      "client_name": "Cliente A",
       "code": "123-45",
+      "compliance_type": ["DGA"],
       "standard": "MAYOR",
+      "type_dga": "SUPERFICIAL",
+      "compliance_active": true,
       "authorized_flow": 100.0,
-      "authorized_total": null,
+      "authorized_total": 50000.0,
       "annual_consumption": 45000.0,
-      "consumption_percentage": 45.0,
-      "level": "safe",
-      "status": "Dentro de límites",
-      "messages": [],
-      "flow_history": [
-        { "date": "2026-06-01", "flow": 42.0, "exceeded": false }
-      ],
-      "last_successful_send": {
-        "voucher": "V123456",
-        "date": "2026-06-03T11:57:00Z"
-      }
+      "pct_consumed": 90.0,
+      "flow": 95.0,
+      "water_table": 0.0,
+      "flow_history": { "count": 5, "has_more": false, "threshold": 100.0 },
+      "near_limit_history": { "count": 8, "has_more": false, "threshold": 100.0 },
+      "compliance_warning": { "level": "warning" },
+      "voucher": "V123456"
+    },
+    {
+      "point_id": 2,
+      "project_id": 3,
+      "point_name": "Canal Sur",
+      "client_name": "Cliente A",
+      "code": null,
+      "compliance_type": [],
+      "standard": null,
+      "type_dga": null,
+      "compliance_active": false,
+      "authorized_flow": null,
+      "authorized_total": null,
+      "annual_consumption": 0.0,
+      "pct_consumed": null,
+      "flow": 12.0,
+      "water_table": 0.0,
+      "flow_history": { "count": 0, "has_more": false, "threshold": null },
+      "near_limit_history": { "count": 0, "has_more": false, "threshold": null },
+      "compliance_warning": { "level": "unknown" },
+      "voucher": null
     }
   ]
 }
 ```
 
+- `flow_history.count` / `near_limit_history.count` son conteos reales (sin límite de 20).
+- `has_more` indica si al abrir el modal conviene paginar por el endpoint de detalle.
+
+### Compliance flow history detail (`GET /api/ik/compliance/<point_id>/flow_history/`)
+
+```json
+{
+  "count": 5,
+  "next": null,
+  "previous": null,
+  "threshold": 100.0,
+  "point_id": 1,
+  "results": [
+    { "date_time": "2026-06-03T14:00:00", "flow": 120.0 }
+  ]
+}
+```
+
+### Compliance near limit detail (`GET /api/ik/compliance/<point_id>/near_limit/`)
+
+```json
+{
+  "count": 8,
+  "next": null,
+  "previous": null,
+  "threshold": 100.0,
+  "point_id": 1,
+  "results": [
+    { "date_time": "2026-06-03T13:00:00", "flow": 95.0 }
+  ]
+}
+```
+
 ---
+
+### Control Center System Events (`GET /api/ik/control_center/system_events/`)
+
+**Query params:**
+- `point_id` — filtrar por punto (valida acceso del usuario).
+- `event_type` — `DISCONNECTION`, `RECONNECTION`, `COUNTER_RESET`, `API_ERROR`, `THRESHOLD_ALERT`, `GENERAL`.
+- `severity` — `INFO`, `WARNING`, `CRITICAL`.
+- `start` / `end` — rango ISO, ej. `2026-06-01T00:00:00` / `2026-06-30T23:59:59`.
+- `search` — búsqueda `icontains` en `title` o `message`.
+- `page` / `page_size` — paginación.
+
+**Response:**
+```json
+{
+  "count": 42,
+  "next": "?page=2",
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "event_type": "DISCONNECTION",
+      "severity": "WARNING",
+      "title": "Punto desconectado",
+      "message": "Punto desconectado por más de 24h",
+      "point": { "id": 1, "name": "Pozo Norte" },
+      "created": "2026-06-03T10:00:00Z"
+    }
+  ]
+}
+```
+
+- Staff y superusuarios ven eventos de todos los puntos.
+- Usuarios regulares solo ven eventos de puntos donde son owner o viewer.
 
 ### System Events Summary (`GET /api/ik/system-events/summary/?days=7`)
 

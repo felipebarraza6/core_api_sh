@@ -109,6 +109,10 @@ class CatchmentPoint(ModelApi):
 
         verbose_name = "Punto de captacion"
         verbose_name_plural = "Puntos de captacion"
+        indexes = [
+            models.Index(fields=['project', 'title'], name='ik_cp_proj_title_idx'),
+            models.Index(fields=['owner_user', 'title'], name='ik_cp_owner_title_idx'),
+        ]
 
     @property
     def input_mode(self):
@@ -642,6 +646,11 @@ class DgaDataConfigCatchment(ModelApi):
 
         verbose_name = "Configuracion de datos DGA"
         verbose_name_plural = "Configuraciones de datos DGA"
+        indexes = [
+            models.Index(fields=['point_catchment', 'send_dga'], name='ik_dga_cfg_pt_send_idx'),
+            models.Index(fields=['send_dga', 'code_dga'], name='ik_dga_cfg_code_idx'),
+            models.Index(fields=['send_sma', 'sma_device_id'], name='ik_dga_cfg_sma_idx'),
+        ]
 
     def get_dga_password(self):
         """

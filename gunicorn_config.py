@@ -11,11 +11,12 @@ import os
 bind = "0.0.0.0:8000"
 
 # Workers auto-detectados: (2 * CPU_COUNT) + 1
-# Esto permite manejar requests concurrentes eficientemente
-workers = 3  # Optimizado para gthread (5 workers * 4 threads = 20 concurrente)
+# Limitado a 3 workers para no exceder el límite de memoria del contenedor (3G).
+# Con gthread: 3 workers * 3 threads = 9 requests concurrentes.
+workers = 3
 
 # Threads por worker (opcional, para I/O bound operations)
-threads = 2  # Habilitar Multi-threading para mejor I/O handling
+threads = 3  # Habilitar Multi-threading para mejor I/O handling
 
 # Worker class: sync (default) o gevent/eventlet para async
 worker_class = "gthread"  # Cambiar sync por gthread
@@ -27,8 +28,9 @@ timeout = 120
 keepalive = 5
 
 # Preload app: carga la aplicación antes de forking workers
-# Reduce uso de memoria y mejora startup time
-preload_app = True
+# Desactivado para evitar que todos los workers hereden el mismo estado
+# en memoria y facilitar el reciclaje por max_requests.
+preload_app = False
 
 # Logging
 accesslog = "-"  # stdout
@@ -36,8 +38,10 @@ errorlog = "-"   # stderr
 loglevel = os.environ.get("GUNICORN_LOG_LEVEL", "info")
 
 # Procesos de gestión
-max_requests = 1000  # Reiniciar worker después de N requests (previene memory leaks)
-max_requests_jitter = 50  # Variación aleatoria para evitar reinicios simultáneos
+# Reiniciar worker después de N requests (previene memory leaks)
+# Valor bajo para reciclar workers antes de que crezcan en memoria.
+max_requests = 1000
+max_requests_jitter = 200  # Variación aleatoria para evitar reinicios simultáneos
 
 # Graceful timeout: tiempo para terminar workers gracefully
 graceful_timeout = 30

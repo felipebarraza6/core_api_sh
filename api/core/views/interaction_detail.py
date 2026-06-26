@@ -4,7 +4,12 @@ from drf_excel.mixins import XLSXFileMixin
 from drf_excel.renderers import XLSXRenderer
 from rest_framework.renderers import JSONRenderer
 
-from api.core.serializers import InteractionDetailModelSerializer, InteractionDetailModelSerializerNoProcessing, InteractionDetailDgaXlsxSerializer
+from api.core.serializers import (
+    InteractionDetailModelSerializer,
+    InteractionDetailModelSerializerNoProcessing,
+    InteractionDetailDgaXlsxSerializer,
+    InteractionDetailXlsxSerializer,
+)
 from api.core.models import InteractionDetail, CatchmentPoint
 import django.db.models as models
 from django_filters import rest_framework as filters
@@ -529,7 +534,7 @@ class InteractionXLSMonth(XLSXFileMixin, ReadOnlyModelViewSet):
         
 class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
     queryset = InteractionDetail.objects.all().order_by('-date_time_medition')
-    serializer_class = InteractionDetailModelSerializer
+    serializer_class = InteractionDetailXlsxSerializer
     renderer_classes = (JSONRenderer, XLSXRenderer)
     filter_backends = (filters.DjangoFilterBackend,)
     class CustomPagination(PageNumberPagination):
@@ -553,26 +558,28 @@ class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
     filterset_class = InteractionFilter
 
     xlsx_ignore_headers = [
-        'modified', 
-        'id', 
+        'modified',
+        'id',
         'created',
-        # "nivel",  <-- REMOVED from ignore list
         "days_not_conection",
-        'catchment_point', 
-        'send_dga', 
+        'catchment_point',
+        'send_dga',
         'return_dga',
-        "date_time_last_logger", 
-        "n_voucher", 
+        "n_voucher",
         "pulses",
-        "is_error", 
+        "is_error",
         "notification",
         "variable_details",
-        "is_partial"]
-    
-    
+        "variable_values",
+        "is_partial",
+        "dga_retry_count",
+        "dga_last_retry_at",
+    ]
+
     column_header = {
         'titles': [
             "Fecha",
+            "Fecha logger",
             "Caudal (l/s)",
             "Acumulado (m³)",
             "Acumulado/hora (m³)",
@@ -580,7 +587,7 @@ class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
             "Nivel (m)",
             "Nivel Freático (m)"
         ],
-        'column_width': [30, 14, 30, 30, 30, 22, 22],
+        'column_width': [30, 30, 14, 30, 30, 30, 22, 22],
         'height': 25,
         'style': {
             'fill': {
@@ -611,20 +618,22 @@ class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
         
         # Default Full Headers (Reference)
         # 0: Fecha
-        # 1: Caudal (l/s)
-        # 2: Acumulado (m³)
-        # 3: Acumulado/hora (m³)
-        # 4: Contador diario (m³)
-        # 5: Nivel (m)
-        # 6: Nivel Freático (m)
-        
+        # 1: Fecha logger
+        # 2: Caudal (l/s)
+        # 3: Acumulado (m³)
+        # 4: Acumulado/hora (m³)
+        # 5: Contador diario (m³)
+        # 6: Nivel (m)
+        # 7: Nivel Freático (m)
+
         # Default Ignore List (Fields to exclude from model)
         default_ignore = [
             'modified', 'id', 'created', "days_not_conection",
             'catchment_point', 'send_dga', 'return_dga',
-            "date_time_last_logger", "n_voucher", "pulses",
+            "n_voucher", "pulses",
             "is_error", "notification",
-            "variable_details", "is_partial"
+            "variable_details", "variable_values", "is_partial",
+            "dga_retry_count", "dga_last_retry_at",
         ]
 
         if not self.request:
@@ -643,26 +652,26 @@ class InteractionXLS(XLSXFileMixin, ReadOnlyModelViewSet):
                 variables_set = set(variables)
 
                 # Determine which columns to KEEP based on variables
-                # Always keep Fecha (Index 0)
-                indices_to_keep = [0] 
-                
+                # Always keep Fecha (Index 0) and Fecha logger (Index 1)
+                indices_to_keep = [0, 1]
+
                 # Dynamic Logic
                 variables_set_upper = {v.upper() for v in variables_set}
                 has_caudal = "CAUDAL" in variables_set_upper or "CAUDAL_PROMEDIO" in variables_set_upper
                 has_total = "TOTALIZADO" in variables_set_upper
                 has_nivel = "NIVEL" in variables_set_upper
 
-                # Caudal Columns: "Caudal (l/s)" (Index 1)
+                # Caudal Columns: "Caudal (l/s)" (Index 2)
                 if has_caudal:
-                    indices_to_keep.append(1)
-                
-                # Totalizado Columns: "Acumulado", "Acumulado/hora", "Contador diario" (Indices 2, 3, 4)
+                    indices_to_keep.append(2)
+
+                # Totalizado Columns: "Acumulado", "Acumulado/hora", "Contador diario" (Indices 3, 4, 5)
                 if has_total:
-                    indices_to_keep.extend([2, 3, 4])
-                
-                # Nivel Columns: "Nivel (m)", "Nivel Freático (m)" (Indices 5, 6)
+                    indices_to_keep.extend([3, 4, 5])
+
+                # Nivel Columns: "Nivel (m)", "Nivel Freático (m)" (Indices 6, 7)
                 if has_nivel:
-                    indices_to_keep.extend([5, 6])
+                    indices_to_keep.extend([6, 7])
                 
                 # Filter Titles and Widths
                 # Use class attribute as source to avoid mutation issues
@@ -814,22 +823,26 @@ class InteractionXLSDga(XLSXFileMixin, ReadOnlyModelViewSet):
     filterset_class = InteractionFilter
 
     xlsx_ignore_headers = [
-        'modified', 
-        'id', 
+        'modified',
+        'id',
         'created',
-        "nivel", 
+        "nivel",
         "days_not_conection",
-        'catchment_point', 
-        'send_dga', 
+        'catchment_point',
+        'send_dga',
         'return_dga',
-        "date_time_last_logger", 
+        "date_time_last_logger",
         "pulses",
         "total_diff",
         "total_today_diff",
-        "is_error", 
+        "is_error",
         "notification",
         "variable_details",
-        "is_partial"]
+        "variable_values",
+        "is_partial",
+        "dga_retry_count",
+        "dga_last_retry_at",
+    ]
     
     
     column_header = {

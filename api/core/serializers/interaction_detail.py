@@ -212,6 +212,25 @@ class InteractionDetailModelSerializer(serializers.ModelSerializer):
         return representation
 
 
+class InteractionDetailXlsxSerializer(InteractionDetailModelSerializer):
+    """
+    Serializer específico para exportación Excel general (no DGA).
+    Hereda toda la lógica de cálculo del serializer base (d6, diff, flow)
+    pero limita los campos exportados para evitar columnas basura.
+    """
+    class Meta(InteractionDetailModelSerializer.Meta):
+        fields = [
+            'date_time_medition',
+            'date_time_last_logger',
+            'flow',
+            'total',
+            'total_diff',
+            'total_today_diff',
+            'nivel',
+            'water_table',
+        ]
+
+
 class InteractionDetailDgaXlsxSerializer(serializers.ModelSerializer):
     """
     Serializer específico para exportación Excel DGA.

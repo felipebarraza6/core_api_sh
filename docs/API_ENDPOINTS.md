@@ -645,6 +645,14 @@ Webhook para integración con Google Chat. Soporta cards interactivas y slash co
 
 ---
 
+### Herramientas Técnicas (Telemetry Reprocessor)
+
+| Endpoint | Método | Auth | Descripción |
+|----------|--------|------|-------------|
+| `POST /api/telemetry-reprocessor/` | POST | Staff | Auditoría y corrección de telemetría. Dry-run por defecto. Requiere `apply=true` para modificar DB. Ver `docs/API_TELEMETRY_REPROCESSOR.md` |
+
+---
+
 ## 11. Notas Generales para Frontend
 
 ### Paginación

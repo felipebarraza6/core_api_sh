@@ -107,7 +107,6 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
             .exclude(pulses__isnull=True)
             .exclude(total__isnull=True)
             .exclude(total="")
-            .exclude(is_error=True)
             .order_by("-date_time_medition")
             .first()
         )
@@ -385,6 +384,40 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                     # para permitir detectar resets reales que ocurren mientras el sensor
                     # estuvo desconectado.
                     drop_ratio = 1.0 - (current_pulses / last_pulses)
+                    # ✅ FIX 2026-06: Umbral mínimo antiruido. Caídas < 1% son
+                    # fluctuaciones del sensor, NO resets reales. Sin esto, cada
+                    # micro-caída (0.1-0.7%) acumulaba addition sin límite.
+                    if drop_ratio < 0.01:
+                        logger.warning(
+                            f"⚠️  Punto {point_catchment['id']}: Caída mínima de pulsos "
+                            f"{last_pulses:.0f} -> {current_pulses:.0f} "
+                            f"({drop_ratio*100:.2f}%). "
+                            f"Ruido de sensor, manteniendo último total."
+                        )
+                        _create_counter_reset_log(
+                            point_catchment_id=point_catchment["id"],
+                            reset_type="NOISE_DROP",
+                            last_pulses=last_pulses,
+                            current_pulses=current_pulses,
+                            pulses_factor=pulses_factor,
+                            addition_before=offset,
+                            total_before=last_total_safe,
+                            total_after=last_total_safe,
+                            passed_anti_jump=True,
+                            reconnection_threshold=reconnection_threshold,
+                            is_reconnection=is_reconnection,
+                            days_not_connection=last_interaction.days_not_conection if last_interaction else None,
+                            time_diff_hours=time_diff_hours,
+                            date_time_medition=current_dt,
+                        )
+                        if return_full_details:
+                            return last_total_safe, {
+                                "raw_pulses": current_pulses,
+                                "status": "NOISE_DROP",
+                                "logic": "kept_last_valid"
+                            }
+                        return last_total_safe
+
                     # ✅ FIX: Durante reconexión, tratar cualquier caída como reset real
                     # (el sensor probablemente se reinició mientras estaba offline).
                     # Solo rechazar como truncamiento cuando NO es reconexión.
@@ -394,7 +427,6 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                             f"({drop_ratio*100:.0f}%) sin desconexión previa. "
                             f"Tratando como error de ingesta (posible truncamiento)."
                         )
-
                         _create_counter_reset_log(
                             point_catchment_id=point_catchment["id"],
                             reset_type="PARTIAL_REJECTED",
@@ -411,7 +443,6 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                             time_diff_hours=time_diff_hours,
                             date_time_medition=current_dt,
                         )
-
                         if return_full_details:
                             return last_total_safe, {
                                 "raw_pulses": current_pulses,

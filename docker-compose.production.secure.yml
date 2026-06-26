@@ -20,6 +20,15 @@ services:
     labels:
       - "com.github.nginx-proxy.docker-gen=true"
     restart: always
+    # ✅ RENDIMIENTO: Límites de recursos para proteger la estabilidad del host
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     # ✅ SEGURIDAD: Usuario no-root
     # user: "101:101"
     # ✅ SEGURIDAD: Healthcheck
@@ -64,6 +73,15 @@ services:
     volumes:
       - ./conf/redis.conf:/usr/local/etc/redis/redis.conf:ro
     command: redis-server /usr/local/etc/redis/redis.conf
+    # ✅ RENDIMIENTO: Limitar Redis para evitar OOM en el host
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     healthcheck:
       test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
       interval: 30s
@@ -87,7 +105,7 @@ services:
       # work_mem: 4MB por conexión (ajustar según max_connections)
       # effective_cache_size: 50% de RAM (ajustar según servidor)
     command: >
-      postgres -c shared_buffers=1536MB -c work_mem=16MB -c maintenance_work_mem=256MB -c effective_cache_size=3GB -c max_connections=100 -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c max_worker_processes=2 -c max_parallel_workers_per_gather=1 -c max_parallel_workers=2
+      postgres -c shared_buffers=2GB -c work_mem=8MB -c maintenance_work_mem=256MB -c effective_cache_size=5GB -c max_connections=150 -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c max_worker_processes=2 -c max_parallel_workers_per_gather=1 -c max_parallel_workers=2
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db-secure.sql:/docker-entrypoint-initdb.d/init-db-secure.sql:ro
@@ -95,6 +113,15 @@ services:
     networks:
       - backend
     restart: unless-stopped
+    # ✅ RENDIMIENTO: Reservar recursos para PostgreSQL (2 GB shared_buffers + conexiones)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
     # ✅ SEGURIDAD: Healthcheck robusto
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U smarthydro_user -d smarthydro_prod" ]
@@ -117,6 +144,8 @@ services:
     tmpfs:
       - /tmp
       - /var/run/postgresql
+      # ✅ RENDIMIENTO: shared memory de PostgreSQL (shared_buffers=2GB requiere más de 64MB default)
+      - /dev/shm:rw,size=2g
 
   # ========================================
   # API DJANGO - API.SMARTHYDRO.APP
@@ -165,12 +194,13 @@ services:
       - GOOGLE_CHAT_DGA_WEBHOOK_URL=${GOOGLE_CHAT_DGA_WEBHOOK_URL}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     volumes:
-      # ✅ SEGURIDAD: Bind mount restringido (NO expone .env, .git/, backups/, credentials/)
+      # ✅ SEGURIDAD: Bind mount restringido (NO expone .env, .git/, credentials/)
       - ./api:/app/api
       - ./templates:/app/templates
       - ./static:/app/static
       - ./scripts:/app/scripts
       - ./conf:/app/conf
+      - ./backups:/app/backups:rw
       - ./manage.py:/app/manage.py
       - ./docker-entrypoint.sh:/app/docker-entrypoint.sh
       - ./gunicorn_config.py:/app/gunicorn_config.py
@@ -195,6 +225,15 @@ services:
       - frontend
       - backend
     restart: unless-stopped
+    # ✅ RENDIMIENTO: Límites para Gunicorn (4 workers * preload_app)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 3G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     # ✅ SEGURIDAD: Healthcheck
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:8000/health/ > /dev/null 2>&1 || exit 1" ]
@@ -249,11 +288,12 @@ services:
       - GOOGLE_CHAT_DGA_WEBHOOK_URL=${GOOGLE_CHAT_DGA_WEBHOOK_URL}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     volumes:
-      # ✅ SEGURIDAD: Bind mount restringido (NO expone .env, .git/, backups/, credentials/)
+      # ✅ SEGURIDAD: Bind mount restringido (NO expone .env, .git/, credentials/)
       - ./api:/app/api
       - ./templates:/app/templates
       - ./scripts:/app/scripts
       - ./conf:/app/conf
+      - ./backups:/app/backups:rw
       - ./manage.py:/app/manage.py
       - ./cron-entrypoint.sh:/app/cron-entrypoint.sh
       - ./rotate-cron-logs.sh:/app/rotate-cron-logs.sh
@@ -267,9 +307,19 @@ services:
         condition: service_healthy
     networks:
       - backend
+      - frontend
     # ✅ SEGURIDAD: Usuario no-root (mismo UID que servicio django)
     user: "1000:1000"
     restart: unless-stopped
+    # ✅ RENDIMIENTO: Limitar contenedor de cronjobs
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     healthcheck:
       test: [ "CMD-SHELL", "test -f /tmp/smarthydro/unified_twin_1.log && find /tmp/smarthydro/unified_twin_1.log -mmin -5 -print -quit | grep -q unified_twin_1.log" ]
       interval: 1m
@@ -285,6 +335,7 @@ services:
     tmpfs:
       - /tmp
       - /var/tmp
+      - /run:uid=1000,gid=1000,mode=755
     dns:
       - 8.8.8.8
       - 8.8.4.4

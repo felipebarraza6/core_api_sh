@@ -12,6 +12,9 @@ guarda en BD con update_or_create, y aplica procesamiento unificado completo:
 - Caudal promedio (average_flow) si aplica
 - Recálculo de diffs
 
+El backfill utiliza la configuración dinámica del TelemetryProvider asociado
+al punto o a sus variables, con fallback a los booleanos legacy.
+
 Seguridad:
 - Auth requerida (Token)
 - Rate limit: 5/min por usuario
@@ -19,12 +22,19 @@ Seguridad:
 - Rango máximo: 30 días
 """
 
+from datetime import datetime
+
+import pytz
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 
 from api.core.models import CatchmentPoint
+from api.core.services.telemetry_backfill import (
+    backfill_point_from_providers,
+    get_provider_history_func,
+)
 
 from .throttles import BackfillRateThrottle
 
@@ -68,8 +78,6 @@ class TelemetryBackfillView(APIView):
             )
 
         # Parsear fechas
-        from datetime import datetime
-        import pytz
         chile_tz = pytz.timezone("America/Santiago")
         try:
             start_dt = chile_tz.localize(datetime.strptime(start_str, "%Y-%m-%dT%H:%M:%S"))
@@ -113,45 +121,48 @@ class TelemetryBackfillView(APIView):
                     status=status.HTTP_403_FORBIDDEN
                 )
 
-        # Verificar que el punto soporte backfill
-        if not (point.is_tdata or point.is_novus):
+        # Verificar que el punto tenga al menos una variable con histórico soportado
+        handler_name, history_func, _ = get_provider_history_func(point)
+        if not history_func:
             return Response(
                 {"success": False, "error": "El punto no usa un provider con soporte de histórico (TWIN o NOVUS)"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         # Ejecutar backfill + procesamiento completo
-        from scripts.backfill_point_range import backfill_point
-        from api.cronjobs.telemetry.controllers.backfill_processing import process_backfill_range
-
         try:
-            creados, actualizados, errores, skipped = backfill_point(
+            result = backfill_point_from_providers(
                 point, start_dt, end_dt, dry_run=False
             )
 
-            # Procesamiento unificado completo
-            results = process_backfill_range(point, start_dt, end_dt)
+            processing = result.get("processing") or {}
 
             return Response({
                 "success": True,
                 "point_id": point_id,
                 "point_name": point.title,
                 "range": f"{start_str} → {end_str}",
-                "records_created": creados,
-                "records_updated": actualizados,
-                "records_failed": errores,
+                "records_created": result["records_created"],
+                "records_updated": result["records_updated"],
+                "records_failed": result["records_failed"],
                 "processing": {
-                    "totals_updated": results["totals_updated"],
-                    "flow_updated": results["flow_updated"],
-                    "nivel_updated": results["nivel_updated"],
-                    "avg_flow_updated": results["avg_flow_updated"],
-                    "total_diff_updated": results["diff_updated"],
-                    "total_today_diff_updated": results["today_diff_updated"],
+                    "totals_updated": processing.get("totals_updated", 0),
+                    "flow_updated": processing.get("flow_updated", 0),
+                    "nivel_updated": processing.get("nivel_updated", 0),
+                    "avg_flow_updated": processing.get("avg_flow_updated", 0),
+                    "total_diff_updated": processing.get("diff_updated", 0),
+                    "total_today_diff_updated": processing.get("today_diff_updated", 0),
                 },
                 "details": {
-                    "provider": "tdata" if point.is_tdata else "tago",
+                    "provider": result.get("provider") or handler_name,
                 }
             }, status=status.HTTP_200_OK)
+
+        except ValueError as e:
+            return Response({
+                "success": False,
+                "error": str(e),
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
             return Response({

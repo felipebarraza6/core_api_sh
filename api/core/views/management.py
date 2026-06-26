@@ -8,7 +8,8 @@ cronjobs, y gestión de puntos de captación.
 
 from django.apps import apps
 from django.conf import settings
-from django.db.models import Count, Q, Max, Min, Avg, Sum
+from django.db import connection
+from django.db.models import Count, Q, Max, Min, Avg, Sum, Prefetch
 from django.db.models.functions import TruncDate, TruncHour
 from django.utils import timezone
 from datetime import timedelta
@@ -115,62 +116,134 @@ class ManagementViewSet(viewsets.ViewSet):
     def points_status(self, request):
         """
         Obtiene el estado detallado de los puntos de captación.
-        
+
         Query params:
             - project: Filtrar por proyecto (ID)
             - client: Filtrar por cliente (ID)
             - disconnected: Solo puntos desconectados (true/false)
             - active_telemetry: Solo con telemetría activa (true/false)
+            - page: Número de página (opcional)
+            - page_size: Tamaño de página (default 50, max 200)
         """
         try:
             queryset = CatchmentPoint.objects.all()
-            
+
             # Filtros opcionales
             project_id = request.query_params.get('project')
             if project_id:
                 queryset = queryset.filter(project_id=project_id)
-            
+
             client_id = request.query_params.get('client')
             if client_id:
                 queryset = queryset.filter(project__client_id=client_id)
-            
-            disconnected_only = request.query_params.get('disconnected', 'false').lower() == 'true'
-            if disconnected_only:
-                yesterday = timezone.now() - timedelta(days=1)
-                queryset = queryset.filter(
-                    interactiondetail__days_not_conection__gt=0,
-                    interactiondetail__date_time_medition__gte=yesterday
-                ).distinct()
-            
+
             active_only = request.query_params.get('active_telemetry', 'false').lower() == 'true'
             if active_only:
                 queryset = queryset.filter(
                     data_config_profiles__is_telemetry=True
                 ).distinct()
-            
-            # Obtener último registro de cada punto
-            # ✅ OPTIMIZACIÓN: Precalcular en 2 queries en vez de N+1
-            point_ids = list(queryset.values_list('id', flat=True))
 
-            # Precalcular última interacción por punto (una sola query con DISTINCT ON)
-            last_interactions = {
-                interaction.catchment_point_id: interaction
-                for interaction in InteractionDetail.objects.filter(
-                    catchment_point_id__in=point_ids
-                ).order_by('catchment_point_id', '-date_time_medition').distinct('catchment_point_id')
-            }
+            disconnected_only = request.query_params.get('disconnected', 'false').lower() == 'true'
 
-            # Precalcular puntos con telemetría activa (una sola query)
-            telemetry_active_ids = set(
-                ProfileDataConfigCatchment.objects.filter(
-                    point_catchment_id__in=point_ids,
-                    is_telemetry=True
-                ).values_list('point_catchment_id', flat=True)
+            # Paginación opcional. En el caso común (sin disconnected_only)
+            # se pagina ANTES de calcular last_interaction, para no recorrer
+            # toda la tabla InteractionDetail.
+            page_number = request.query_params.get('page')
+            if page_number is not None:
+                try:
+                    page_number = int(page_number)
+                    page_size = int(request.query_params.get('page_size', 50))
+                except (ValueError, TypeError):
+                    return Response(
+                        {'error': 'page y page_size deben ser enteros válidos.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if page_number < 1:
+                    return Response(
+                        {'error': 'page debe ser mayor o igual a 1.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                page_size = max(1, min(page_size, 200))
+
+            profile_prefetch = Prefetch(
+                'data_config_profiles',
+                queryset=ProfileDataConfigCatchment.objects.only(
+                    'point_catchment_id', 'is_telemetry'
+                ),
+                to_attr='_data_configs',
             )
 
+            if disconnected_only:
+                # Este filtro requiere conocer la última interacción, así que
+                # calculamos para todos los puntos filtrados y luego paginamos.
+                yesterday = timezone.now() - timedelta(days=1)
+                queryset = queryset.filter(
+                    interactiondetail__days_not_conection__gt=0,
+                    interactiondetail__date_time_medition__gte=yesterday
+                ).distinct()
+                points = list(
+                    queryset.select_related('project', 'project__client', 'owner_user', 'telemetry_provider')
+                    .prefetch_related(profile_prefetch)
+                )
+                point_ids = [p.id for p in points]
+                page_point_ids = point_ids
+            elif page_number is not None:
+                # Caso común: paginar primero.
+                total_count = queryset.count()
+                start = (page_number - 1) * page_size
+                end = start + page_size
+                points = list(
+                    queryset.order_by('title')[start:end]
+                    .select_related('project', 'project__client', 'owner_user', 'telemetry_provider')
+                    .prefetch_related(profile_prefetch)
+                )
+                point_ids = [p.id for p in points]
+                page_point_ids = point_ids
+            else:
+                # Sin paginación ni disconnected: devolver todo (caso legacy).
+                points = list(
+                    queryset.select_related('project', 'project__client', 'owner_user', 'telemetry_provider')
+                    .prefetch_related(profile_prefetch)
+                )
+                point_ids = [p.id for p in points]
+                page_point_ids = point_ids
+
+            # Precalcular última interacción para todos los puntos de la página
+            # en UNA sola query usando LATERAL. PostgreSQL ejecuta el LIMIT 1 por
+            # punto usando el índice compuesto, evitando N+1 y DISTINCT ON lento.
+            last_interactions = {}
+            if page_point_ids:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT i.catchment_point_id, i.date_time_medition,
+                               i.days_not_conection, i.flow, i.total,
+                               i.nivel, i.is_error
+                        FROM unnest(%s) AS p(id)
+                        CROSS JOIN LATERAL (
+                            SELECT *
+                            FROM core_interactiondetail
+                            WHERE catchment_point_id = p.id
+                            ORDER BY date_time_medition DESC
+                            LIMIT 1
+                        ) i
+                        """,
+                        [page_point_ids],
+                    )
+                    for row in cursor.fetchall():
+                        last_interactions[row[0]] = {
+                            'date_time_medition': row[1],
+                            'days_not_conection': row[2],
+                            'flow': row[3],
+                            'total': row[4],
+                            'nivel': row[5],
+                            'is_error': row[6],
+                        }
+
             points_data = []
-            for point in queryset.select_related('project', 'project__client', 'owner_user', 'telemetry_provider'):
+            for point in points:
                 last_interaction = last_interactions.get(point.id)
+                telemetry_active = any(cfg.is_telemetry for cfg in point._data_configs)
 
                 point_data = {
                     'id': point.id,
@@ -185,28 +258,53 @@ class ManagementViewSet(viewsets.ViewSet):
                         'nettra': point.is_thethings,
                         'novus': point.is_novus,
                     },
-                    'telemetry_active': point.id in telemetry_active_ids,
+                    'telemetry_active': telemetry_active,
                     'last_interaction': None,
                 }
 
                 if last_interaction:
+                    dt = last_interaction['date_time_medition']
                     point_data['last_interaction'] = {
-                        'date_time': last_interaction.date_time_medition.isoformat() if last_interaction.date_time_medition else None,
-                        'days_not_connection': last_interaction.days_not_conection,
-                        'flow': float(last_interaction.flow) if last_interaction.flow else 0,
-                        'total': last_interaction.total,
-                        'nivel': float(last_interaction.nivel) if last_interaction.nivel else 0,
-                        'is_error': last_interaction.is_error,
+                        'date_time': dt.isoformat() if dt else None,
+                        'days_not_connection': last_interaction['days_not_conection'],
+                        'flow': float(last_interaction['flow']) if last_interaction['flow'] else 0,
+                        'total': last_interaction['total'],
+                        'nivel': float(last_interaction['nivel']) if last_interaction['nivel'] else 0,
+                        'is_error': last_interaction['is_error'],
                     }
 
                 points_data.append(point_data)
-            
+
+            if disconnected_only and page_number is not None:
+                total = len(points_data)
+                start = (page_number - 1) * page_size
+                end = start + page_size
+                points_data = points_data[start:end]
+                return Response({
+                    'points': points_data,
+                    'total': total,
+                    'page': page_number,
+                    'page_size': page_size,
+                    'pages': (total + page_size - 1) // page_size,
+                    'timestamp': timezone.now().isoformat(),
+                }, status=status.HTTP_200_OK)
+
+            if page_number is not None:
+                return Response({
+                    'points': points_data,
+                    'total': total_count,
+                    'page': page_number,
+                    'page_size': page_size,
+                    'pages': (total_count + page_size - 1) // page_size,
+                    'timestamp': timezone.now().isoformat(),
+                }, status=status.HTTP_200_OK)
+
             return Response({
                 'points': points_data,
                 'total': len(points_data),
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_200_OK)
-            
+
         except Exception as e:
             return Response({
                 'error': str(e)

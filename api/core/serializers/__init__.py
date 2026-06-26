@@ -1,6 +1,6 @@
 from .users import UserProfile, UserModelSerializer, UserLoginSerializer, UserSignUpSerializer
 
-from .interaction_detail import InteractionDetailModelSerializer, InteractionDetailModelSerializerNoProcessing, InteractionDetailDgaXlsxSerializer
+from .interaction_detail import InteractionDetailModelSerializer, InteractionDetailModelSerializerNoProcessing, InteractionDetailDgaXlsxSerializer, InteractionDetailXlsxSerializer
 from .catchment_points import (ClientSerializer,
                                ClientWithProjectsSerializer,
                                ProjectCatchmentsSerializer,

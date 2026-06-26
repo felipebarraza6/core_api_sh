@@ -29,8 +29,13 @@ from api.cronjobs.telemetry.controllers.flow import (
 )
 from api.cronjobs.telemetry.controllers.nivel import nivel_mt, water_table
 from api.cronjobs.telemetry.utils.audit import emit_system_event
+from decimal import Decimal, ROUND_HALF_UP
 
 logger = logging.getLogger(__name__)
+
+
+def round_total(val):
+    return int(Decimal(str(val)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def _get_point_variables(point: CatchmentPoint) -> Dict[str, Variable]:
@@ -310,6 +315,73 @@ def process_average_flow_for_range(
     return updated
 
 
+def recalc_diffs_for_range(
+    point: CatchmentPoint,
+    start_dt: datetime,
+    end_dt: datetime,
+) -> Tuple[int, int]:
+    """
+    Recalcula total_diff y total_today_diff para registros del rango.
+    """
+    point_id = point.id
+    records = list(
+        InteractionDetail.objects.filter(
+            catchment_point_id=point_id,
+            date_time_medition__gte=start_dt,
+            date_time_medition__lt=end_dt,
+        ).order_by("date_time_medition").values(
+            "id", "date_time_medition", "total", "total_diff", "total_today_diff"
+        )
+    )
+    if not records:
+        return 0, 0
+
+    # Base pre-rango
+    prior = InteractionDetail.objects.filter(
+        catchment_point_id=point_id,
+        date_time_medition__lt=start_dt,
+    ).exclude(total__isnull=True).exclude(total="").exclude(total="0").exclude(total="None").order_by(
+        "-date_time_medition"
+    ).values("total").first()
+
+    prev_total = float(prior["total"]) if prior else 0.0
+    diff_updates = 0
+    today_diff_updates = 0
+    first_total_of_day = {}
+    current_day = None
+
+    for r in records:
+        rid = r["id"]
+        try:
+            curr_total = float(r["total"]) if r["total"] not in (None, "", "None") else 0.0
+        except (ValueError, TypeError):
+            curr_total = 0.0
+
+        day = r["date_time_medition"].date()
+        if current_day != day:
+            current_day = day
+            first_total_of_day[day] = curr_total
+
+        # total_diff
+        new_diff = max(0, round_total(curr_total) - round_total(prev_total))
+        old_diff = r["total_diff"] or 0
+        if new_diff != old_diff:
+            InteractionDetail.objects.filter(id=rid).update(total_diff=new_diff)
+            diff_updates += 1
+
+        # total_today_diff
+        first_total = first_total_of_day.get(day, 0.0)
+        new_today_diff = max(0, round_total(curr_total) - round_total(first_total))
+        old_today_diff = r["total_today_diff"] or 0
+        if new_today_diff != old_today_diff:
+            InteractionDetail.objects.filter(id=rid).update(total_today_diff=new_today_diff)
+            today_diff_updates += 1
+
+        prev_total = curr_total
+
+    return diff_updates, today_diff_updates
+
+
 def process_backfill_range(
     point: CatchmentPoint,
     start_dt: datetime,
@@ -327,7 +399,6 @@ def process_backfill_range(
 
     Retorna dict con contadores de actualizaciones.
     """
-    from scripts.backfill_point_range import recalc_diffs_for_range
 
     vars_map = _get_point_variables(point)
     profile = _get_point_profile(point)

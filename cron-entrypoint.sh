@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+# ✅ FIX: crontab requiere que el UID exista en /etc/passwd
+if ! id -u 1000 >/dev/null 2>&1; then
+    echo "smarthydro:x:1000:1000:smarthydro:/tmp:/bin/sh" >> /etc/passwd
+fi
+
 echo "🚀 Iniciando cronjobs SmartHydro con verificación de BD..."
 
 # Variables para Django
@@ -128,6 +133,15 @@ rm -f "$TEMP_CRON" "$NEW_CRON"
 echo "📋 Cronjobs instalados:"
 crontab -l || true
 
-# Iniciar cron en primer plano
-echo "🔄 Iniciando cron daemon..."
-exec cron -f
+# Escribir crontab a archivo para supercronic
+CRON_FILE="/tmp/smarthydro/crontab"
+crontab -l > "$CRON_FILE" 2>/dev/null || echo "" > "$CRON_FILE"
+
+# Agregar rotación de logs si no existe
+if ! grep -q "rotate-cron-logs.sh" "$CRON_FILE"; then
+    echo "0 0 * * * /usr/local/bin/rotate-cron-logs.sh > /var/log/smarthydro/rotate.log 2>&1" >> "$CRON_FILE"
+fi
+
+# Iniciar supercronic en primer plano (no requiere root)
+echo "🔄 Iniciando supercronic..."
+exec supercronic "$CRON_FILE"

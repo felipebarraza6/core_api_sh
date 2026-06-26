@@ -45,6 +45,7 @@ class TelemetryBackfillEndpointTests(TestCase):
         ProfileDataConfigCatchment.objects.create(
             point_catchment=self.point,
             is_telemetry=True,
+            token_service="DEVICE_TOKEN",
         )
 
     def test_backfill_rejects_missing_fields(self):
@@ -73,6 +74,18 @@ class TelemetryBackfillEndpointTests(TestCase):
 
     def test_backfill_accepts_valid_range(self):
         """Debe aceptar un rango válido de 3 días y retornar estructura esperada."""
+        # Crear esquema y variable necesarios para el backfill
+        from api.core.models import SchemesCatchment, Variable
+        scheme = SchemesCatchment.objects.create(name="Test Scheme", description="Test")
+        scheme.points_catchment.add(self.point)
+        Variable.objects.create(
+            scheme_catchment=scheme,
+            str_variable="5000",
+            label="Acumulado",
+            type_variable="TOTALIZADO",
+            pulses_factor=1000,
+        )
+
         response = self.client.post(
             '/api/ik/telemetry/backfill/',
             data=json.dumps({
@@ -82,7 +95,7 @@ class TelemetryBackfillEndpointTests(TestCase):
             }),
             content_type='application/json'
         )
-        # Puede ser 200 o 500 si el provider no responde, pero la estructura debe estar OK
+        # Puede ser 200 si la validación pasa o 500 si el provider real falla
         self.assertIn(response.status_code, [200, 500])
         if response.status_code == 200:
             data = response.json()

@@ -8,15 +8,17 @@
 
 ## 1. ¿Qué resuelve este endpoint?
 
-Te entrega **todo lo que necesitas** para mostrar el estado de cumplimiento regulatorio de los puntos del usuario en una sola llamada. Incluye:
+Te entrega el estado de cumplimiento regulatorio de los puntos del usuario. Incluye:
 
-- Totales y filtros agregados (`stats`)
 - Cada punto con sus límites autorizados (caudal + total anual)
 - Consumo acumulado del año en curso
-- **Historial de excedencias** (`flow_history`) → ya superó el límite
-- **Historial de cercanías** (`near_limit_history`) → estuvo a nada de superarlo
+- **Conteo de excedencias** (`flow_history.count`) → para badges/modales
+- **Conteo de cercanías** (`near_limit_history.count`) → para badges/modales
 - **Warning preventivo actual** (`compliance_warning`) → está en riesgo **ahora**
-- Último envío exitoso a DGA/SMA (voucher, fecha, valores)
+- Último envío exitoso a DGA/SMA (voucher)
+
+> **Cambio reciente:** por defecto se listan los puntos que tienen compliance **configurado** (código DGA o SMA), activos o inactivos, para que el frontend pueda activar/desactivar compliance. Usa `?active_only=true` para mostrar solo los activos. Los puntos sin configuración de compliance no aparecen.
+> El detalle de excedencias y cercanías (lista de mediciones) se consulta en endpoints separados de alto rendimiento.
 
 ---
 
@@ -24,41 +26,51 @@ Te entrega **todo lo que necesitas** para mostrar el estado de cumplimiento regu
 
 ```json
 {
-  "stats": {
-    "total": 10,
-    "with_warnings": 2,
-    "with_critical": 1,
-    "by_standard": { "MAYOR": 8, "MENOR": 2 },
-    "by_type": { "SUPERFICIAL": 6, "SUBTERRANEA": 4 }
-  },
+  "count": 2,
+  "next": null,
+  "previous": null,
   "points": [
     {
       "point_id": 1,
+      "project_id": 3,
       "point_name": "S3 - Río Claro",
+      "client_name": "Cliente A",
       "code": "12345-DGA",
       "compliance_type": ["DGA"],
       "standard": "MAYOR",
       "type_dga": "SUPERFICIAL",
-      "send_dga": true,
-      "send_sma": false,
+      "compliance_active": true,
       "authorized_flow": 150.0,
       "authorized_total": 50000.0,
       "annual_consumption": 12500.5,
       "pct_consumed": 25.01,
-      "flow_history": { "count": 5, "threshold": 150.0, "measurements": [...] },
-      "near_limit_history": { "count": 8, "threshold": 150.0, "measurements": [...] },
-      "compliance_warning": {
-        "level": "safe",
-        "status": "Dentro de límites",
-        "pct_consumed": 25.01,
-        "threshold_pct": 80.0,
-        "messages": ["Consumo dentro de límites (25.01% del total autorizado)."]
-      },
-      "last_sent_at": "2026-05-28T14:00:00",
-      "voucher": "VOUCHER-123456",
       "flow": 120.5,
       "water_table": 0.0,
-      "total": 45271.0
+      "flow_history": { "count": 5, "has_more": false, "threshold": 150.0 },
+      "near_limit_history": { "count": 8, "has_more": false, "threshold": 150.0 },
+      "compliance_warning": { "level": "safe" },
+      "voucher": "VOUCHER-123456"
+    },
+    {
+      "point_id": 2,
+      "project_id": 3,
+      "point_name": "Canal Desconectado",
+      "client_name": "Cliente A",
+      "code": null,
+      "compliance_type": [],
+      "standard": null,
+      "type_dga": null,
+      "compliance_active": false,
+      "authorized_flow": null,
+      "authorized_total": null,
+      "annual_consumption": 0.0,
+      "pct_consumed": null,
+      "flow": 0.0,
+      "water_table": 0.0,
+      "flow_history": { "count": 0, "has_more": false, "threshold": null },
+      "near_limit_history": { "count": 0, "has_more": false, "threshold": null },
+      "compliance_warning": { "level": "unknown" },
+      "voucher": null
     }
   ]
 }
@@ -68,19 +80,19 @@ Te entrega **todo lo que necesitas** para mostrar el estado de cumplimiento regu
 
 ## 3. Cómo interpretar los 3 pilares de cumplimiento
 
-### A. `flow_history` — Pasado reactivo
-- **Qué cuenta:** Veces que el caudal **ya superó** el límite autorizado (`flow > authorized_flow`) este año.
-- **Usalo para:** Mostrar un contador rojo, una tabla de "excedencias", o un gráfico de eventos pasados.
+### A. `flow_history` — Pasado reactivo (conteo)
+- **Qué cuenta:** Veces que el caudal **ya superó** el límite autorizado (`flow > authorized_flow`) en los últimos 90 días.
+- **Usalo para:** Mostrar un contador rojo en la tabla.
 - **Ejemplo UI:**
   - Badge rojo con número 🔴 `5 excedencias`
-  - Click expande tabla con fecha/valor de cada una (`measurements`)
+  - Click abre un modal que consume `GET /api/ik/compliance/<point_id>/flow_history/` para traer la lista paginada de mediciones.
 
-### B. `near_limit_history` — Pasado preventivo
-- **Qué cuenta:** Veces que el caudal estuvo entre el **90% y 100%** del límite autorizado este año.
+### B. `near_limit_history` — Pasado preventivo (conteo)
+- **Qué cuenta:** Veces que el caudal estuvo entre el **90% y 100%** del límite autorizado en los últimos 90 días.
 - **Usalo para:** Mostrar cuántas veces "casi se pasó". Es un indicador de comportamiento de riesgo.
 - **Ejemplo UI:**
   - Badge naranja/amarillo 🟡 `8 veces cerca del límite`
-  - Click expande tabla con las mediciones (`measurements`)
+  - Click abre un modal que consume `GET /api/ik/compliance/<point_id>/near_limit/` para traer la lista paginada.
 
 ### C. `compliance_warning` — Estado actual
 - **Qué es:** Alerta **preventiva en tiempo real**. No repite lo del historial.
@@ -101,17 +113,18 @@ Te entrega **todo lo que necesitas** para mostrar el estado de cumplimiento regu
 
 ## 4. Patrones de UI recomendados
 
-### 4.1 KPIs globales (usando `stats`)
+### 4.1 KPIs globales (derivados del listado)
+
+Ya no hay nodo `stats`; puedes calcular KPIs del listado paginado o de todos los puntos (si cargas la primera página grande):
 
 ```javascript
-const stats = response.stats;
+const points = response.points;
 
 // Tarjetas de resumen
-"Puntos con compliance": stats.total
-"Con alertas activas": stats.with_warnings       // amarillo
-"Con incumplimiento": stats.with_critical        // rojo
-"Estándar Mayor": stats.by_standard.MAYOR || 0
-"Captación Superficial": stats.by_type.SUPERFICIAL || 0
+"Puntos visibles": response.count
+"Con compliance activo": points.filter(p => p.compliance_active).length
+"Con alertas activas": points.filter(p => p.compliance_warning.level === 'warning').length
+"Con incumplimiento": points.filter(p => p.compliance_warning.level === 'critical').length
 ```
 
 ### 4.2 Tabla de puntos
@@ -132,7 +145,7 @@ const stats = response.stats;
 
 ### 4.3 Fila expandible / Drawer / Modal
 
-Al hacer click en una fila, mostrar:
+Al hacer click en una fila (o en un badge de excedencias/cercanías), mostrar un drawer/modal que consume los endpoints de detalle:
 
 **Sección Warning Actual**
 ```
@@ -143,7 +156,8 @@ Al hacer click en una fila, mostrar:
 
 **Sección Histórico de Excedencias**
 ```
-🔴 5 excedencias en 2026
+GET /api/ik/compliance/<point_id>/flow_history/
+🔴 5 excedencias en los últimos 90 días
 ┌─────────────────────┬───────┐
 │ Fecha               │ Caudal│
 ├─────────────────────┼───────┤
@@ -154,7 +168,8 @@ Al hacer click en una fila, mostrar:
 
 **Sección Histórico de Cercanías**
 ```
-🟡 8 veces cerca del límite en 2026
+GET /api/ik/compliance/<point_id>/near_limit/
+🟡 8 veces cerca del límite en los últimos 90 días
 ┌─────────────────────┬───────┐
 │ Fecha               │ Caudal│
 ├─────────────────────┼───────┤
@@ -178,8 +193,14 @@ Para cada punto, gauges circulares:
 
 ### 4.5 Filtros rápidos
 
-Usa `compliance_warning.level` para filtros:
-- "Ver todo"
+**Por backend (query params):**
+- "Solo activos" → `?active_only=true`
+- "Por estándar" → `?standard=MAYOR` o `?standard=MAYOR,MEDIO`
+- "Por nombre/código" → `?search=OB-0702`
+- "Con excedencias" → `?order_by=exceedances_desc` (activos primero, luego más excedencias)
+- "Cerca del límite" → `?order_by=near_limit_desc`
+
+**Por frontend (derivado del listado):**
 - "Solo alertas" → `level === 'warning' || level === 'critical'`
 - "Solo críticos" → `level === 'critical'`
 
@@ -188,13 +209,14 @@ Usa `compliance_warning.level` para filtros:
 ## 5. Reglas importantes
 
 ### No dupliques información
-- `flow_history` y `near_limit_history` ya traen el detalle. **No repitas** esos conteos en el `compliance_warning`.
+- `flow_history` y `near_limit_history` en el listado son **conteos**. El detalle de mediciones va en los endpoints dedicados.
 - `compliance_warning` es **solo para el estado actual** del punto.
 
 ### Manejo de `null` / datos faltantes
 - `authorized_flow` o `authorized_total` pueden ser `null` → punto sin límites configurados (`level: 'unknown'`)
 - `pct_consumed` puede ser `null` → no hay consumo registrado o no hay total autorizado
-- `last_sent_at` puede ser `null` → nunca se ha enviado a DGA/SMA
+- `code` puede ser `null` → punto sin compliance activo
+- `voucher` puede ser `null` → nunca se ha enviado a DGA/SMA
 
 ### Badges de compliance type
 - Si `compliance_type` incluye `"DGA"` → badge azul "DGA"
@@ -274,6 +296,8 @@ function ComplianceRow({ point }) {
 
 | Fecha | Cambio |
 |-------|--------|
-| 2026-06-01 | `compliance_warning` ahora es preventivo (no repite excedencias) |
-| 2026-06-01 | Agregado `near_limit_history` para contar veces entre 90%-100% del límite |
-| 2026-06-01 | `stats` incluye `with_warnings` y `with_critical` |
+| 2026-06-26 | `/api/ik/compliance/` lista **todos** los puntos por defecto; `?active_only=true` filtra activos. |
+| 2026-06-26 | Nuevos endpoints paginados: `/api/ik/compliance/<point_id>/flow_history/` y `/api/ik/compliance/<point_id>/near_limit/`. |
+| 2026-06-26 | `flow_history` y `near_limit_history` ahora son `{count, has_more, threshold}`; el detalle se consulta en los endpoints dedicados. |
+| 2026-06-01 | `compliance_warning` ahora es preventivo (no repite excedencias). |
+| 2026-06-01 | Agregado `near_limit_history` para contar veces entre 90%-100% del límite. |

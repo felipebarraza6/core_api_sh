@@ -78,6 +78,13 @@ class ApiIkCoreRegressionTests(TestCase):
         self.assertIn('title', data)
         self.assertIn('config_data', data)
 
+    def _find_point_in_last_7(self, last_7, title):
+        """Buscar punto por título en lista paginada."""
+        for p in last_7:
+            if p['title'] == title:
+                return p
+        return None
+
     def test_dashboard_stats_structure(self):
         """Validar estructura de /api/ik/dashboard_stats/"""
         response = self.client.get('/api/ik/dashboard_stats/')
@@ -87,9 +94,12 @@ class ApiIkCoreRegressionTests(TestCase):
         self.assertIn('points', data)
         self.assertIn('status_today', data)
         self.assertIn('last_7', data)
+        self.assertIn('count', data)
+        self.assertIn('next', data)
+        self.assertIn('previous', data)
+        self.assertIsInstance(data['last_7'], list)
         # Verificar que last_7 tenga warnings dentro de cada día
-        last_7 = data.get('last_7', {})
-        for point_data in last_7.values():
+        for point_data in data['last_7']:
             for day in point_data.get('days', []):
                 self.assertIn('warnings', day)
 
@@ -110,7 +120,7 @@ class ApiIkCoreRegressionTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
         data = response.json()
-        point_data = data['last_7'].get(self.point.title)
+        point_data = self._find_point_in_last_7(data['last_7'], self.point.title)
         self.assertIsNotNone(point_data)
 
         # d1 y d3 deben estar presentes y ser los valores del profile
@@ -163,7 +173,7 @@ class ApiIkCoreRegressionTests(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
 
-        point_data = data['last_7'].get(self.point.title)
+        point_data = self._find_point_in_last_7(data['last_7'], self.point.title)
         self.assertIsNotNone(point_data)
 
         today_str = str(today)

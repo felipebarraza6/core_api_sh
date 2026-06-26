@@ -14,6 +14,7 @@ from api.core.views import management as views_management
 from api.core.views import reports as views_reports
 from api.core.views import alerts as views_alerts
 from api.core.views.chatbot import ChatbotAppView
+from api.core.views.telemetry_reprocessor_api import TelemetryReprocessorView
 
 router = DefaultRouter()
 
@@ -78,6 +79,7 @@ router.register(r'system_events', views_alerts.SystemEventViewSet, basename='sys
 urlpatterns = [
     path('', include(router.urls)),
     path('chat/', ChatbotAppView.as_view(), name='app_chat'),
+    path('telemetry-reprocessor/', TelemetryReprocessorView.as_view(), name='telemetry_reprocessor'),
 ]
 
 

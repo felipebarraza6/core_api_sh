@@ -5,7 +5,7 @@ Evalúa AlertRule según su frecuencia configurada (check_frequency_minutes).
 Crea AlertTrigger cuando se cumple la condición.
 El dispatcher (alert_dispatcher.py) se encarga de enviar las notificaciones.
 
-Este motor corre en PARALELO al legacy alert_evaluator.py.
+Este motor reemplaza al legacy alert_evaluator.py (eliminado).
 """
 
 from datetime import datetime, timedelta

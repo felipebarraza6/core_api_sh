@@ -32,7 +32,20 @@ from .views_tickets import (
 )
 from .views_telemetry_backfill import TelemetryBackfillView
 from .views_point_gaps import PointGapsView
-from .views_compliance import ComplianceListView
+from .views_compliance import (
+    ComplianceListView,
+    ToggleComplianceView,
+    ComplianceFlowHistoryView,
+    ComplianceNearLimitView,
+)
+from .views_control_center import (
+    ControlCenterGeneralStatsView,
+    ControlCenterDailySummaryView,
+    ControlCenterProjectPointsView,
+    ControlCenterListView,
+    ControlCenterSystemEventsListView,
+    ControlCenterSystemEventsPointDetailView,
+)
 
 try:
     from django_rest_passwordreset.views import (
@@ -64,6 +77,14 @@ urlpatterns = [
     # Dashboard stats (KPIs del Centro de Control)
     path('dashboard_stats/', DashboardStatsView.as_view(), name='dashboard_stats'),
 
+    # Control Center (nueva familia de endpoints, frontend en desarrollo)
+    path('control_center/general_stats/', ControlCenterGeneralStatsView.as_view(), name='control_center_general_stats'),
+    path('control_center/daily_summary/', ControlCenterDailySummaryView.as_view(), name='control_center_daily_summary'),
+    path('control_center/project_points/', ControlCenterProjectPointsView.as_view(), name='control_center_project_points'),
+    path('control_center/list/', ControlCenterListView.as_view(), name='control_center_list'),
+    path('control_center/system_events/', ControlCenterSystemEventsListView.as_view(), name='control_center_system_events'),
+    path('control_center/system_events/<int:point_id>/', ControlCenterSystemEventsPointDetailView.as_view(), name='control_center_system_events_point_detail'),
+
     # Point calendar (últimos N días de consumo, caudal, nivel)
     path('point/<int:point_id>/calendar/', PointCalendarView.as_view(), name='point_calendar'),
 
@@ -93,8 +114,11 @@ urlpatterns = [
     # Gap detection para un punto (solo lectura)
     path('point/<int:id>/gaps/', PointGapsView.as_view(), name='point_gaps'),
 
-    # Compliance DGA/SMA (listado completo)
+    # Compliance DGA/SMA (listado completo + toggle)
     path('compliance/', ComplianceListView.as_view(), name='compliance_list'),
+    path('compliance/<int:point_id>/flow_history/', ComplianceFlowHistoryView.as_view(), name='compliance_flow_history'),
+    path('compliance/<int:point_id>/near_limit/', ComplianceNearLimitView.as_view(), name='compliance_near_limit'),
+    path('management/toggle_compliance/', ToggleComplianceView.as_view(), name='toggle_compliance'),
 
     # Chat interpretativo con stats del cliente
     path('chat/client/general_stats/', ClientStatsChatView.as_view(), name='client_stats_chat'),
@@ -102,8 +126,9 @@ urlpatterns = [
     # Registros de telemetría por punto y rango de fechas
     path('point/<int:point_id>/records/', PointRecordsView.as_view(), name='point_records'),
 
-    # Config liviana del punto (d1-d6, addition, is_telemetry)
+    # Config del punto (d1-d6, addition, is_telemetry, offsets, límites)
     path('point/<int:point_id>/config/', PointConfigView.as_view(), name='point_config'),
+    path('points/<int:point_id>/config/', PointConfigView.as_view(), name='points_config'),
 
     # Resumen de eventos del sistema (auditoría / informes)
     path('system-events/summary/', SystemEventsSummaryView.as_view(), name='system_events_summary'),

@@ -98,6 +98,10 @@ class InteractionDetail(ModelApi):
             models.Index(fields=['send_dga', 'catchment_point', 'date_time_medition']),
             models.Index(fields=['is_error']),
             models.Index(fields=['send_dga', 'is_error', 'date_time_medition'], name='core_interact_dga_err_dt'),
+            # Optimización endpoints Ikolu Centro de Control / Compliance
+            models.Index(fields=['catchment_point', 'date_time_medition', 'total_diff'], name='ik_cc_id_total_idx'),
+            models.Index(fields=['catchment_point', 'date_time_medition', 'flow'], name='ik_cc_id_flow_idx'),
+            models.Index(fields=['catchment_point', 'date_time_medition', 'n_voucher'], name='ik_cc_id_voucher_idx'),
         ]
         unique_together = ("catchment_point", "date_time_medition")
 

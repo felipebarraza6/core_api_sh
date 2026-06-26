@@ -77,29 +77,8 @@ def log_variable_processing(
             f"Punto {point_catchment_id} - Error en {variable_type} '{variable_name}': {error_msg}"
         )
         
-        # ✅ ALERTA A GOOGLE CHAT
-        try:
-            from api.core.utils.google_chat import check_and_notify_error
-            from api.core.models import CatchmentPoint
-            
-            # Necesitamos obtener info del punto para el mensaje
-            # Como esto es solo en error, el query extra es aceptable
-            point = CatchmentPoint.objects.select_related('project__client').filter(id=point_catchment_id).first()
-            if point:
-                p_name = point.title
-                c_name = point.project.client.name if (point.project and point.project.client) else "N/A"
-            else:
-                p_name = f"ID {point_catchment_id}"
-                c_name = "Unknown"
-                
-            check_and_notify_error(
-                point_id=point_catchment_id,
-                error_msg=f"{variable_type}: {error_msg}",
-                point_name=p_name,
-                client_name=c_name
-            )
-        except Exception as e:
-            telemetry_logger.error(f"Error enviando alerta chat: {e}")
+        # ✅ ALERTA: el motor nuevo (AlertRule PROCESSING_ERROR) se encarga
+        # de notificar errores de procesamiento. Ya no se usa check_and_notify_error.
 
 
 def validate_frequency(point_catchment: Dict[str, Any], current_time: datetime, frequency: str = "60") -> bool:

@@ -1,7 +1,10 @@
 # SmartHydro — Guía Maestra para Agentes de Kimi
 
-> **Última auditoría:** 2026-06-03
+> **Última auditoría:** 2026-06-10
 > **Estado:** Producción activa — CAUTELA MÁXIMA en todo cambio
+>
+> **Cambios recientes (2026-06-10):**
+> - **Endpoint Telemetry Reprocessor:** `POST /api/telemetry-reprocessor/` expone audit/fix-totals/fix-flow/fix-nivel/fix-water-table como API REST. Requiere staff. Dry-run por defecto. Documentado en `docs/API_TELEMETRY_REPROCESSOR.md`
 >
 > **Cambios recientes (2026-05-24):**
 > - **Fix `variable_details` honesto:** `success=True` solo cuando el getter realmente trae datos (`date_time is not None`)

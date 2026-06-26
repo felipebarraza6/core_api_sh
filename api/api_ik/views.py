@@ -11,10 +11,13 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from rest_framework.authtoken.models import Token
+from rest_framework.pagination import PageNumberPagination
 from django.contrib.auth import authenticate
 from django.db.models import (
-    Count, Q, Prefetch
+    Count, Q, Prefetch, Sum, Avg, F, FloatField
 )
+from django.db.models.functions import TruncDate
+from django.utils import timezone
 
 from api.core.models import (
     User,
@@ -559,6 +562,23 @@ class MyPointsView(APIView):
 
 
 
+class DashboardPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        return Response({
+            'count': self.page.paginator.count,
+            'next': self.get_next_link(),
+            'previous': self.get_previous_link(),
+            'points': data['points'],
+            'status_today': data['status_today'],
+            'last_7': data['last_7'],
+            'chat_quota': data['chat_quota'],
+        })
+
+
 class DashboardStatsView(APIView):
     """
     Stats generales para el Centro de Control (KPIs del dashboard).
@@ -575,8 +595,9 @@ class DashboardStatsView(APIView):
     def get(self, request):
         user = request.user
         from django.utils import timezone
-        from datetime import date, timedelta
+        from datetime import date, datetime, timedelta
         from django.db.models import Avg, Sum
+        from collections import defaultdict
 
         # Filtrar puntos según permisos (ordenados alfabéticamente por nombre)
         if user.is_staff or user.is_superuser:
@@ -612,19 +633,20 @@ class DashboardStatsView(APIView):
                     'connected': 0,
                     'disconnected': 0,
                 },
-                'last_7': {},
+                'count': 0,
+                'next': None,
+                'previous': None,
+                'last_7': [],
                 'chat_quota': get_chat_quota(request.user.id),
             })
 
-        # Puntos base queryset
-        points_qs = CatchmentPoint.objects.filter(id__in=point_ids)
-
-        # --- Stats de puntos ---
+        # --- Stats de puntos (siempre de TODOS los puntos) ---
         with_telemetry = ProfileDataConfigCatchment.objects.filter(
             point_catchment_id__in=point_ids,
             is_telemetry=True
         ).values('point_catchment_id').distinct().count()
 
+        points_qs = CatchmentPoint.objects.filter(id__in=point_ids)
         with_gps = points_qs.exclude(
             Q(lat__isnull=True) | Q(lat='') | Q(lon__isnull=True) | Q(lon='')
         ).count()
@@ -639,103 +661,129 @@ class DashboardStatsView(APIView):
         ).values('point_catchment_id').distinct().count()
 
         # --- Status hoy ---
+        today_start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+        today_end = timezone.make_aware(datetime.combine(today, datetime.max.time()))
         connected_today = InteractionDetail.objects.filter(
             catchment_point_id__in=point_ids,
-            date_time_medition__date=today
+            date_time_medition__gte=today_start,
+            date_time_medition__lte=today_end,
         ).values('catchment_point_id').distinct().count()
-
         disconnected_today = max(0, with_telemetry - connected_today)
 
-        # --- Últimos 7 días: por punto, con consumo, caudal y nivel ---
-        # Precalcular profiles d1/d3, telemetry flags y form flags en una sola query
-        profiles_map = {
-            p.point_catchment_id: p
-            for p in ProfileDataConfigCatchment.objects.filter(point_catchment_id__in=point_ids)
-        }
+        # --- Paginar puntos para last_7 ---
+        paginator = DashboardPagination()
+        page_qs = CatchmentPoint.objects.filter(id__in=point_ids).order_by('title')
+        page = paginator.paginate_queryset(page_qs, request, view=self)
+        page_points = list(page)
+        page_point_ids = [p.id for p in page_points]
 
-        telemetry_point_ids = set(
-            ProfileDataConfigCatchment.objects.filter(
-                point_catchment_id__in=point_ids,
-                is_telemetry=True,
-            ).values_list('point_catchment_id', flat=True)
+        # --- Precargar relaciones de la página para evitar N+1 ---
+        page_points = CatchmentPoint.objects.filter(
+            id__in=page_point_ids
+        ).prefetch_related(
+            Prefetch(
+                'schemes',
+                queryset=SchemesCatchment.objects.prefetch_related(
+                    Prefetch(
+                        'variables',
+                        queryset=Variable.objects.only('scheme_catchment_id', 'type_variable'),
+                        to_attr='_vars',
+                    )
+                ),
+                to_attr='_page_schemes',
+            ),
+            Prefetch(
+                'data_config_profiles',
+                queryset=ProfileDataConfigCatchment.objects.only(
+                    'point_catchment_id', 'is_telemetry', 'd1', 'd3'
+                ),
+                to_attr='_page_data_configs',
+            ),
+            Prefetch(
+                'ikolu_profiles',
+                queryset=ProfileIkoluCatchment.objects.only('point_catchment_id', 'entry_by_form'),
+                to_attr='_page_ikolu_configs',
+            ),
         )
+        # Mantener el orden original de la página
+        page_points_by_id = {p.id: p for p in page_points}
+        page_points = [page_points_by_id[pid] for pid in page_point_ids]
 
-        form_point_ids = set(
-            ProfileIkoluCatchment.objects.filter(
-                point_catchment_id__in=point_ids,
-                entry_by_form=True,
-            ).values_list('point_catchment_id', flat=True)
-        )
-
-        # Precalcular qué variables tiene cada punto (caudal / nivel)
         point_vars = {}
-        for cp in CatchmentPoint.objects.filter(id__in=point_ids):
-            schemes = SchemesCatchment.objects.filter(points_catchment=cp)
-            var_types = set(
-                Variable.objects.filter(scheme_catchment__in=schemes)
-                .values_list('type_variable', flat=True)
+        for cp in page_points:
+            var_types = set()
+            for scheme in cp._page_schemes:
+                for v in scheme._vars:
+                    if v.type_variable:
+                        var_types.add(v.type_variable.upper())
+
+            # Si existen múltiples perfiles (legacy crea uno por defecto), usar el más reciente.
+            profile = (
+                max(cp._page_data_configs, key=lambda p: p.id)
+                if cp._page_data_configs else None
             )
-            profile = profiles_map.get(cp.id)
             d1_val = profile.d1 if profile else None
             d3_val = profile.d3 if profile else None
+            is_telemetry = any(p.is_telemetry for p in cp._page_data_configs)
+            is_form = any(p.entry_by_form for p in cp._page_ikolu_configs)
+
             point_vars[cp.id] = {
                 'point_id': cp.id,
                 'title': cp.title,
-                'is_telemetry': cp.id in telemetry_point_ids,
-                'is_form': cp.id in form_point_ids,
+                'is_telemetry': is_telemetry,
+                'is_form': is_form,
                 'created_at': cp.created.isoformat() if hasattr(cp, 'created') and cp.created else None,
-                'has_flow': any(v.upper() in ('CAUDAL', 'CAUDAL_PROMEDIO') for v in var_types),
-                'has_level': any(v.upper() == 'NIVEL' for v in var_types),
+                'has_flow': any(v in ('CAUDAL', 'CAUDAL_PROMEDIO') for v in var_types),
+                'has_level': any(v == 'NIVEL' for v in var_types),
                 'variables': sorted(list(var_types)),
                 'd1': float(d1_val) if d1_val is not None and d1_val > 0 else None,
                 'd3': float(d3_val) if d3_val is not None and d3_val > 0 else None,
             }
 
-        # Traer TODOS los registros de los últimos 7 días en UNA sola query
+        # --- Últimos 7 días: agregado en DB por punto/día ---
         start_date = today - timedelta(days=6)
-        week_records = InteractionDetail.objects.filter(
-            catchment_point_id__in=point_ids,
-            date_time_medition__date__gte=start_date,
-            date_time_medition__date__lte=today,
-        ).exclude(
-            is_error=True
-        ).values(
-            'catchment_point_id', 'date_time_medition', 'total', 'total_diff', 'flow', 'water_table'
-        )
+        start_dt = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
+        end_dt = timezone.make_aware(datetime.combine(today, datetime.max.time()))
 
-        from collections import defaultdict
-        by_point_date = defaultdict(list)
-        for r in week_records:
-            pid = r['catchment_point_id']
-            # ✅ FIX: Usar fecha local (Santiago) para que coincida con el filtro de BD
-            d = timezone.localdate(r['date_time_medition'])
-            by_point_date[(pid, d)].append(r)
+        week_aggregated = InteractionDetail.objects.filter(
+            catchment_point_id__in=page_point_ids,
+            date_time_medition__gte=start_dt,
+            date_time_medition__lte=end_dt,
+            is_error=False,
+        ).annotate(
+            day=TruncDate('date_time_medition')
+        ).values('catchment_point_id', 'day').annotate(
+            consumption=Sum('total_diff'),
+            avg_flow=Avg('flow'),
+            avg_level=Avg('water_table'),
+            measurements_count=Count('id'),
+        ).order_by('catchment_point_id', 'day')
 
-        last_7 = {}
-        for pid in point_ids:
+        by_point_date = {
+            (row['catchment_point_id'], row['day']): row
+            for row in week_aggregated
+        }
+
+        last_7 = []
+        for pid in page_point_ids:
             pv = point_vars[pid]
             days = []
-            all_flows = []
-            all_levels = []
+            week_flow_sum = 0.0
+            week_flow_count = 0
+            week_level_sum = 0.0
+            week_level_count = 0
             total_m3 = 0.0
             total_measurements_week = 0
 
-            for i in range(6, -1, -1):  # Del más antiguo al más reciente
+            for i in range(6, -1, -1):
                 d = today - timedelta(days=i)
-                day_records = by_point_date.get((pid, d), [])
+                row = by_point_date.get((pid, d))
 
-                if day_records:
-                    day_records.sort(key=lambda x: x['date_time_medition'])
-                    mcount = len(day_records)
-                    total_measurements_week += mcount
-
-                    # Consumo diario = suma de diffs horarios (consistente con reportes y calendario)
-                    # Es más robusto que last_total - first_total porque maneja resets de contador.
-                    consumo = sum(
-                        float(r['total_diff'] or 0) for r in day_records
-                        if r['total_diff'] is not None
-                    )
+                if row and row['measurements_count']:
+                    mcount = row['measurements_count']
+                    consumo = float(row['consumption'] or 0)
                     total_m3 += consumo
+                    total_measurements_week += mcount
 
                     day_data = {
                         'date': str(d),
@@ -745,18 +793,18 @@ class DashboardStatsView(APIView):
                     }
 
                     if pv['has_flow']:
-                        flows = [max(0.0, float(r['flow'])) for r in day_records if r['flow'] is not None]
-                        avg_f = sum(flows) / len(flows) if flows else 0.0
-                        day_data['avg_flow'] = round(avg_f, 2)
-                        all_flows.extend(flows)
+                        avg_f = float(row['avg_flow'] or 0)
+                        day_data['avg_flow'] = round(max(0.0, avg_f), 2)
+                        week_flow_sum += avg_f * mcount
+                        week_flow_count += mcount
                     else:
                         day_data['avg_flow'] = None
 
                     if pv['has_level']:
-                        levels = [max(0.0, float(r['water_table'])) for r in day_records if r['water_table'] is not None]
-                        avg_l = sum(levels) / len(levels) if levels else 0.0
-                        day_data['avg_level'] = round(avg_l, 2)
-                        all_levels.extend(levels)
+                        avg_l = float(row['avg_level'] or 0)
+                        day_data['avg_level'] = round(max(0.0, avg_l), 2)
+                        week_level_sum += avg_l * mcount
+                        week_level_count += mcount
                     else:
                         day_data['avg_level'] = None
 
@@ -771,36 +819,32 @@ class DashboardStatsView(APIView):
                         'avg_level': None,
                     })
 
-            # Si ya existe un punto con el mismo título, solo reemplazar si el nuevo tiene más datos
-            existing = last_7.get(pv['title'])
-            if existing is None or total_measurements_week > existing['total_measurements_week']:
-                last_7[pv['title']] = {
-                    'point_id': pv['point_id'],
-                    'title': pv['title'],
-                    'is_telemetry': pv['is_telemetry'],
-                    'is_form': pv['is_form'],
-                    'created_at': pv['created_at'],
-                    'variables': pv['variables'],
-                    'd1': pv['d1'],
-                    'd3': pv['d3'],
-                    'total_m3': round(total_m3, 2),
-                    'total_measurements_week': total_measurements_week,
-                    'avg_flow_week': round(sum(all_flows) / len(all_flows), 2) if all_flows else None,
-                    'avg_level_week': round(sum(all_levels) / len(all_levels), 2) if all_levels else None,
-                    'days': days,
-                }
+            last_7.append({
+                'point_id': pv['point_id'],
+                'title': pv['title'],
+                'is_telemetry': pv['is_telemetry'],
+                'is_form': pv['is_form'],
+                'created_at': pv['created_at'],
+                'variables': pv['variables'],
+                'd1': pv['d1'],
+                'd3': pv['d3'],
+                'total_m3': round(total_m3, 2),
+                'total_measurements_week': total_measurements_week,
+                'avg_flow_week': round(week_flow_sum / week_flow_count, 2) if week_flow_count else None,
+                'avg_level_week': round(week_level_sum / week_level_count, 2) if week_level_count else None,
+                'days': days,
+            })
 
-        # --- Warnings / actividad reciente últimos 7 días (por punto) ---
+        # --- Warnings (solo para puntos de esta página) ---
         week_ago = today - timedelta(days=7)
 
-        # Traer todos los resets y eventos del sistema de TODOS los puntos en solo 2 queries
         all_resets = CounterResetLog.objects.filter(
-            point_catchment_id__in=point_ids,
+            point_catchment_id__in=page_point_ids,
             created__date__gte=week_ago,
         ).order_by('-created')
 
         all_system_events = SystemEvent.objects.filter(
-            point_catchment_id__in=point_ids,
+            point_catchment_id__in=page_point_ids,
             severity__in=['WARNING', 'CRITICAL'],
             created__date__gte=week_ago,
         ).order_by('-created')
@@ -813,9 +857,8 @@ class DashboardStatsView(APIView):
         for e in all_system_events:
             by_point_events[e.point_catchment_id].append(e)
 
-        # Inyectar warnings dentro de cada día en last_7
-        for pid in point_ids:
-            pv = point_vars[pid]
+        for entry in last_7:
+            pid = entry['point_id']
             point_warnings = []
 
             for r in by_point_resets.get(pid, []):
@@ -839,17 +882,15 @@ class DashboardStatsView(APIView):
                     'message': e.message or e.title,
                 })
 
-            # Asignar a cada día los warnings de esa fecha
-            for day in last_7[pv['title']]['days']:
+            for day in entry['days']:
                 d = date.fromisoformat(day['date'])
                 day_warnings = [w for w in point_warnings if w['date'] == d]
                 day_warnings.sort(key=lambda x: x['time'] or '', reverse=True)
-                # Limpiar campo auxiliar 'date' antes de enviar
                 day['warnings'] = [{k: v for k, v in w.items() if k != 'date'} for w in day_warnings]
 
         chat_quota = get_chat_quota(request.user.id)
 
-        return Response({
+        return paginator.get_paginated_response({
             'points': {
                 'total': total_points,
                 'with_telemetry': with_telemetry,
@@ -1460,50 +1501,141 @@ class PointRecordsView(APIView):
 class PointConfigView(APIView):
     """
     GET /api/ik/point/<id>/config/
-    Devuelve SOLO la config_data (d1-d6, addition, is_telemetry) de un punto.
-    Muy liviano, sin telemetría ni historial.
+    PATCH /api/ik/point/<id>/config/
+
+    GET: Devuelve la config_data del punto (d1-d6, addition, is_telemetry,
+    offsets y límites de procesamiento). Muy liviano, sin telemetría ni historial.
+
+    PATCH: Actualiza los campos editables de la config. Solo owner del punto o
+    staff/superuser. Body JSON con los campos a modificar.
+
     Auth: Token
     """
     permission_classes = [IsAuthenticated]
     throttle_classes = [DashboardRateThrottle]
 
-    def get(self, request, point_id):
-        user = request.user
+    _EDITABLE_FIELDS = {
+        'd1', 'd2', 'd3', 'd4', 'd5', 'd6',
+        'addition', 'is_telemetry', 'nivel_offset',
+        'max_diff_m3_per_hour', 'max_flow_ls', 'max_time_gap_hours',
+        'reconnection_threshold_hours', 'replicate_on_missing',
+        'use_transaction_atomic',
+    }
+    _DECIMAL_FIELDS = {
+        'd1', 'd2', 'd3', 'd4', 'd5', 'addition', 'nivel_offset',
+        'max_diff_m3_per_hour', 'max_flow_ls', 'max_time_gap_hours',
+        'reconnection_threshold_hours',
+    }
+    _BOOLEAN_FIELDS = {'is_telemetry', 'replicate_on_missing', 'use_transaction_atomic'}
+    _INTEGER_FIELDS = {'d6'}
 
-        # Verificar permisos
+    def _get_point(self, request, point_id, require_owner=False):
+        user = request.user
         if user.is_staff or user.is_superuser:
             point_qs = CatchmentPoint.objects.all()
         else:
-            point_qs = CatchmentPoint.objects.filter(
-                Q(owner_user=user) | Q(users_viewers=user)
-            ).distinct()
+            if require_owner:
+                point_qs = CatchmentPoint.objects.filter(owner_user=user)
+            else:
+                point_qs = CatchmentPoint.objects.filter(
+                    Q(owner_user=user) | Q(users_viewers=user)
+                ).distinct()
 
         try:
-            point = point_qs.get(id=point_id)
+            return point_qs.get(id=point_id)
         except CatchmentPoint.DoesNotExist:
-            return Response(
-                {"error": "Punto no encontrado o sin permisos"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return None
 
-        # Obtener profile config (d1-d6)
+    def _get_profile(self, point):
         profile = ProfileDataConfigCatchment.objects.filter(point_catchment=point).first()
-
         if not profile:
-            return Response(
-                {"error": "El punto no tiene configuración de perfil"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            profile = ProfileDataConfigCatchment.objects.create(point_catchment=point)
+        return profile
 
-        data = {
+    def _serialize_profile(self, profile):
+        return {
             "d1": str(profile.d1) if profile.d1 is not None else "0.00",
             "d2": str(profile.d2) if profile.d2 is not None else "0.00",
             "d3": str(profile.d3) if profile.d3 is not None else "0.00",
             "d4": str(profile.d4) if profile.d4 is not None else "0.00",
             "d5": str(profile.d5) if profile.d5 is not None else "0.00",
+            "d6": profile.d6 if profile.d6 is not None else 0,
+            "addition": str(profile.addition) if profile.addition is not None else "0.000",
+            "is_telemetry": bool(profile.is_telemetry),
+            "nivel_offset": str(profile.nivel_offset) if profile.nivel_offset is not None else "0.000",
+            "max_diff_m3_per_hour": str(profile.max_diff_m3_per_hour) if profile.max_diff_m3_per_hour is not None else "500.00",
+            "max_flow_ls": str(profile.max_flow_ls) if profile.max_flow_ls is not None else "150.00",
+            "max_time_gap_hours": str(profile.max_time_gap_hours) if profile.max_time_gap_hours is not None else "2.00",
+            "reconnection_threshold_hours": str(profile.reconnection_threshold_hours) if profile.reconnection_threshold_hours is not None else "2.00",
+            "replicate_on_missing": bool(profile.replicate_on_missing),
+            "use_transaction_atomic": bool(profile.use_transaction_atomic),
         }
 
-        return Response(data)
+    def get(self, request, point_id):
+        point = self._get_point(request, point_id)
+        if point is None:
+            return Response(
+                {"error": "Punto no encontrado o sin permisos"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        profile = self._get_profile(point)
+        return Response(self._serialize_profile(profile))
+
+    def patch(self, request, point_id):
+        from decimal import InvalidOperation, Decimal
+
+        point = self._get_point(request, point_id, require_owner=True)
+        if point is None:
+            return Response(
+                {"error": "Punto no encontrado o sin permisos"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not request.data or not isinstance(request.data, dict):
+            return Response(
+                {"error": "Body JSON requerido."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        unknown = [k for k in request.data if k not in self._EDITABLE_FIELDS]
+        if unknown:
+            return Response(
+                {"error": f"Campos no permitidos: {', '.join(unknown)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        profile = self._get_profile(point)
+        errors = {}
+
+        for key, raw_value in request.data.items():
+            if key in self._DECIMAL_FIELDS:
+                try:
+                    value = Decimal(str(raw_value))
+                except (InvalidOperation, TypeError, ValueError):
+                    errors[key] = "Debe ser un número decimal válido."
+                    continue
+            elif key in self._INTEGER_FIELDS:
+                try:
+                    value = int(raw_value)
+                except (TypeError, ValueError):
+                    errors[key] = "Debe ser un entero válido."
+                    continue
+            elif key in self._BOOLEAN_FIELDS:
+                if isinstance(raw_value, str):
+                    value = raw_value.lower() in ('true', '1', 'yes', 'on')
+                else:
+                    value = bool(raw_value)
+            else:
+                continue
+
+            setattr(profile, key, value)
+
+        if errors:
+            return Response({"error": errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile.save()
+        return Response(self._serialize_profile(profile))
 
 
 class SystemEventsSummaryView(APIView):
