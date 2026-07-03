@@ -781,3 +781,422 @@ class NotifySLAOverdueTests(TestCase):
         self.assertIn(self.operator.email, mail.outbox[0].to)
         ticket.refresh_from_db()
         self.assertIsNotNone(ticket.sla_last_overdue_notification)
+
+
+# Tests adicionales de regresión para bugs encontrados en auditoría SLA.
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class TicketOperationsOriginTests(TestCase):
+    """Tests del origen OPERACIONES para tickets internos."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            email="opstaff@smarthydro.cl", password="pass", username="opstaff", is_staff=True
+        )
+        self.client_user = User.objects.create_user(
+            email="opclient@smarthydro.cl", password="pass", username="opclient"
+        )
+        self.cat = TicketCategory.objects.get(category_type="SOFTWARE", name="Software")
+        SLAConfig.objects.create(
+            category=self.cat,
+            priority="MEDIA",
+            response_time_hours=4,
+            resolution_time_hours=24,
+        )
+        self.staff_token = Token.objects.create(user=self.staff)
+        self.client_token = Token.objects.create(user=self.client_user)
+
+    def _client_for(self, user):
+        client = APIClient()
+        token = self.staff_token if user == self.staff else self.client_token
+        client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        return client
+
+    def test_staff_can_create_operations_ticket_without_points(self):
+        client = self._client_for(self.staff)
+        response = client.post(
+            "/api/ik/tickets/",
+            {
+                "title": "Ticket operaciones",
+                "description": "Sin punto",
+                "origin": "OPERACIONES",
+                "source": "APP_CLIENTE",
+                "priority": "MEDIA",
+                "category": self.cat.id,
+                "points": [],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["origin"], "OPERACIONES")
+        self.assertEqual(data["points"], [])
+        self.assertIsNotNone(data["sla_deadline_response"])
+        self.assertIsNotNone(data["sla_deadline_resolution"])
+
+    def test_client_cannot_create_operations_ticket(self):
+        client = self._client_for(self.client_user)
+        response = client.post(
+            "/api/ik/tickets/",
+            {
+                "title": "Intento operaciones",
+                "description": "...",
+                "origin": "OPERACIONES",
+                "priority": "MEDIA",
+                "category": self.cat.id,
+                "points": [],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+class TicketSLARecalculationTests(TestCase):
+    """Tests de recálculo de SLA al editar tickets."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            email="slastaff@smarthydro.cl", password="pass", username="slastaff", is_staff=True
+        )
+        self.client_user = User.objects.create_user(
+            email="slaclient@smarthydro.cl", password="pass", username="slaclient"
+        )
+        self.client_obj = Client.objects.create(name="Cliente SLARec")
+        self.project = ProjectCatchments.objects.create(
+            name="Proyecto SLARec", client=self.client_obj
+        )
+        self.point = CatchmentPoint.objects.create(
+            title="Punto SLARec", project=self.project, owner_user=self.client_user
+        )
+        self.cat_hardware = TicketCategory.objects.get(category_type="HARDWARE", name="Hardware")
+        self.cat_software = TicketCategory.objects.get(category_type="SOFTWARE", name="Software")
+        SLAConfig.objects.create(
+            category=self.cat_hardware,
+            priority="ALTA",
+            response_time_hours=2,
+            resolution_time_hours=8,
+        )
+        SLAConfig.objects.create(
+            category=self.cat_software,
+            priority="BAJA",
+            response_time_hours=24,
+            resolution_time_hours=120,
+        )
+        self.token = Token.objects.create(user=self.staff)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+
+    def test_sla_recalculates_when_priority_changes(self):
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket SLA recalc",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+            priority="BAJA",
+            category=self.cat_software,
+        )
+        old_response = ticket.sla_deadline_response
+
+        response = self.client.patch(
+            f"/api/ik/tickets/{ticket.id}/",
+            {"priority": "ALTA", "category": self.cat_hardware.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.priority, "ALTA")
+        self.assertEqual(ticket.category, self.cat_hardware)
+        self.assertIsNotNone(ticket.sla_deadline_response)
+        self.assertNotEqual(ticket.sla_deadline_response, old_response)
+
+    def test_sla_applies_when_origin_changes_from_interno(self):
+        ticket = SupportTicket.objects.create(
+            title="Ticket interno",
+            description="...",
+            origin="INTERNO",
+            source="SISTEMA",
+            priority="ALTA",
+            category=self.cat_hardware,
+        )
+        ticket.points.add(self.point)
+        self.assertIsNone(ticket.sla_deadline_response)
+
+        response = self.client.patch(
+            f"/api/ik/tickets/{ticket.id}/",
+            {"origin": "CLIENTE"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.origin, "CLIENTE")
+        self.assertIsNotNone(ticket.sla_deadline_response)
+
+    def test_client_cannot_change_priority_or_category(self):
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket cliente",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+            priority="BAJA",
+            category=self.cat_software,
+        )
+        client_token = Token.objects.create(user=self.client_user)
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Token {client_token.key}")
+
+        response = client.patch(
+            f"/api/ik/tickets/{ticket.id}/",
+            {"priority": "ALTA", "category": self.cat_hardware.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.priority, "BAJA")
+        self.assertEqual(ticket.category, self.cat_software)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+class TicketCommentStatusChangeTests(TestCase):
+    """Tests de cambio de estado vía comentario."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            email="commentstaff@smarthydro.cl", password="pass", username="commentstaff", is_staff=True
+        )
+        self.client_user = User.objects.create_user(
+            email="commentclient@smarthydro.cl", password="pass", username="commentclient"
+        )
+        self.client_obj = Client.objects.create(name="Cliente Comment")
+        self.project = ProjectCatchments.objects.create(
+            name="Proyecto Comment", client=self.client_obj
+        )
+        self.point = CatchmentPoint.objects.create(
+            title="Punto Comment", project=self.project, owner_user=self.client_user
+        )
+        self.cat = TicketCategory.objects.get(category_type="HARDWARE", name="Hardware")
+        SLAConfig.objects.create(
+            category=self.cat,
+            priority="ALTA",
+            response_time_hours=2,
+            resolution_time_hours=8,
+        )
+        self.token = Token.objects.create(user=self.staff)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+
+    def test_internal_comment_does_not_mark_sla_responded(self):
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket interno comment",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+            category=self.cat,
+        )
+        response = self.client.post(
+            f"/api/ik/tickets/{ticket.id}/comments/",
+            {"content": "Nota interna", "is_internal": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.sla_responded_at)
+
+    def test_comment_status_change_resolved_sets_timestamps(self):
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket resolver por comentario",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+            category=self.cat,
+        )
+        response = self.client.post(
+            f"/api/ik/tickets/{ticket.id}/comments/",
+            {"content": "Resuelto", "status_change": "RESUELTO"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, "RESUELTO")
+        self.assertIsNotNone(ticket.resolved_at)
+        self.assertIsNotNone(ticket.sla_resolved_at)
+
+    def test_comment_status_change_invalid_returns_400(self):
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket estado invalido",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        response = self.client.post(
+            f"/api/ik/tickets/{ticket.id}/comments/",
+            {"content": "Intento", "status_change": "ESTADO_FALSO"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+class TicketStatusResolvedAtTests(TestCase):
+    """Tests de sla_resolved_at al cambiar estado."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            email="statusstaff@smarthydro.cl", password="pass", username="statusstaff", is_staff=True
+        )
+        self.client_obj = Client.objects.create(name="Cliente Status")
+        self.project = ProjectCatchments.objects.create(
+            name="Proyecto Status", client=self.client_obj
+        )
+        self.point = CatchmentPoint.objects.create(
+            title="Punto Status", project=self.project, owner_user=self.staff
+        )
+        self.token = Token.objects.create(user=self.staff)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+
+    def test_status_change_to_resolved_sets_sla_resolved_at(self):
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket resolver",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        response = self.client.post(
+            f"/api/ik/tickets/{ticket.id}/status/",
+            {"status": "RESUELTO"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertIsNotNone(ticket.sla_resolved_at)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+class SLAConfigUpdateTests(TestCase):
+    """Tests de edición parcial de SLA sin falsos duplicados."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            email="slapatch@smarthydro.cl", password="pass", username="slapatch", is_staff=True
+        )
+        self.cat = TicketCategory.objects.get(category_type="HARDWARE", name="Hardware")
+        self.sla = SLAConfig.objects.create(
+            category=self.cat,
+            priority="ALTA",
+            response_time_hours=2,
+            resolution_time_hours=8,
+        )
+        # SLA global creada por migración 0068
+        self.token = Token.objects.create(user=self.staff)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+
+    def test_patch_sla_time_does_not_trigger_duplicate_global(self):
+        response = self.client.patch(
+            f"/api/ik/sla-configs/{self.sla.id}/",
+            {"response_time_hours": 4},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.sla.refresh_from_db()
+        self.assertEqual(self.sla.response_time_hours, 4)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+class CleanupStaleInternalTests(TestCase):
+    """Tests del comando cleanup_stale_internal_tickets."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="cleanup@smarthydro.cl", password="pass", username="cleanup"
+        )
+
+    def test_cleanup_does_not_set_closed_at_on_cancelled(self):
+        from datetime import timedelta
+        old_ticket = SupportTicket.objects.create(
+            title="Ticket viejo",
+            description="...",
+            origin="INTERNO",
+            source="SISTEMA",
+            status="ABIERTO",
+            is_active=True,
+        )
+        old_ticket.created = timezone.now() - timedelta(days=100)
+        old_ticket.save(update_fields=["created"])
+
+        call_command("cleanup_stale_internal_tickets", stdout=StringIO())
+        old_ticket.refresh_from_db()
+        self.assertEqual(old_ticket.status, "CANCELADO")
+        self.assertFalse(old_ticket.is_active)
+        self.assertIsNone(old_ticket.closed_at)
+
+    def test_cleanup_rejects_negative_days(self):
+        out = StringIO()
+        call_command("cleanup_stale_internal_tickets", days=-1, stdout=out)
+        self.assertIn("debe ser un número positivo", out.getvalue())
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE, EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class NotifySLAOverdueFixTests(TestCase):
+    """Tests adicionales del comando notify_sla_overdue."""
+
+    def setUp(self):
+        self.operator = User.objects.create_user(
+            email="slaop2@smarthydro.cl", password="pass", username="slaop2"
+        )
+        self.user = User.objects.create_user(
+            email="slauser2@smarthydro.cl", password="pass", username="slauser2"
+        )
+        self.client_obj = Client.objects.create(name="Cliente SLA2")
+        self.project = ProjectCatchments.objects.create(
+            name="Proyecto SLA2", client=self.client_obj
+        )
+        self.point = CatchmentPoint.objects.create(
+            title="Punto SLA2", project=self.project, owner_user=self.user
+        )
+        self.cat = TicketCategory.objects.get(category_type="HARDWARE", name="Hardware")
+        self.cat.operators.add(self.operator)
+
+    def test_does_not_notify_already_resolved_ticket(self):
+        ticket = SupportTicket.objects.create(
+            title="Ticket ya resuelto",
+            description="...",
+            status="ABIERTO",
+            priority="ALTA",
+            category=self.cat,
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+            sla_deadline_resolution=timezone.now() - timezone.timedelta(hours=1),
+            sla_resolved_at=timezone.now() - timezone.timedelta(minutes=30),
+        )
+        ticket.points.add(self.point)
+
+        from django.core import mail
+        mail.outbox = []
+        call_command("notify_sla_overdue", stdout=StringIO())
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_dry_run_does_not_update_timestamp(self):
+        ticket = SupportTicket.objects.create(
+            title="Ticket dry run",
+            description="...",
+            status="ABIERTO",
+            priority="ALTA",
+            category=self.cat,
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+            sla_deadline_resolution=timezone.now() - timezone.timedelta(hours=1),
+        )
+        ticket.points.add(self.point)
+
+        call_command("notify_sla_overdue", dry_run=True, stdout=StringIO())
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.sla_last_overdue_notification)

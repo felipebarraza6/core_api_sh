@@ -67,12 +67,19 @@ class TicketCategoryWriteSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         parent = attrs.get("parent")
+        if parent is None and self.instance:
+            parent = self.instance.parent
         category_type = attrs.get("category_type")
+        if category_type is None and self.instance:
+            category_type = self.instance.category_type
+
         if parent and category_type and parent.category_type != category_type:
             raise serializers.ValidationError(
                 {"parent": "La subcategoría debe ser del mismo tipo que su padre."}
             )
-        if parent and attrs.get("id") and parent.id == attrs["id"]:
+
+        # Evitar auto-referencia y ciclos simples (padre = sí misma)
+        if parent and self.instance and parent.id == self.instance.pk:
             raise serializers.ValidationError(
                 {"parent": "Una categoría no puede ser su propio padre."}
             )
@@ -109,22 +116,31 @@ class SLAConfigWriteSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         response = attrs.get("response_time_hours")
         resolution = attrs.get("resolution_time_hours")
-        if response is not None and response < 0:
+        if response is not None and response <= 0:
             raise serializers.ValidationError(
                 {"response_time_hours": "Debe ser un número positivo."}
             )
-        if resolution is not None and resolution < 0:
+        if resolution is not None and resolution <= 0:
             raise serializers.ValidationError(
                 {"resolution_time_hours": "Debe ser un número positivo."}
             )
 
-        # Evitar duplicados exactos
+        # Evitar duplicados exactos. En updates parciales se usan los valores
+        # actuales de la instancia para los campos no enviados.
         instance = self.instance
+
+        def _get_value(field):
+            if field in attrs:
+                return attrs[field]
+            if instance:
+                return getattr(instance, field)
+            return None
+
         filters = {
-            "client": attrs.get("client"),
-            "project": attrs.get("project"),
-            "category": attrs.get("category"),
-            "priority": attrs.get("priority"),
+            "client": _get_value("client"),
+            "project": _get_value("project"),
+            "category": _get_value("category"),
+            "priority": _get_value("priority"),
         }
         qs = SLAConfig.objects.filter(**filters)
         if instance:
@@ -265,6 +281,7 @@ class SupportTicketWriteSerializer(serializers.ModelSerializer):
         many=True,
         queryset=CatchmentPoint.objects.all(),
         write_only=True,
+        required=False,
     )
 
     class Meta:

@@ -38,6 +38,13 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         days = options["days"]
         dry_run = options["dry_run"]
+
+        if days <= 0:
+            self.stdout.write(
+                self.style.ERROR("--days debe ser un número positivo.")
+            )
+            return
+
         cutoff = timezone.now() - timedelta(days=days)
 
         qs = SupportTicket.objects.filter(
@@ -60,10 +67,11 @@ class Command(BaseCommand):
             )
             return
 
+        # No seteamos closed_at porque CANCELADO no es CERRADO y el modelo
+        # lo valida en clean().
         cancelled = qs.update(
             status="CANCELADO",
             is_active=False,
-            closed_at=timezone.now(),
         )
 
         self.stdout.write(

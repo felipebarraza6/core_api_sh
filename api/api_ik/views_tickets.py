@@ -413,11 +413,12 @@ class TicketDetailUpdateView(APIView):
             return Response({"error": "Ticket no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
         # Clientes solo pueden actualizar ciertos campos
-        allowed_fields = ["title", "description", "priority", "category"]
+        allowed_fields = ["title", "description"]
         if user.is_staff or user.is_superuser:
             allowed_fields.extend([
                 "points", "assigned_to", "status", "is_active",
-                "scheduled_date", "visit_report",
+                "scheduled_date", "visit_report", "priority", "category",
+                "origin", "source",
             ])
 
         data = {k: v for k, v in request.data.items() if k in allowed_fields}
@@ -426,6 +427,9 @@ class TicketDetailUpdateView(APIView):
         old_values = {}
         for field in data:
             old_values[field] = getattr(ticket, field, None)
+
+        # Preservar puntos actuales para el recálculo de SLA si no se envían
+        old_points = set(ticket.points.values_list("id", flat=True))
 
         serializer = SupportTicketWriteSerializer(ticket, data=data, partial=True)
         if serializer.is_valid():
@@ -437,10 +441,22 @@ class TicketDetailUpdateView(APIView):
                 if str(old_val) != str(new_val):
                     _log_activity(updated_ticket, user, field, old_val, new_val)
 
+            # Recalcular SLA si cambiaron factores determinantes
+            sla_fields = {"category", "priority", "points", "origin"}
+            if sla_fields & set(data.keys()):
+                # Si cambió origin de INTERNO a CLIENTE/OPERACIONES, o cambiaron
+                # puntos, se debe re-evaluar la configuración SLA.
+                updated_ticket = _apply_sla_to_ticket(updated_ticket)
+                updated_ticket.save(update_fields=[
+                    "sla_config", "sla_deadline_response", "sla_deadline_resolution"
+                ])
+
             # Si cambió a RESUELTO, registrar fecha
             if updated_ticket.status == "RESUELTO" and not updated_ticket.resolved_at:
                 updated_ticket.resolved_at = timezone.now()
-                updated_ticket.save(update_fields=["resolved_at"])
+                if not updated_ticket.sla_resolved_at:
+                    updated_ticket.sla_resolved_at = timezone.now()
+                updated_ticket.save(update_fields=["resolved_at", "sla_resolved_at"])
                 _log_activity(updated_ticket, user, "resolved_at", None, updated_ticket.resolved_at)
 
             # Si cambió a CERRADO, registrar fecha
@@ -448,7 +464,9 @@ class TicketDetailUpdateView(APIView):
                 updated_ticket.closed_at = timezone.now()
                 if not updated_ticket.resolved_at:
                     updated_ticket.resolved_at = timezone.now()
-                updated_ticket.save(update_fields=["closed_at", "resolved_at"])
+                if not updated_ticket.sla_resolved_at:
+                    updated_ticket.sla_resolved_at = timezone.now()
+                updated_ticket.save(update_fields=["closed_at", "resolved_at", "sla_resolved_at"])
                 _log_activity(updated_ticket, user, "closed_at", None, updated_ticket.closed_at)
 
             return Response(
@@ -536,9 +554,14 @@ class TicketCommentsView(APIView):
         serializer = TicketCommentSerializer(data=data)
         if serializer.is_valid():
             comment = serializer.save(author=user)
+            is_internal = comment.is_internal
 
-            # Si es la primera respuesta de staff, marcar SLA respondido
-            if (user.is_staff or user.is_superuser) and not ticket.sla_responded_at:
+            # Si es la primera respuesta de staff y no es interna, marcar SLA respondido
+            if (
+                (user.is_staff or user.is_superuser)
+                and not is_internal
+                and not ticket.sla_responded_at
+            ):
                 ticket.sla_responded_at = timezone.now()
                 ticket.save(update_fields=["sla_responded_at"])
                 _log_activity(ticket, user, "sla_responded_at", None, ticket.sla_responded_at)
@@ -546,9 +569,35 @@ class TicketCommentsView(APIView):
             # Si el comentario incluye cambio de estado
             status_change = data.get("status_change")
             if status_change and (user.is_staff or user.is_superuser):
+                valid_statuses = [c[0] for c in SupportTicket.STATUS_CHOICES]
+                if status_change not in valid_statuses:
+                    return Response(
+                        {"error": "Estado inválido."}, status=status.HTTP_400_BAD_REQUEST
+                    )
+
                 old_status = ticket.status
                 ticket.status = status_change
-                ticket.save(update_fields=["status"])
+                update_fields = ["status"]
+
+                if status_change == "RESUELTO" and not ticket.resolved_at:
+                    ticket.resolved_at = timezone.now()
+                    update_fields.append("resolved_at")
+                    if not ticket.sla_resolved_at:
+                        ticket.sla_resolved_at = timezone.now()
+                        update_fields.append("sla_resolved_at")
+
+                if status_change == "CERRADO":
+                    if not ticket.resolved_at:
+                        ticket.resolved_at = timezone.now()
+                        update_fields.append("resolved_at")
+                    if not ticket.closed_at:
+                        ticket.closed_at = timezone.now()
+                        update_fields.append("closed_at")
+                    if not ticket.sla_resolved_at:
+                        ticket.sla_resolved_at = timezone.now()
+                        update_fields.append("sla_resolved_at")
+
+                ticket.save(update_fields=update_fields)
                 _log_activity(ticket, user, "status", old_status, status_change)
 
             return Response(TicketCommentSerializer(comment).data, status=status.HTTP_201_CREATED)
@@ -583,8 +632,11 @@ class TicketAssignView(APIView):
             except (ValueError, TypeError):
                 return Response({"error": "assigned_to debe ser un entero válido."}, status=status.HTTP_400_BAD_REQUEST)
             from api.core.models import User
-            if not User.objects.filter(id=assigned_to_id).exists():
-                return Response({"error": "Usuario asignado no existe."}, status=status.HTTP_400_BAD_REQUEST)
+            if not User.objects.filter(id=assigned_to_id, is_active=True).exists():
+                return Response(
+                    {"error": "Usuario asignado no existe o está inactivo."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
         old_assignee = ticket.assigned_to_id
         ticket.assigned_to_id = assigned_to_id
@@ -626,6 +678,9 @@ class TicketStatusChangeView(APIView):
         if new_status == "RESUELTO" and not ticket.resolved_at:
             ticket.resolved_at = timezone.now()
             update_fields.append("resolved_at")
+        if new_status in ("RESUELTO", "CERRADO") and not ticket.sla_resolved_at:
+            ticket.sla_resolved_at = timezone.now()
+            update_fields.append("sla_resolved_at")
         if new_status == "CERRADO":
             if not ticket.resolved_at:
                 ticket.resolved_at = timezone.now()
@@ -660,10 +715,16 @@ class TicketStatsView(APIView):
         accessible_ids = _get_accessible_point_ids(user)
         # No usar .distinct() previo: el join con points duplica filas y
         # values().annotate() necesita Count(..., distinct=True) para contar bien.
-        base_qs = SupportTicket.objects.filter(
-            points__id__in=accessible_ids,
-            is_active=True,
-        )
+        if user.is_staff or user.is_superuser:
+            base_qs = SupportTicket.objects.filter(
+                Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"),
+                is_active=True,
+            )
+        else:
+            base_qs = SupportTicket.objects.filter(
+                points__id__in=accessible_ids,
+                is_active=True,
+            )
 
         by_status = self._count_by(base_qs, "status")
         by_category = self._count_by(base_qs, "category")
@@ -676,7 +737,9 @@ class TicketStatsView(APIView):
 
         # SLA: vencidos
         now = timezone.now()
-        open_statuses = ["ABIERTO", "EN_ANALISIS", "ESPERA_CLIENTE", "ESPERA_PROVEEDOR"]
+        open_statuses = [
+            "ABIERTO", "EN_ANALISIS", "ESPERA_CLIENTE", "ESPERA_PROVEEDOR", "EN_ORDEN_TRABAJO"
+        ]
 
         overdue_resolution = base_qs_distinct.filter(
             sla_deadline_resolution__lt=now,
