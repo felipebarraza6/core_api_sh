@@ -1200,3 +1200,112 @@ class NotifySLAOverdueFixTests(TestCase):
         call_command("notify_sla_overdue", dry_run=True, stdout=StringIO())
         ticket.refresh_from_db()
         self.assertIsNone(ticket.sla_last_overdue_notification)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+class TicketDashboardTests(TestCase):
+    """Tests del dashboard unificado de soporte."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            email="dashstaff@smarthydro.cl", password="pass", username="dashstaff", is_staff=True
+        )
+        self.client_user = User.objects.create_user(
+            email="dashclient@smarthydro.cl", password="pass", username="dashclient"
+        )
+        self.client_obj = Client.objects.create(name="Cliente Dashboard")
+        self.project = ProjectCatchments.objects.create(
+            name="Proyecto Dashboard", client=self.client_obj
+        )
+        self.point = CatchmentPoint.objects.create(
+            title="Punto Dashboard", project=self.project, owner_user=self.client_user
+        )
+        self.cat_software = TicketCategory.objects.get(category_type="SOFTWARE", name="Software")
+        self.cat_work_order = TicketCategory.objects.get(category_type="WORK_ORDER", name="Orden de Trabajo")
+        self.token = Token.objects.create(user=self.staff)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+
+    def test_dashboard_returns_kpis_and_charts(self):
+        _create_ticket_with_point(
+            self.point,
+            title="Ticket abierto",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+            status="ABIERTO",
+            priority="ALTA",
+            category=self.cat_software,
+        )
+        _create_ticket_with_point(
+            self.point,
+            title="Ticket orden de trabajo",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+            status="EN_ORDEN_TRABAJO",
+            priority="MEDIA",
+            category=self.cat_work_order,
+            scheduled_date="2026-07-15",
+        )
+
+        response = self.client.get("/api/ik/tickets/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("kpis", data)
+        self.assertIn("charts", data)
+        self.assertIn("tables", data)
+        self.assertEqual(data["kpis"]["tickets"], 2)
+        self.assertEqual(data["kpis"]["active_tickets"], 1)
+        self.assertEqual(data["charts"]["by_status"]["ABIERTO"], 1)
+        self.assertEqual(data["charts"]["by_status"]["EN_ORDEN_TRABAJO"], 1)
+        self.assertEqual(data["charts"]["by_category_type"]["WORK_ORDER"], 1)
+        self.assertEqual(data["kpis"]["work_orders_total"], 1)
+        self.assertEqual(data["kpis"]["work_orders_with_visit"], 1)
+
+    def test_dashboard_filters_by_assigned_to(self):
+        _create_ticket_with_point(
+            self.point,
+            title="Asignado a staff",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+            assigned_to=self.staff,
+        )
+        _create_ticket_with_point(
+            self.point,
+            title="Sin asignar",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+
+        response = self.client.get(f"/api/ik/tickets/dashboard/?assigned_to={self.staff.id}")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["kpis"]["tickets"], 1)
+
+    def test_dashboard_sla_overdue_tables(self):
+        from datetime import timedelta
+        _create_ticket_with_point(
+            self.point,
+            title="SLA vencido",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+            status="ABIERTO",
+            priority="CRITICA",
+            category=self.cat_software,
+            sla_deadline_resolution=timezone.now() - timedelta(hours=2),
+        )
+
+        response = self.client.get("/api/ik/tickets/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["kpis"]["sla_resolution_overdue"], 1)
+        self.assertEqual(len(data["tables"]["sla_resolution_overdue"]), 1)
+        self.assertEqual(data["tables"]["sla_resolution_overdue"][0]["priority"], "CRITICA")
+
+    def test_dashboard_invalid_date_filter_returns_400(self):
+        response = self.client.get("/api/ik/tickets/dashboard/?created_at__gte=mal")
+        self.assertEqual(response.status_code, 400)

@@ -2,6 +2,7 @@
 Serializers para el subsistema de Tickets de Soporte + SLA.
 """
 
+from django.utils import timezone
 from rest_framework import serializers
 
 from api.core.models import (
@@ -323,3 +324,28 @@ class SupportTicketWriteSerializer(serializers.ModelSerializer):
                     setattr(instance, field, getattr(self.instance, field))
         instance.clean()
         return attrs
+class TicketDashboardRowSerializer(serializers.ModelSerializer):
+    """Serializer ligero para filas de tablas del dashboard de soporte."""
+
+    category_type = serializers.CharField(
+        source="category.category_type", read_only=True, default=None
+    )
+    assigned_to_name = serializers.CharField(
+        source="assigned_to.get_full_name", read_only=True, default=None
+    )
+    overdue_days = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SupportTicket
+        fields = [
+            "id", "title", "priority", "status",
+            "sla_deadline_resolution", "sla_deadline_response",
+            "category_type", "assigned_to_name", "overdue_days",
+        ]
+
+    def get_overdue_days(self, obj):
+        deadline = obj.sla_deadline_resolution or obj.sla_deadline_response
+        if deadline:
+            delta = timezone.now() - deadline
+            return max(0, delta.days)
+        return None

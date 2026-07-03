@@ -7,7 +7,7 @@ Nada toca el legacy (NotificationsCatchment).
 
 from datetime import datetime, timedelta
 
-from django.db.models import Q, Count
+from django.db.models import Q, Count, F
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -36,6 +36,7 @@ from api.core.serializers.tickets import (
     TicketCategoryWriteSerializer,
     SLAConfigSerializer,
     SLAConfigWriteSerializer,
+    TicketDashboardRowSerializer,
 )
 from api.core.signals.tickets import _notify_category_operators
 
@@ -1077,3 +1078,208 @@ class TicketCategoryDetailView(APIView):
         category.is_active = False
         category.save(update_fields=["is_active"])
         return Response(status=status.HTTP_204_NO_CONTENT)
+class TicketDashboardView(APIView):
+    """
+    GET /api/ik/tickets/dashboard/
+
+    Dashboard unificado de soporte: KPIs, gráficos y tablas críticas.
+    Filtros:
+      - created_at__gte / created_at__lte: rango de creación (YYYY-MM-DD)
+      - assigned_to: id de usuario asignado
+      - project_id: id de proyecto (por punto vinculado)
+      - client_id: id de cliente (por punto vinculado)
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [TicketRateThrottle]
+
+    def get(self, request):
+        user = request.user
+        accessible_ids = _get_accessible_point_ids(user)
+
+        # Base: tickets activos accesibles. Staff también ve OPERACIONES.
+        if user.is_staff or user.is_superuser:
+            base_qs = SupportTicket.objects.filter(
+                Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"),
+                is_active=True,
+            ).distinct()
+        else:
+            base_qs = SupportTicket.objects.filter(
+                points__id__in=accessible_ids,
+                is_active=True,
+            ).distinct()
+
+        # Filtros de fecha
+        created_at_gte = request.query_params.get("created_at__gte")
+        created_at_lte = request.query_params.get("created_at__lte")
+        if created_at_gte:
+            try:
+                dt = timezone.make_aware(
+                    datetime.combine(datetime.fromisoformat(created_at_gte), datetime.min.time())
+                )
+                base_qs = base_qs.filter(created__gte=dt)
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "created_at__gte debe tener formato YYYY-MM-DD."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        if created_at_lte:
+            try:
+                dt = timezone.make_aware(
+                    datetime.combine(datetime.fromisoformat(created_at_lte), datetime.max.time())
+                )
+                base_qs = base_qs.filter(created__lte=dt)
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "created_at__lte debe tener formato YYYY-MM-DD."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # Filtros de asignación/proyecto/cliente
+        assigned_to = request.query_params.get("assigned_to")
+        if assigned_to:
+            try:
+                base_qs = base_qs.filter(assigned_to_id=int(assigned_to))
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "assigned_to debe ser un entero válido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        project_id = request.query_params.get("project_id")
+        if project_id:
+            try:
+                base_qs = base_qs.filter(points__project_id=int(project_id))
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "project_id debe ser un entero válido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        client_id = request.query_params.get("client_id")
+        if client_id:
+            try:
+                base_qs = base_qs.filter(points__project__client_id=int(client_id))
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "client_id debe ser un entero válido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # "Tickets reales" = origin CLIENTE (los que operan SLA/soporte)
+        real_qs = base_qs.filter(origin="CLIENTE")
+
+        now = timezone.now()
+        tomorrow = now + timedelta(hours=24)
+
+        # =========================================================================
+        # KPIs
+        # =========================================================================
+        kpis = {
+            "tickets": real_qs.count(),
+            "active_tickets": real_qs.filter(status="ABIERTO").count(),
+            "sla_resolution_overdue": real_qs.filter(
+                sla_deadline_resolution__lt=now,
+                sla_resolved_at__isnull=True,
+            ).count(),
+            "sla_response_overdue": real_qs.filter(
+                sla_deadline_response__lt=now,
+                sla_responded_at__isnull=True,
+            ).count(),
+            "compliance_overdue": real_qs.filter(
+                category__category_type="COMPLIANCE",
+                status="ABIERTO",
+                sla_deadline_resolution__lt=now,
+                sla_resolved_at__isnull=True,
+            ).count(),
+            "work_orders_total": real_qs.filter(
+                category__category_type="WORK_ORDER"
+            ).count(),
+            "work_orders_with_visit": real_qs.filter(
+                category__category_type="WORK_ORDER"
+            ).filter(
+                Q(scheduled_date__isnull=False)
+                | Q(visit_report__isnull=False)
+            ).exclude(visit_report="").count(),
+        }
+
+        # =========================================================================
+        # Charts
+        # =========================================================================
+        def _count_by(qs, field):
+            return {
+                item[field]: item["count"]
+                for item in qs.values(field).annotate(count=Count("id", distinct=True))
+                if item[field] is not None
+            }
+
+        charts = {
+            "by_status": _count_by(real_qs, "status"),
+            "by_priority": _count_by(real_qs, "priority"),
+            "by_category_type": _count_by(
+                real_qs.filter(category__isnull=False), "category__category_type"
+            ),
+            "by_origin": _count_by(base_qs, "origin"),
+            "compliance_by_status": _count_by(
+                real_qs.filter(category__category_type="COMPLIANCE", status="ABIERTO"),
+                "status",
+            ),
+            "work_orders_by_status": _count_by(
+                real_qs.filter(category__category_type="WORK_ORDER"),
+                "status",
+            ),
+        }
+
+        # =========================================================================
+        # Tablas
+        # =========================================================================
+        def _serialize_table(qs, limit=10):
+            return TicketDashboardRowSerializer(
+                qs.select_related("assigned_to", "category").order_by(
+                    F("sla_deadline_resolution").asc(nulls_last=True)
+                )[:limit],
+                many=True,
+            ).data
+
+        sla_resolution_overdue_qs = real_qs.filter(
+            sla_deadline_resolution__lt=now,
+            sla_resolved_at__isnull=True,
+        )
+        sla_response_overdue_qs = real_qs.filter(
+            sla_deadline_response__lt=now,
+            sla_responded_at__isnull=True,
+        )
+        compliance_overdue_qs = real_qs.filter(
+            category__category_type="COMPLIANCE",
+            status="ABIERTO",
+            sla_deadline_resolution__lt=now,
+            sla_resolved_at__isnull=True,
+        )
+        upcoming_deadlines_qs = real_qs.filter(
+            sla_deadline_resolution__gte=now,
+            sla_deadline_resolution__lte=tomorrow,
+            sla_resolved_at__isnull=True,
+        )
+
+        tables = {
+            "sla_resolution_overdue": _serialize_table(sla_resolution_overdue_qs, 10),
+            "sla_response_overdue": _serialize_table(sla_response_overdue_qs, 10),
+            "compliance_overdue": _serialize_table(compliance_overdue_qs, 10),
+            "upcoming_deadlines": _serialize_table(upcoming_deadlines_qs, 10),
+        }
+
+        return Response({
+            "kpis": kpis,
+            "charts": charts,
+            "tables": tables,
+            "metadata": {
+                "generated_at": now.isoformat(),
+                "filters_applied": {
+                    "created_at__gte": created_at_gte,
+                    "created_at__lte": created_at_lte,
+                    "assigned_to": assigned_to,
+                    "project_id": project_id,
+                    "client_id": client_id,
+                },
+            },
+        })
