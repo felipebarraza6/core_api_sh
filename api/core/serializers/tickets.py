@@ -155,14 +155,17 @@ class SLAConfigWriteSerializer(serializers.ModelSerializer):
 
 class TicketAttachmentSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
+    uploaded_by_name = serializers.CharField(
+        source="uploaded_by.get_full_name", read_only=True, default=None
+    )
 
     class Meta:
         model = TicketAttachment
         fields = [
             "id", "ticket", "comment", "file", "file_url",
-            "original_name", "uploaded_by", "created",
+            "original_name", "uploaded_by", "uploaded_by_name", "created",
         ]
-        read_only_fields = ["uploaded_by", "created"]
+        read_only_fields = ["uploaded_by", "uploaded_by_name", "created"]
 
     def get_file_url(self, obj):
         request = self.context.get("request")
