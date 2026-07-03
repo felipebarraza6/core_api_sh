@@ -70,6 +70,15 @@ class Command(BaseCommand):
         if ticket.assigned_to and ticket.assigned_to.email:
             operators.add(ticket.assigned_to.email)
 
+        # Escalamiento: usuario configurado en la SLA aplica
+        escalation_user = (
+            ticket.sla_config.escalation_user
+            if ticket.sla_config and ticket.sla_config.escalation_user
+            else None
+        )
+        if escalation_user and escalation_user.email:
+            operators.add(escalation_user.email)
+
         # Modo prueba: limitar destinatarios a lista configurada
         test_only = getattr(settings, "SLA_OVERDUE_TEST_ONLY", None)
         if test_only:
