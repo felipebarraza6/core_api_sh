@@ -16,6 +16,16 @@ from api.core.models import (
 )
 
 
+class TicketCategoryOperatorSerializer(serializers.ModelSerializer):
+    """Serializer minimo para operadores de categoria."""
+
+    name = serializers.CharField(source="get_full_name", read_only=True)
+
+    class Meta:
+        model = User
+        fields = ["id", "name"]
+
+
 class TicketCategorySerializer(serializers.ModelSerializer):
     """Serializer para categorías de tickets (con tipo y subcategorías)."""
 
@@ -26,13 +36,16 @@ class TicketCategorySerializer(serializers.ModelSerializer):
     operators = serializers.PrimaryKeyRelatedField(
         many=True, read_only=True,
     )
+    operators_detail = TicketCategoryOperatorSerializer(
+        source="operators", many=True, read_only=True
+    )
 
     class Meta:
         model = TicketCategory
         fields = [
             "id", "category_type", "category_type_display", "name",
-            "parent", "subcategories", "operators", "notify_operators_on_create",
-            "is_active", "created", "modified",
+            "parent", "subcategories", "operators", "operators_detail",
+            "notify_operators_on_create", "is_active", "created", "modified",
         ]
 
 
