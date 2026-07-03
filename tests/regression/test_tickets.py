@@ -293,6 +293,27 @@ class TicketAPITests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("project_id", response.json().get("error", "").lower())
 
+    def test_list_tickets_filter_by_parent_category_includes_subcategories(self):
+        """Filtrar por categoria padre debe incluir tickets de subcategorias."""
+        sub_cat = TicketCategory.objects.create(
+            category_type="HARDWARE",
+            name="Sub Telemetria",
+            parent=self.cat_telemetria,
+        )
+        _create_ticket_with_point(
+            self.point,
+            title="Ticket subcategoria",
+            description="...",
+            category=sub_cat,
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        response = self.client.get(f"/api/ik/tickets/?category={self.cat_telemetria.id}")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data["results"]), 1)
+        self.assertEqual(data["results"][0]["title"], "Ticket subcategoria")
+
     def test_change_status_via_api(self):
         ticket = _create_ticket_with_point(
             self.point,
@@ -591,6 +612,28 @@ class TicketMyDeskTests(TestCase):
         self.assertIn("Asignado a mi", titles)
         self.assertIn("Categoría que opero", titles)
         self.assertNotIn("De otro operador", titles)
+
+    def test_my_desk_filter_by_parent_category_includes_subcategories(self):
+        """Filtrar my_desk por categoria padre incluye tickets de subcategorias."""
+        sub_cat = TicketCategory.objects.create(
+            category_type="SOFTWARE",
+            name="Sub Software",
+            parent=self.cat_software,
+        )
+        sub_cat.operators.add(self.operator)
+        _create_ticket_with_point(
+            self.point,
+            title="Ticket subcategoria escritorio",
+            description="...",
+            category=sub_cat,
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        response = self.client.get(f"/api/ik/tickets/my_desk/?category={self.cat_software.id}")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        titles = {r["title"] for r in data["results"]}
+        self.assertIn("Ticket subcategoria escritorio", titles)
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE)

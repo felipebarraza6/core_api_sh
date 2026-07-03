@@ -256,7 +256,10 @@ class TicketsListCreateView(APIView):
         if origin_filter:
             qs = qs.filter(origin=origin_filter)
         if category_filter:
-            qs = qs.filter(category_id=category_filter)
+            # Filtrar por categoria exacta o por cualquiera de sus subcategorias.
+            qs = qs.filter(
+                Q(category_id=category_filter) | Q(category__parent_id=category_filter)
+            )
         if category_type_filter:
             qs = qs.filter(category__category_type=category_type_filter.upper())
         if priority_filter:
@@ -889,7 +892,10 @@ class TicketMyDeskView(APIView):
         if priority_filter:
             qs = qs.filter(priority=priority_filter)
         if category_filter:
-            qs = qs.filter(category_id=category_filter)
+            # Filtrar por categoria exacta o por cualquiera de sus subcategorias.
+            qs = qs.filter(
+                Q(category_id=category_filter) | Q(category__parent_id=category_filter)
+            )
         if scheduled_date:
             qs = qs.filter(scheduled_date=scheduled_date)
         if search:
