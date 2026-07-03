@@ -960,6 +960,12 @@ class ControlCenterSystemEventsTests(TestCase):
             created=self.now,
         )
 
+        # auto_now_add ignora el valor explícito de created en create();
+        # forzamos la fecha esperada vía update() para tests determinísticos.
+        SystemEvent.objects.filter(
+            id__in=[self.event_user.id, self.event_other.id]
+        ).update(created=self.now)
+
     def test_user_sees_only_own_events(self):
         """Usuario normal ve solo eventos de sus puntos."""
         self.client.force_authenticate(user=self.user)
