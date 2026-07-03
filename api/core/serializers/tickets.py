@@ -225,7 +225,14 @@ class SupportTicketListSerializer(serializers.ModelSerializer):
             "title", "status", "priority", "category", "category_detail",
             "source", "origin",
             "created_by", "created_by_name", "assigned_to", "assigned_to_name",
-            "scheduled_date", "comments_count", "created", "modified",
+            "scheduled_date", "comments_count",
+            "sla_deadline_response", "sla_deadline_resolution",
+            "sla_responded_at", "sla_resolved_at",
+            "created", "modified",
+        ]
+        read_only_fields = [
+            "sla_deadline_response", "sla_deadline_resolution",
+            "sla_responded_at", "sla_resolved_at",
         ]
 
     def get_client_name(self, obj):
