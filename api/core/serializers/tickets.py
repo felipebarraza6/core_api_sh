@@ -277,16 +277,17 @@ class SupportTicketWriteSerializer(serializers.ModelSerializer):
             "is_active",
         ]
 
-    def validate_points(self, value):
-        if not value:
-            raise serializers.ValidationError("Debe seleccionar al menos un punto.")
-        return value
-
     def validate(self, attrs):
         points = attrs.get("points")
         if self.instance and "points" not in attrs:
             points = list(self.instance.points.all())
-        if not points:
+
+        origin = attrs.get("origin")
+        if self.instance and "origin" not in attrs:
+            origin = self.instance.origin
+
+        # Los tickets de operaciones pueden no estar ligados a un punto.
+        if origin != "OPERACIONES" and not points:
             raise serializers.ValidationError(
                 {"points": "Debe seleccionar al menos un punto."}
             )

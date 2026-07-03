@@ -38,7 +38,16 @@ def _notify_category_operators(ticket_id):
     if not category or not category.notify_operators_on_create:
         return
 
-    operators = list(category.operators.filter(is_active=True).values_list("email", flat=True))
+    operators = set(category.operators.filter(is_active=True).values_list("email", flat=True))
+
+    # Modo prueba: limitar destinatarios a lista configurada
+    test_only = getattr(settings, "SLA_OVERDUE_TEST_ONLY", None)
+    if test_only:
+        allowed = set(test_only)
+        operators = operators & allowed
+        if not operators:
+            return
+
     if not operators:
         return
 
@@ -66,16 +75,18 @@ def _notify_category_operators(ticket_id):
     plain_message = strip_tags(html_message)
     subject = f"Nuevo ticket #{ticket.id}: {ticket.title}"
 
+    recipient_list = sorted(operators)
+
     try:
         send_mail(
             subject=subject,
             message=plain_message,
             from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
-            recipient_list=operators,
+            recipient_list=recipient_list,
             html_message=html_message,
             fail_silently=True,
         )
-        logger.info(f"Notificación de ticket #{ticket.id} enviada a {', '.join(operators)}")
+        logger.info(f"Notificación de ticket #{ticket.id} enviada a {', '.join(recipient_list)}")
     except Exception as e:
         logger.error(f"Error enviando notificación de ticket #{ticket.id}: {e}")
 

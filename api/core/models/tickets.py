@@ -204,6 +204,7 @@ class SupportTicket(ModelApi):
     ORIGIN_CHOICES = [
         ("CLIENTE", "Cliente"),
         ("INTERNO", "Interno"),
+        ("OPERACIONES", "Operaciones"),
     ]
 
     points = models.ManyToManyField(

@@ -154,7 +154,7 @@ def _apply_sla_to_ticket(ticket):
 
     Los tickets con origen interno se tratan como borradores o eventos
     internos; no reciben SLA hasta que sean convertidos/pasados a origen
-    cliente o atendidos manualmente.
+    cliente u operaciones.
     """
     if ticket.origin == "INTERNO":
         ticket.sla_config = None
@@ -230,14 +230,25 @@ class TicketsListCreateView(APIView):
         has_visit_report = request.query_params.get("has_visit_report")
         search = request.query_params.get("search")
 
-        qs = SupportTicket.objects.filter(
-            points__id__in=accessible_ids,
-            is_active=True,
-        ).select_related(
-            "created_by", "assigned_to", "category",
-        ).prefetch_related(
-            "points", "points__project", "points__project__client", "comments"
-        ).distinct()
+        # Staff ve tickets de sus puntos + tickets de operaciones sin punto
+        if user.is_staff or user.is_superuser:
+            qs = SupportTicket.objects.filter(
+                Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"),
+                is_active=True,
+            ).select_related(
+                "created_by", "assigned_to", "category",
+            ).prefetch_related(
+                "points", "points__project", "points__project__client", "comments"
+            ).distinct()
+        else:
+            qs = SupportTicket.objects.filter(
+                points__id__in=accessible_ids,
+                is_active=True,
+            ).select_related(
+                "created_by", "assigned_to", "category",
+            ).prefetch_related(
+                "points", "points__project", "points__project__client", "comments"
+            ).distinct()
 
         if status_filter:
             qs = qs.filter(status=status_filter)
@@ -312,21 +323,30 @@ class TicketsListCreateView(APIView):
         data = request.data.copy()
         accessible_ids = _get_accessible_point_ids(user)
 
-        # Validar que todos los puntos sean accesibles
+        # Determinar origen; solo staff puede crear tickets de operaciones
+        origin = data.get("origin", "CLIENTE")
+        if origin == "OPERACIONES" and not (user.is_staff or user.is_superuser):
+            return Response(
+                {"error": "Solo staff puede crear tickets de operaciones."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Validar puntos solo si no es ticket de operaciones
         point_ids = data.get("points", [])
-        if not isinstance(point_ids, list):
-            return Response({"error": "points debe ser una lista de IDs."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            point_ids_int = [int(pid) for pid in point_ids]
-        except (ValueError, TypeError):
-            return Response({"error": "Cada point_id debe ser un entero válido."}, status=status.HTTP_400_BAD_REQUEST)
+        if origin != "OPERACIONES":
+            if not isinstance(point_ids, list):
+                return Response({"error": "points debe ser una lista de IDs."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                point_ids_int = [int(pid) for pid in point_ids]
+            except (ValueError, TypeError):
+                return Response({"error": "Cada point_id debe ser un entero válido."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not point_ids_int:
-            return Response({"error": "Debe enviar al menos un punto."}, status=status.HTTP_400_BAD_REQUEST)
+            if not point_ids_int:
+                return Response({"error": "Debe enviar al menos un punto."}, status=status.HTTP_400_BAD_REQUEST)
 
-        unauthorized = [pid for pid in point_ids_int if pid not in accessible_ids]
-        if unauthorized:
-            return Response({"error": "No tienes acceso a algunos puntos."}, status=status.HTTP_403_FORBIDDEN)
+            unauthorized = [pid for pid in point_ids_int if pid not in accessible_ids]
+            if unauthorized:
+                return Response({"error": "No tienes acceso a algunos puntos."}, status=status.HTTP_403_FORBIDDEN)
 
         # Si el usuario no es staff, forzar origin=CLIENTE y source=APP_CLIENTE
         if not (user.is_staff or user.is_superuser):
@@ -360,14 +380,21 @@ class TicketDetailUpdateView(APIView):
     def _get_ticket(self, pk, user):
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            ticket = SupportTicket.objects.select_related(
+            qs = SupportTicket.objects.select_related(
                 "created_by", "assigned_to", "sla_config", "category",
             ).prefetch_related(
                 "points", "points__project", "points__project__client",
                 "comments", "comments__author",
                 "activity_logs", "activity_logs__user",
                 "attachments",
-            ).get(pk=pk, points__id__in=accessible_ids)
+            )
+            # Staff tambien accede a tickets de operaciones sin punto
+            if user.is_staff or user.is_superuser:
+                ticket = qs.get(
+                    Q(pk=pk) & (Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES")),
+                )
+            else:
+                ticket = qs.get(pk=pk, points__id__in=accessible_ids)
         except SupportTicket.DoesNotExist:
             return None
         return ticket
@@ -468,6 +495,10 @@ class TicketCommentsView(APIView):
     def _get_ticket(self, pk, user):
         accessible_ids = _get_accessible_point_ids(user)
         try:
+            if user.is_staff or user.is_superuser:
+                return SupportTicket.objects.get(
+                    Q(pk=pk) & (Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"))
+                )
             return SupportTicket.objects.get(pk=pk, points__id__in=accessible_ids)
         except SupportTicket.DoesNotExist:
             return None
@@ -539,7 +570,9 @@ class TicketAssignView(APIView):
 
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            ticket = SupportTicket.objects.get(pk=pk, points__id__in=accessible_ids)
+            ticket = SupportTicket.objects.get(
+                Q(pk=pk) & (Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"))
+            )
         except SupportTicket.DoesNotExist:
             return Response({"error": "Ticket no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -576,7 +609,9 @@ class TicketStatusChangeView(APIView):
 
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            ticket = SupportTicket.objects.get(pk=pk, points__id__in=accessible_ids)
+            ticket = SupportTicket.objects.get(
+                Q(pk=pk) & (Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"))
+            )
         except SupportTicket.DoesNotExist:
             return Response({"error": "Ticket no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -694,6 +729,10 @@ class TicketAttachmentsView(APIView):
     def _get_ticket(self, pk, user):
         accessible_ids = _get_accessible_point_ids(user)
         try:
+            if user.is_staff or user.is_superuser:
+                return SupportTicket.objects.get(
+                    Q(pk=pk) & (Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"))
+                )
             return SupportTicket.objects.get(pk=pk, points__id__in=accessible_ids)
         except SupportTicket.DoesNotExist:
             return None
@@ -762,10 +801,12 @@ class TicketMyDeskView(APIView):
     def get(self, request):
         user = request.user
 
+        # Staff ve tickets cliente y operaciones; clientes solo tickets cliente
+        allowed_origins = ["CLIENTE", "OPERACIONES"] if (user.is_staff or user.is_superuser) else ["CLIENTE"]
         qs = SupportTicket.objects.filter(
             Q(assigned_to=user) | Q(category__operators=user),
             is_active=True,
-            origin="CLIENTE",
+            origin__in=allowed_origins,
         ).select_related(
             "created_by", "assigned_to", "category",
         ).prefetch_related(
