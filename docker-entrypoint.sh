@@ -7,6 +7,9 @@ mkdir -p /app/logs
 # chmod 755 /app/logs
 # chmod 644 /app/logs/django.log
 
+# ✅ FIX: Crear directorio de media para adjuntos de tickets
+mkdir -p /app/media/tickets
+
 # ✅ FIX: Crear directorio de logs de Nginx en /app/logs (tiene permisos)
 mkdir -p /app/logs/nginx
 touch /app/logs/nginx/error.log

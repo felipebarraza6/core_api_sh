@@ -414,6 +414,46 @@ class TicketAPITests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("tipo", response.json().get("error", "").lower())
 
+    def test_upload_attachment_success(self):
+        """Subir archivo permitido debe retornar 201 y el adjunto."""
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket attach ok",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        good_file = SimpleUploadedFile("reporte.pdf", b"contenido valido", content_type="application/pdf")
+        response = self.client.post(
+            f"/api/ik/tickets/{ticket.id}/attachments/",
+            {"file": good_file},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["original_name"], "reporte.pdf")
+        self.assertTrue(data["file_url"].endswith(".pdf"))
+
+    def test_upload_attachment_exceeds_max_size(self):
+        """Subir archivo mayor a 10 MB debe retornar 400."""
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket attach big",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        big_file = SimpleUploadedFile("grande.pdf", b"x" * (10 * 1024 * 1024 + 1), content_type="application/pdf")
+        response = self.client.post(
+            f"/api/ik/tickets/{ticket.id}/attachments/",
+            {"file": big_file},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("tamaño", response.json().get("error", "").lower())
+
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
 class OTFlowTicketTests(TestCase):
