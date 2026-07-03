@@ -643,6 +643,7 @@ class TicketMyDeskTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
 
     def test_my_desk_returns_assigned_and_operated_tickets(self):
+        """my_desk por defecto muestra asignados + tickets de categorias operadas."""
         assigned_ticket = _create_ticket_with_point(
             self.point,
             title="Asignado a mi",
@@ -676,6 +677,58 @@ class TicketMyDeskTests(TestCase):
         self.assertIn("Categoría que opero", titles)
         self.assertNotIn("De otro operador", titles)
 
+    def test_my_desk_scope_assigned_only(self):
+        """scope=assigned filtra solo tickets asignados al usuario."""
+        _create_ticket_with_point(
+            self.point,
+            title="Asignado a mi",
+            description="...",
+            assigned_to=self.operator,
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        _create_ticket_with_point(
+            self.point,
+            title="Categoría que opero",
+            description="...",
+            category=self.cat_software,
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+
+        response = self.client.get("/api/ik/tickets/my_desk/?scope=assigned")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        titles = {r["title"] for r in data["results"]}
+        self.assertIn("Asignado a mi", titles)
+        self.assertNotIn("Categoría que opero", titles)
+
+    def test_my_desk_scope_category_only(self):
+        """scope=category filtra solo tickets de categorias operadas."""
+        _create_ticket_with_point(
+            self.point,
+            title="Asignado a mi",
+            description="...",
+            assigned_to=self.operator,
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        _create_ticket_with_point(
+            self.point,
+            title="Categoría que opero",
+            description="...",
+            category=self.cat_software,
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+
+        response = self.client.get("/api/ik/tickets/my_desk/?scope=category")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        titles = {r["title"] for r in data["results"]}
+        self.assertNotIn("Asignado a mi", titles)
+        self.assertIn("Categoría que opero", titles)
+
     def test_my_desk_filter_by_parent_category_includes_subcategories(self):
         """Filtrar my_desk por categoria padre incluye tickets de subcategorias."""
         sub_cat = TicketCategory.objects.create(
@@ -683,12 +736,12 @@ class TicketMyDeskTests(TestCase):
             name="Sub Software",
             parent=self.cat_software,
         )
-        sub_cat.operators.add(self.operator)
         _create_ticket_with_point(
             self.point,
             title="Ticket subcategoria escritorio",
             description="...",
             category=sub_cat,
+            assigned_to=self.operator,
             origin="CLIENTE",
             source="APP_CLIENTE",
         )

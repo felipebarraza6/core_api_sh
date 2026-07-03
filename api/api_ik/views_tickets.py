@@ -867,8 +867,16 @@ class TicketMyDeskView(APIView):
     GET /api/ik/tickets/my_desk/
 
     Tickets relevantes para el usuario autenticado:
-      - Tickets donde está asignado como responsable.
-      - Tickets en categorías donde figura como operador.
+      - Tickets donde esta asignado como responsable.
+      - Tickets en categorias donde figura como operador.
+
+    Filtros de scope (query params):
+      - scope=assigned   → solo tickets asignados al usuario
+      - scope=category   → solo tickets de categorias donde es operador
+      - sin scope        → ambos (comportamiento por defecto)
+
+    Staff ve tickets de origen CLIENTE y OPERACIONES;
+    clientes normales solo ven tickets de origen CLIENTE.
     """
 
     permission_classes = [IsAuthenticated]
@@ -879,11 +887,28 @@ class TicketMyDeskView(APIView):
 
         # Staff ve tickets cliente y operaciones; clientes solo tickets cliente
         allowed_origins = ["CLIENTE", "OPERACIONES"] if (user.is_staff or user.is_superuser) else ["CLIENTE"]
-        qs = SupportTicket.objects.filter(
-            Q(assigned_to=user) | Q(category__operators=user),
-            is_active=True,
-            origin__in=allowed_origins,
-        ).select_related(
+
+        scope = request.query_params.get("scope")
+        if scope == "assigned":
+            qs = SupportTicket.objects.filter(
+                assigned_to=user,
+                is_active=True,
+                origin__in=allowed_origins,
+            )
+        elif scope == "category":
+            qs = SupportTicket.objects.filter(
+                category__operators=user,
+                is_active=True,
+                origin__in=allowed_origins,
+            )
+        else:
+            qs = SupportTicket.objects.filter(
+                Q(assigned_to=user) | Q(category__operators=user),
+                is_active=True,
+                origin__in=allowed_origins,
+            )
+
+        qs = qs.select_related(
             "created_by", "assigned_to", "category",
         ).prefetch_related(
             "points", "points__project", "points__project__client", "comments"
