@@ -720,6 +720,58 @@ class TicketStatusChangeView(APIView):
         return Response({"detail": f"Estado cambiado a {new_status}."})
 
 
+class TicketConvertToClientView(APIView):
+    """
+    POST /api/ik/tickets/<id>/convert-to-client/
+    Convierte un ticket de origen INTERNO (alerta/evento del sistema)
+    a origen CLIENTE para que entre en el flujo real de soporte/SLA.
+    """
+    throttle_classes = [TicketRateThrottle]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+        if not (user.is_staff or user.is_superuser):
+            return Response(
+                {"error": "Solo staff puede convertir tickets."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        accessible_ids = _get_accessible_point_ids(user)
+        try:
+            ticket = SupportTicket.objects.get(
+                Q(pk=pk) & (Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"))
+            )
+        except SupportTicket.DoesNotExist:
+            return Response({"error": "Ticket no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        if ticket.origin == "CLIENTE":
+            return Response(
+                {"detail": "El ticket ya es de origen CLIENTE."},
+                status=status.HTTP_200_OK,
+            )
+
+        if ticket.origin != "INTERNO":
+            return Response(
+                {"error": f"Solo se pueden convertir tickets de origen INTERNO. Origen actual: {ticket.origin}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        old_origin = ticket.origin
+        ticket.origin = "CLIENTE"
+        ticket.save(update_fields=["origin"])
+        _log_activity(ticket, user, "origin", old_origin, "CLIENTE")
+
+        ticket = _apply_sla_to_ticket(ticket)
+        ticket.save(update_fields=[
+            "sla_config", "sla_deadline_response", "sla_deadline_resolution",
+        ])
+
+        return Response(
+            SupportTicketDetailSerializer(ticket, context={"request": request}).data
+        )
+
+
 class TicketStatsView(APIView):
     """
     GET /api/ik/tickets/stats/

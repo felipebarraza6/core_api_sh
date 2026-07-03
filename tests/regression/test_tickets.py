@@ -1263,6 +1263,102 @@ class TicketStatusResolvedAtTests(TestCase):
 
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+class TicketConvertToClientTests(TestCase):
+    """Tests de conversión de tickets INTERNO -> CLIENTE."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            email="convertstaff@smarthydro.cl", password="pass", username="convertstaff", is_staff=True
+        )
+        self.client_user = User.objects.create_user(
+            email="convertclient@smarthydro.cl", password="pass", username="convertclient"
+        )
+        self.client_obj = Client.objects.create(name="Cliente Convert")
+        self.project = ProjectCatchments.objects.create(
+            name="Proyecto Convert", client=self.client_obj
+        )
+        self.point = CatchmentPoint.objects.create(
+            title="Punto Convert", project=self.project, owner_user=self.client_user
+        )
+        self.cat = TicketCategory.objects.get(category_type="HARDWARE", name="Hardware")
+        SLAConfig.objects.create(
+            category=self.cat,
+            priority="MEDIA",
+            response_time_hours=4,
+            resolution_time_hours=24,
+        )
+        self.token = Token.objects.create(user=self.staff)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+
+    def test_convert_internal_to_client_sets_sla(self):
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Evento sistema",
+            description="...",
+            origin="INTERNO",
+            source="SISTEMA",
+            category=self.cat,
+            priority="MEDIA",
+        )
+        self.assertIsNone(ticket.sla_deadline_response)
+
+        response = self.client.post(
+            f"/api/ik/tickets/{ticket.id}/convert-to-client/",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["origin"], "CLIENTE")
+
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.origin, "CLIENTE")
+        self.assertIsNotNone(ticket.sla_deadline_response)
+        self.assertIsNotNone(ticket.sla_deadline_resolution)
+        self.assertEqual(ticket.activity_logs.filter(field_name="origin").count(), 1)
+
+    def test_convert_already_client_returns_ok(self):
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket cliente",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        response = self.client.post(
+            f"/api/ik/tickets/{ticket.id}/convert-to-client/",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("ya es de origen CLIENTE", response.json()["detail"])
+
+    def test_convert_operations_rejected(self):
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket operaciones",
+            description="...",
+            origin="OPERACIONES",
+            source="SISTEMA",
+        )
+        response = self.client.post(
+            f"/api/ik/tickets/{ticket.id}/convert-to-client/",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_convert_requires_staff(self):
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Evento sistema",
+            description="...",
+            origin="INTERNO",
+            source="SISTEMA",
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {Token.objects.create(user=self.client_user).key}")
+        response = self.client.post(
+            f"/api/ik/tickets/{ticket.id}/convert-to-client/",
+        )
+        self.assertEqual(response.status_code, 403)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
 class SLAConfigUpdateTests(TestCase):
     """Tests de edición parcial de SLA sin falsos duplicados."""
 
