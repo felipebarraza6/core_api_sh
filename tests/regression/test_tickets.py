@@ -1237,6 +1237,30 @@ class TicketStatusResolvedAtTests(TestCase):
         ticket.refresh_from_db()
         self.assertIsNotNone(ticket.sla_resolved_at)
 
+    def test_status_change_from_cancelled_to_resolved_does_not_500(self):
+        """Cambiar de CANCELADO a RESUELTO no debe fallar por timestamps inconsistentes."""
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket cancelado",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+            status="CANCELADO",
+        )
+        # Simular inconsistencia: closed_at seteado estando CANCELADO
+        ticket.closed_at = timezone.now()
+        ticket.save(update_fields=["closed_at"])
+
+        response = self.client.post(
+            f"/api/ik/tickets/{ticket.id}/status/",
+            {"status": "RESUELTO"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, "RESUELTO")
+        self.assertIsNone(ticket.closed_at)
+
 
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
 class SLAConfigUpdateTests(TestCase):

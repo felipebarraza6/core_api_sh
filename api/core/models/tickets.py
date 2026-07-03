@@ -362,13 +362,14 @@ class SupportTicket(ModelApi):
         return f"#{self.id} {self.title} ({self.get_status_display()})"
 
     def clean(self):
-        errors = {}
-        if self.resolved_at and self.status not in ("RESUELTO", "CERRADO", "CANCELADO"):
-            errors["resolved_at"] = "No puede tener fecha de resolución si el estado no es Resuelto/Cerrado/Cancelado."
-        if self.closed_at and self.status != "CERRADO":
-            errors["closed_at"] = "No puede tener fecha de cierre si el estado no es Cerrado."
-        if errors:
-            raise ValidationError(errors)
+        # Mantener consistencia entre estado y timestamps.
+        # Si el estado ya no justifica el timestamp, se limpia para evitar
+        # errores de validación que no se pueden mostrar en formularios que
+        # no incluyen esos campos (ej. Django admin con campos read-only).
+        if self.status not in ("RESUELTO", "CERRADO", "CANCELADO"):
+            self.resolved_at = None
+        if self.status != "CERRADO":
+            self.closed_at = None
 
 
 class TicketComment(ModelApi):

@@ -588,23 +588,29 @@ class TicketCommentsView(APIView):
                 ticket.status = status_change
                 update_fields = ["status"]
 
-                if status_change == "RESUELTO" and not ticket.resolved_at:
-                    ticket.resolved_at = timezone.now()
-                    update_fields.append("resolved_at")
-                    if not ticket.sla_resolved_at:
-                        ticket.sla_resolved_at = timezone.now()
-                        update_fields.append("sla_resolved_at")
+                terminal_statuses = ("RESUELTO", "CERRADO", "CANCELADO")
 
-                if status_change == "CERRADO":
+                if status_change in terminal_statuses:
                     if not ticket.resolved_at:
                         ticket.resolved_at = timezone.now()
                         update_fields.append("resolved_at")
+                else:
+                    if ticket.resolved_at:
+                        ticket.resolved_at = None
+                        update_fields.append("resolved_at")
+
+                if status_change in ("RESUELTO", "CERRADO") and not ticket.sla_resolved_at:
+                    ticket.sla_resolved_at = timezone.now()
+                    update_fields.append("sla_resolved_at")
+
+                if status_change == "CERRADO":
                     if not ticket.closed_at:
                         ticket.closed_at = timezone.now()
                         update_fields.append("closed_at")
-                    if not ticket.sla_resolved_at:
-                        ticket.sla_resolved_at = timezone.now()
-                        update_fields.append("sla_resolved_at")
+                else:
+                    if ticket.closed_at:
+                        ticket.closed_at = None
+                        update_fields.append("closed_at")
 
                 ticket.save(update_fields=update_fields)
                 _log_activity(ticket, user, "status", old_status, status_change)
@@ -684,18 +690,28 @@ class TicketStatusChangeView(APIView):
         ticket.status = new_status
 
         update_fields = ["status"]
-        if new_status == "RESUELTO" and not ticket.resolved_at:
-            ticket.resolved_at = timezone.now()
-            update_fields.append("resolved_at")
-        if new_status in ("RESUELTO", "CERRADO") and not ticket.sla_resolved_at:
-            ticket.sla_resolved_at = timezone.now()
-            update_fields.append("sla_resolved_at")
-        if new_status == "CERRADO":
+        terminal_statuses = ("RESUELTO", "CERRADO", "CANCELADO")
+
+        if new_status in terminal_statuses:
             if not ticket.resolved_at:
                 ticket.resolved_at = timezone.now()
                 update_fields.append("resolved_at")
+        else:
+            if ticket.resolved_at:
+                ticket.resolved_at = None
+                update_fields.append("resolved_at")
+
+        if new_status in ("RESUELTO", "CERRADO") and not ticket.sla_resolved_at:
+            ticket.sla_resolved_at = timezone.now()
+            update_fields.append("sla_resolved_at")
+
+        if new_status == "CERRADO":
             if not ticket.closed_at:
                 ticket.closed_at = timezone.now()
+                update_fields.append("closed_at")
+        else:
+            if ticket.closed_at:
+                ticket.closed_at = None
                 update_fields.append("closed_at")
 
         ticket.save(update_fields=update_fields)
