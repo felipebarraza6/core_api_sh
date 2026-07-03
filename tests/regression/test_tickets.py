@@ -418,6 +418,29 @@ class TicketAPITests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("usuario", response.json().get("error", "").lower())
 
+    def test_assign_ticket_with_multiple_points_does_not_500(self):
+        """Asignar un ticket con varios puntos no debe lanzar MultipleObjectsReturned."""
+        other_point = CatchmentPoint.objects.create(
+            title="Otro Punto API", project=self.project, owner_user=self.user
+        )
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket multipunto",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        ticket.points.add(other_point)
+
+        response = self.client.post(
+            f"/api/ik/tickets/{ticket.id}/assign/",
+            {"assigned_to": self.user.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.assigned_to_id, self.user.id)
+
     def test_upload_attachment_invalid_extension(self):
         """Subir archivo con extensión inválida debe retornar 400."""
         ticket = _create_ticket_with_point(

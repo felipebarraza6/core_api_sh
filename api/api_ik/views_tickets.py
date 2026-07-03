@@ -634,9 +634,9 @@ class TicketAssignView(APIView):
 
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            ticket = SupportTicket.objects.get(
+            ticket = SupportTicket.objects.filter(
                 Q(pk=pk) & (Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"))
-            )
+            ).distinct().get()
         except SupportTicket.DoesNotExist:
             return Response({"error": "Ticket no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -676,9 +676,9 @@ class TicketStatusChangeView(APIView):
 
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            ticket = SupportTicket.objects.get(
+            ticket = SupportTicket.objects.filter(
                 Q(pk=pk) & (Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"))
-            )
+            ).distinct().get()
         except SupportTicket.DoesNotExist:
             return Response({"error": "Ticket no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -739,9 +739,9 @@ class TicketConvertToClientView(APIView):
 
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            ticket = SupportTicket.objects.get(
+            ticket = SupportTicket.objects.filter(
                 Q(pk=pk) & (Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"))
-            )
+            ).distinct().get()
         except SupportTicket.DoesNotExist:
             return Response({"error": "Ticket no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
