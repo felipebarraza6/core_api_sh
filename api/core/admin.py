@@ -17,7 +17,7 @@ from api.core.models import (
     TelemetryProvider, ComplianceProvider,
     ResponseNotificationsCatchment, TypeFileCatchment, FileCatchment,
     AlertRule, AlertChannel, AlertTrigger, SystemEvent, CounterResetLog,
-    SLAConfig, SupportTicket, TicketComment, TicketAttachment, TicketActivityLog,
+    SLAConfig, SupportTicket, TicketCategory, TicketComment, TicketAttachment, TicketActivityLog,
 )
 from import_export.admin import ImportExportModelAdmin, ExportActionMixin
 
@@ -918,14 +918,14 @@ class ClientAdmin(ImportExportModelAdmin, ExportActionMixin, admin.ModelAdmin):
     Clientes o empresas que contratan los servicios de telemetría.
     Los proyectos pertenecen a clientes y agrupan múltiples puntos de captación.
     """
-    list_display = ('id', 'name', 'rut', 'email', 'phone', 'created')
+    list_display = ('id', 'name', 'rut', 'email', 'phone', 'critical', 'created')
     search_fields = ('name', 'rut', 'email', 'phone')
-    list_filter = ('created',)
+    list_filter = ('critical', 'created')
     list_per_page = ADMIN_LIST_PER_PAGE
     fieldsets = (
         ('Información Básica', {
-            'fields': ('name', 'rut'),
-            'description': 'Datos identificatorios del cliente (razón social y RUT).'
+            'fields': ('name', 'rut', 'critical'),
+            'description': 'Datos identificatorios del cliente y nivel de criticidad.'
         }),
         ('Contacto', {
             'fields': ('email', 'phone', 'address'),
@@ -2647,16 +2647,27 @@ class SystemEventAdmin(admin.ModelAdmin):
 # ADMIN: Tickets de Soporte + SLA
 # ============================================================================
 
+@admin.register(TicketCategory)
+class TicketCategoryAdmin(admin.ModelAdmin):
+    list_display = (
+        "id", "name", "category_type", "parent", "notify_operators_on_create", "is_active",
+    )
+    list_filter = ("category_type", "notify_operators_on_create", "is_active")
+    search_fields = ("name",)
+    autocomplete_fields = ["parent", "operators"]
+    filter_horizontal = ["operators"]
+
+
 @admin.register(SLAConfig)
 class SLAConfigAdmin(admin.ModelAdmin):
     list_display = (
         "id", "client", "project", "category", "priority",
         "response_time_hours", "resolution_time_hours", "business_hours_only", "is_active",
     )
-    list_select_related = ['client', 'project']
+    list_select_related = ['client', 'project', 'category']
     list_filter = ("category", "priority", "business_hours_only", "is_active")
-    search_fields = ("client__name", "project__name")
-    autocomplete_fields = ["client", "project", "escalation_user"]
+    search_fields = ("client__name", "project__name", "category__name")
+    autocomplete_fields = ["client", "project", "category", "escalation_user"]
 
 
 class TicketCommentInline(admin.TabularInline):
@@ -2684,16 +2695,17 @@ class TicketActivityLogInline(admin.TabularInline):
 @admin.register(SupportTicket)
 class SupportTicketAdmin(admin.ModelAdmin):
     list_display = (
-        "id", "title", "point_catchment", "status", "priority", "category",
+        "id", "title", "get_points", "status", "priority", "category",
         "origin", "source", "assigned_to", "created_by", "created",
     )
-    list_select_related = ['point_catchment', 'assigned_to', 'created_by']
+    list_select_related = ['assigned_to', 'created_by']
     list_filter = (
         "status", "priority", "category", "origin", "source",
         "is_active", "created",
     )
-    search_fields = ("title", "description", "point_catchment__title")
-    autocomplete_fields = ["point_catchment", "created_by", "assigned_to", "sla_config", "alert_trigger", "system_event"]
+    search_fields = ("title", "description", "points__title")
+    autocomplete_fields = ["created_by", "assigned_to", "sla_config", "alert_trigger", "system_event"]
+    filter_horizontal = ["points"]
     readonly_fields = (
         "created", "modified",
         "sla_deadline_response", "sla_deadline_resolution",
@@ -2703,7 +2715,7 @@ class SupportTicketAdmin(admin.ModelAdmin):
     inlines = [TicketCommentInline, TicketAttachmentInline, TicketActivityLogInline]
     fieldsets = (
         ("General", {
-            "fields": ("point_catchment", "title", "description", "is_active"),
+            "fields": ("points", "title", "description", "is_active"),
         }),
         ("Clasificación", {
             "fields": ("status", "priority", "category", "origin", "source"),
@@ -2727,6 +2739,10 @@ class SupportTicketAdmin(admin.ModelAdmin):
             "classes": ("collapse",),
         }),
     )
+
+    @admin.display(description="Puntos")
+    def get_points(self, obj):
+        return ", ".join(p.title for p in obj.points.all()[:3])
 
 
 @admin.register(TicketComment)

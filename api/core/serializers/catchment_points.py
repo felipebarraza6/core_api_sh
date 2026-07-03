@@ -50,7 +50,7 @@ class ClientWithProjectsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Client
-        fields = ['id', 'name', 'rut', 'address', 'phone', 'email', 'projects']
+        fields = ['id', 'name', 'rut', 'address', 'phone', 'email', 'critical', 'projects']
 
 
 class CatchmentPointSerializer(serializers.ModelSerializer):

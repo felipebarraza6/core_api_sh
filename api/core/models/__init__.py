@@ -14,6 +14,7 @@ from .alerts import AlertRule, AlertChannel, AlertTrigger, SystemEvent
 from .tickets import (
     SLAConfig,
     SupportTicket,
+    TicketCategory,
     TicketComment,
     TicketAttachment,
     TicketActivityLog,

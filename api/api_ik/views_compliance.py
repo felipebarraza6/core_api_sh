@@ -18,10 +18,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 
-from django.db.models import Q, Sum, Exists, OuterRef
+from django.db.models import Q, Exists, OuterRef
 from django.core.paginator import Paginator
 from django.utils import timezone
 from api.core.models import CatchmentPoint, DgaDataConfigCatchment, InteractionDetail
+from api.core.utils.consumption import calculate_consumption_for_points
 from .throttles import DashboardRateThrottle
 
 
@@ -182,17 +183,40 @@ class ComplianceListView(APIView):
                 "points": [],
             })
 
-        # Consumo anual por punto (todos los puntos, no solo activos)
-        annual_consumption_map = {
-            item['catchment_point_id']: float(item['total_sum'] or 0.0)
+        # Consumo anual por punto (todos los puntos, no solo activos).
+        # Se calcula como diferencia entre el último total acumulado y el
+        # primero del año. Sumar total_diff acumula saltos anómalos generados
+        # por datos corruptos o reseteos mal compensados, sobreestimando el
+        # consumo real.
+        first_total_map = {
+            item['catchment_point_id']: float(item['total'] or 0)
             for item in InteractionDetail.objects.filter(
                 catchment_point_id__in=point_ids,
                 date_time_medition__gte=year_start,
                 date_time_medition__lte=year_end,
-            ).values('catchment_point_id').annotate(
-                total_sum=Sum('total_diff')
-            )
+                is_error=False,
+            ).exclude(total__isnull=True).exclude(total='').order_by(
+                'catchment_point_id', 'date_time_medition'
+            ).distinct('catchment_point_id').values('catchment_point_id', 'total')
         }
+
+        last_total_map = {
+            item['catchment_point_id']: float(item['total'] or 0)
+            for item in InteractionDetail.objects.filter(
+                catchment_point_id__in=point_ids,
+                date_time_medition__gte=year_start,
+                date_time_medition__lte=year_end,
+                is_error=False,
+            ).exclude(total__isnull=True).exclude(total='').order_by(
+                'catchment_point_id', '-date_time_medition'
+            ).distinct('catchment_point_id').values('catchment_point_id', 'total')
+        }
+
+        annual_consumption_map = {}
+        for cp_id in point_ids:
+            first_total = first_total_map.get(cp_id, 0.0)
+            last_total = last_total_map.get(cp_id, 0.0)
+            annual_consumption_map[cp_id] = max(0.0, last_total - first_total)
 
         # Configs de compliance por punto. Si hay varias, preferir la activa
         # (send_dga + code_dga o send_sma + sma_device_id); si ambas lo son,
@@ -425,6 +449,11 @@ class ComplianceListView(APIView):
         cfg = getattr(point, '_cfg', None)
         if not cfg or cfg.total_granted_dga is None:
             return None
+        # Para puntos solo SMA, total_granted_dga se usa como ID de proceso
+        # en el envío a SMA (cron_sma.py), no como límite anual. No calcular
+        # % consumido en esos casos.
+        if 'DGA' not in compliance_type_for_config(cfg):
+            return None
         total = float(cfg.total_granted_dga)
         if total <= 0:
             return None
@@ -441,17 +470,20 @@ class ComplianceListView(APIView):
         if cfg:
             standard = cfg.standard or 'SIN_ESTANDAR'
             type_dga = cfg.type_dga or 'NO_DEFINIDO'
+            compliance_type = compliance_type_for_config(cfg)
+            # total_granted_dga solo representa un límite anual para DGA.
+            # En SMA se usa como ID de proceso (proceso_id) en cron_sma.py.
+            is_dga = 'DGA' in compliance_type
             authorized_total = (
                 float(cfg.total_granted_dga)
-                if cfg.total_granted_dga is not None else None
+                if is_dga and cfg.total_granted_dga is not None else None
             )
-            pct_consumed = getattr(point, '_pct_consumed', None)
+            pct_consumed = getattr(point, '_pct_consumed', None) if is_dga else None
             auth_flow = (
                 float(cfg.flow_granted_dga)
                 if cfg.flow_granted_dga is not None else None
             )
             code = cfg.code_dga or cfg.sma_device_id
-            compliance_type = compliance_type_for_config(cfg)
             compliance_active = _is_compliance_active_for_config(cfg)
         else:
             standard = None

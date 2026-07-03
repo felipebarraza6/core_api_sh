@@ -1804,3 +1804,59 @@ class SystemEventsSummaryView(APIView):
             "timeline": timeline,
             "recent_events": recent_events,
         })
+
+
+class StaffUsersListView(APIView):
+    """
+    Lista de usuarios staff/superuser.
+
+    GET /api/ik/staff_users/
+    Auth: Token
+
+    Response:
+    [
+      {
+        "id": 1,
+        "email": "admin@smarthydro.app",
+        "username": "admin",
+        "first_name": "Admin",
+        "last_name": "Smarthydro",
+        "is_staff": true,
+        "is_superuser": true,
+        "is_client_admin": false
+      }
+    ]
+    """
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [SummaryRateThrottle]
+
+    def get(self, request):
+        user = request.user
+        if not (user.is_staff or user.is_superuser):
+            return Response(
+                {'error': 'No tiene permisos para ver esta lista.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        staff_users = User.objects.filter(
+            Q(is_staff=True) | Q(is_superuser=True)
+        ).order_by('first_name', 'last_name', 'email').only(
+            'id', 'email', 'username', 'first_name', 'last_name',
+            'is_staff', 'is_superuser', 'is_client_admin'
+        )
+
+        data = [
+            {
+                'id': u.id,
+                'email': u.email,
+                'username': u.username,
+                'first_name': u.first_name,
+                'last_name': u.last_name,
+                'is_staff': u.is_staff,
+                'is_superuser': u.is_superuser,
+                'is_client_admin': u.is_client_admin,
+            }
+            for u in staff_users
+        ]
+
+        return Response(data)

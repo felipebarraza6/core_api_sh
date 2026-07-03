@@ -125,6 +125,27 @@ class ComplianceEndpointTests(TestCase):
         self.assertEqual(point['compliance_type'], ['SMA'])
         self.assertTrue(point['compliance_active'])
 
+    def test_sma_does_not_use_total_granted_as_annual_limit(self):
+        """Para puntos solo SMA, total_granted_dga es el ID de proceso, no límite anual."""
+        self.dga.code_dga = "7511"
+        self.dga.send_dga = False
+        self.dga.send_sma = True
+        self.dga.sma_device_id = "12180"
+        self.dga.total_granted_dga = 5368
+        self.dga.save(update_fields=['code_dga', 'send_dga', 'send_sma', 'sma_device_id', 'total_granted_dga'])
+        # Crear un registro con consumo para que, de existir límite, se calculara pct
+        self._create_interaction(self.point, 0, 0.0)
+        self._create_interaction(self.point, 1000, 5.0)
+
+        response = self.client.get('/api/ik/compliance/')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        point = data['points'][0]
+        self.assertEqual(point['compliance_type'], ['SMA'])
+        self.assertIsNone(point['authorized_total'])
+        self.assertIsNone(point['pct_consumed'])
+        self.assertEqual(point['annual_consumption'], 1000.0)
+
     def test_compliance_excludes_unauthorized_points(self):
         """No debe incluir puntos que no pertenecen al usuario."""
         other_user = User.objects.create_user(
@@ -173,21 +194,40 @@ class ComplianceEndpointTests(TestCase):
         )
         return point, dga
 
-    def _create_interaction(self, point, total_diff, flow, date_time=None):
+    def _create_interaction(self, point, total_diff, flow, date_time=None, total=None):
         from django.utils import timezone
         from datetime import date
         if date_time is None:
             date_time = timezone.now()
+        # El cálculo de consumo anual usa el total acumulado (last - first),
+        # no la suma de total_diff. Si no se pasa total, buscamos el último
+        # total del punto y acumulamos el diff para mantener coherencia.
+        if total is None:
+            last = InteractionDetail.objects.filter(
+                catchment_point=point,
+                is_error=False,
+            ).exclude(total__isnull=True).exclude(total='').order_by('-date_time_medition').first()
+            last_total = float(last.total) if last else 0.0
+            total = last_total + total_diff
         return InteractionDetail.objects.create(
             catchment_point=point,
             date_time_medition=date_time,
             total_diff=total_diff,
+            total=total,
             flow=flow,
         )
 
     def test_order_by_pct_consumed_desc(self):
         """order_by=pct_consumed_desc ordena mayor % primero."""
+        from django.utils import timezone
+        from datetime import date
+        current_year = date.today().year
+        year_start = timezone.make_aware(timezone.datetime(current_year, 1, 1, 0, 0, 0))
+
         point2, _ = self._create_second_point("B Point", total_granted=1000, flow_granted=5.0)
+        # Registro base al inicio del año para poder calcular last-first
+        self._create_interaction(self.point, 0, 0.0, date_time=year_start)
+        self._create_interaction(point2, 0, 0.0, date_time=year_start)
         # point consumió 500/1000 = 50%, point2 200/1000 = 20%
         self._create_interaction(self.point, 500, 5.0)
         self._create_interaction(point2, 200, 2.0)
@@ -202,7 +242,14 @@ class ComplianceEndpointTests(TestCase):
 
     def test_order_by_pct_consumed_asc(self):
         """order_by=pct_consumed_asc ordena menor % primero."""
+        from django.utils import timezone
+        from datetime import date
+        current_year = date.today().year
+        year_start = timezone.make_aware(timezone.datetime(current_year, 1, 1, 0, 0, 0))
+
         point2, _ = self._create_second_point("B Point", total_granted=1000, flow_granted=5.0)
+        self._create_interaction(self.point, 0, 0.0, date_time=year_start)
+        self._create_interaction(point2, 0, 0.0, date_time=year_start)
         self._create_interaction(self.point, 500, 5.0)
         self._create_interaction(point2, 200, 2.0)
 

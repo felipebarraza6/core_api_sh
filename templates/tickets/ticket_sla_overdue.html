@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SLA vencido - SmartHydro</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #0b1120;
+        color: #e2e8f0;
+      }
+      .container {
+        max-width: 640px;
+        margin: 24px auto;
+        background-color: #111827;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #7f1d1d;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      }
+      .header {
+        background: linear-gradient(135deg, #b91c1c 0%, #0f172a 100%);
+        padding: 28px;
+        text-align: center;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 22px;
+        color: #fecaca;
+        letter-spacing: 0.5px;
+      }
+      .header p {
+        margin: 8px 0 0;
+        color: #fca5a5;
+        font-size: 14px;
+      }
+      .content {
+        padding: 28px;
+      }
+      .badge {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 16px;
+      }
+      .badge-overdue {
+        background-color: #7f1d1d;
+        color: #fecaca;
+      }
+      .ticket-title {
+        font-size: 20px;
+        font-weight: 700;
+        color: #f8fafc;
+        margin: 0 0 20px 0;
+      }
+      .alert-box {
+        background-color: #450a0a;
+        border-left: 4px solid #ef4444;
+        padding: 16px;
+        border-radius: 0 8px 8px 0;
+        margin-bottom: 24px;
+      }
+      .alert-box ul {
+        margin: 0;
+        padding-left: 20px;
+        color: #fecaca;
+        line-height: 1.6;
+      }
+      .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-bottom: 24px;
+      }
+      .info-item {
+        background-color: #0f172a;
+        padding: 14px;
+        border-radius: 8px;
+        border: 1px solid #1e3a8a;
+      }
+      .info-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        color: #60a5fa;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .info-value {
+        font-size: 15px;
+        color: #f1f5f9;
+      }
+      .priority-CRITICA { color: #f87171; font-weight: 700; }
+      .priority-ALTA { color: #fbbf24; font-weight: 700; }
+      .priority-MEDIA { color: #60a5fa; font-weight: 700; }
+      .priority-BAJA { color: #94a3b8; font-weight: 700; }
+      .footer {
+        background-color: #0f172a;
+        padding: 20px;
+        text-align: center;
+        font-size: 12px;
+        color: #64748b;
+        border-top: 1px solid #7f1d1d;
+      }
+      @media (max-width: 480px) {
+        .info-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>⏰ SLA VENCIDO</h1>
+        <p>El siguiente ticket requiere atención inmediata</p>
+      </div>
+
+      <div class="content">
+        <span class="badge badge-overdue">Vencido</span>
+        <h2 class="ticket-title">#{{ ticket_id }} — {{ title }}</h2>
+
+        <div class="alert-box">
+          <ul>
+            {% for item in overdue_items %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Cliente</div>
+            <div class="info-value">{{ client_name|default:"N/A" }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Punto</div>
+            <div class="info-value">{{ point_name|default:"N/A" }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Categoría</div>
+            <div class="info-value">{{ category|default:"N/A" }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Prioridad</div>
+            <div class="info-value priority-{{ priority }}">{{ priority_display|default:priority }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Estado</div>
+            <div class="info-value">{{ status_display|default:status }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Asignado a</div>
+            <div class="info-value">{{ assigned_to_name|default:"Sin asignar" }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>© SmartHydro — Sistema de Monitoreo Hidrológico</p>
+        <p>Este mensaje fue generado automáticamente por el sistema de tickets.</p>
+      </div>
+    </div>
+  </body>
+</html>

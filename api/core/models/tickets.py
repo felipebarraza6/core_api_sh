@@ -12,6 +12,70 @@ from .catchment_points import CatchmentPoint, Client, ProjectCatchments
 from .utils import ModelApi
 
 
+class TicketCategory(ModelApi):
+    """
+    Categorías dinámicas para tickets de soporte.
+    Cada categoría pertenece a un tipo fijo (SOFTWARE, HARDWARE, COMPLIANCE,
+    WORK_ORDER) y puede tener subcategorías del mismo tipo.
+    """
+
+    TYPE_CHOICES = [
+        ("SOFTWARE", "Software"),
+        ("HARDWARE", "Hardware"),
+        ("COMPLIANCE", "Cumplimiento"),
+        ("WORK_ORDER", "Orden de Trabajo"),
+    ]
+
+    category_type = models.CharField(
+        max_length=20,
+        choices=TYPE_CHOICES,
+        verbose_name="Tipo",
+    )
+    name = models.CharField(max_length=100, verbose_name="Nombre")
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="subcategories",
+        verbose_name="Categoría padre",
+    )
+    operators = models.ManyToManyField(
+        "core.User",
+        blank=True,
+        related_name="operated_ticket_categories",
+        verbose_name="Operadores",
+        help_text="Usuarios que recibirán notificación cuando se cree un ticket en esta categoría.",
+    )
+    notify_operators_on_create = models.BooleanField(
+        default=True,
+        verbose_name="Notificar operadores al crear ticket",
+        help_text="Si está activo, se enviará un correo a los operadores cuando se cree un ticket de esta categoría.",
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Activa")
+
+    class Meta:
+        verbose_name = "Categoría de ticket"
+        verbose_name_plural = "Categorías de tickets"
+        ordering = ["category_type", "name"]
+        unique_together = [["category_type", "name", "parent"]]
+
+    def __str__(self):
+        if self.parent:
+            return f"{self.get_category_type_display()} / {self.parent.name} / {self.name}"
+        return f"{self.get_category_type_display()} / {self.name}"
+
+    def clean(self):
+        errors = {}
+        if self.parent:
+            if self.parent.category_type != self.category_type:
+                errors["parent"] = "La subcategoría debe ser del mismo tipo que su padre."
+            if self.parent_id == self.pk:
+                errors["parent"] = "Una categoría no puede ser su propio padre."
+        if errors:
+            raise ValidationError(errors)
+
+
 class SLAConfig(ModelApi):
     """
     Configuración de tiempos de respuesta/resolución por cliente/proyecto/categoría/prioridad.
@@ -23,15 +87,6 @@ class SLAConfig(ModelApi):
         ("MEDIA", "Media"),
         ("ALTA", "Alta"),
         ("CRITICA", "Crítica"),
-    ]
-
-    CATEGORY_CHOICES = [
-        ("SOFTWARE", "Software"),
-        ("HARDWARE", "Hardware"),
-        ("CONECTIVIDAD", "Conectividad"),
-        ("DGA", "DGA"),
-        ("TELEMETRIA", "Telemetría"),
-        ("OT", "Orden de Trabajo"),
     ]
 
     client = models.ForeignKey(
@@ -50,11 +105,12 @@ class SLAConfig(ModelApi):
         verbose_name="Proyecto",
         help_text="Si se deja vacío, aplica a todos los proyectos del cliente.",
     )
-    category = models.CharField(
-        max_length=50,
-        choices=CATEGORY_CHOICES,
+    category = models.ForeignKey(
+        "core.TicketCategory",
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        related_name="sla_configs",
         verbose_name="Categoría",
         help_text="Si se deja vacío, aplica a todas las categorías.",
     )
@@ -115,12 +171,13 @@ class SLAConfig(ModelApi):
 
 class SupportTicket(ModelApi):
     """
-    Ticket de soporte técnico. Siempre vinculado a un punto de captación.
+    Ticket de soporte técnico. Vinculado a uno o varios puntos de captación.
     """
 
     STATUS_CHOICES = [
         ("ABIERTO", "Abierto"),
         ("EN_ANALISIS", "En análisis"),
+        ("EN_ORDEN_TRABAJO", "En orden de trabajo"),
         ("ESPERA_CLIENTE", "Espera cliente"),
         ("ESPERA_PROVEEDOR", "Espera proveedor"),
         ("RESUELTO", "Resuelto"),
@@ -133,15 +190,6 @@ class SupportTicket(ModelApi):
         ("MEDIA", "Media"),
         ("ALTA", "Alta"),
         ("CRITICA", "Crítica"),
-    ]
-
-    CATEGORY_CHOICES = [
-        ("SOFTWARE", "Software"),
-        ("HARDWARE", "Hardware"),
-        ("CONECTIVIDAD", "Conectividad"),
-        ("DGA", "DGA"),
-        ("TELEMETRIA", "Telemetría"),
-        ("OT", "Orden de Trabajo"),
     ]
 
     SOURCE_CHOICES = [
@@ -158,11 +206,10 @@ class SupportTicket(ModelApi):
         ("INTERNO", "Interno"),
     ]
 
-    point_catchment = models.ForeignKey(
+    points = models.ManyToManyField(
         CatchmentPoint,
-        on_delete=models.CASCADE,
         related_name="support_tickets",
-        verbose_name="Punto de captación",
+        verbose_name="Puntos de captación",
     )
 
     title = models.CharField(max_length=300, verbose_name="Título")
@@ -199,12 +246,13 @@ class SupportTicket(ModelApi):
         verbose_name="Prioridad",
         db_index=True,
     )
-    category = models.CharField(
-        max_length=30,
-        choices=CATEGORY_CHOICES,
-        default="TELEMETRIA",
+    category = models.ForeignKey(
+        "core.TicketCategory",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tickets",
         verbose_name="Categoría",
-        db_index=True,
     )
     source = models.CharField(
         max_length=30,
@@ -266,6 +314,12 @@ class SupportTicket(ModelApi):
         blank=True,
         verbose_name="Resuelto según SLA",
     )
+    sla_last_overdue_notification = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Última notificación de SLA vencido",
+        help_text="Se usa para evitar enviar spam de recordatorios.",
+    )
 
     resolved_at = models.DateTimeField(
         null=True,
@@ -278,6 +332,19 @@ class SupportTicket(ModelApi):
         verbose_name="Fecha de cierre",
     )
 
+    scheduled_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Fecha planificada",
+        help_text="Fecha de visita o ejecución planificada por operaciones.",
+    )
+    visit_report = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Informe de visita",
+        help_text="Reporte técnico posterior a la visita/ejecución.",
+    )
+
     is_active = models.BooleanField(default=True, verbose_name="Activo", db_index=True)
 
     class Meta:
@@ -285,7 +352,6 @@ class SupportTicket(ModelApi):
         verbose_name_plural = "Tickets de soporte"
         ordering = ["-created"]
         indexes = [
-            models.Index(fields=["point_catchment", "status", "is_active"]),
             models.Index(fields=["assigned_to", "status", "is_active"]),
             models.Index(fields=["origin", "status", "is_active"]),
             models.Index(fields=["category", "status", "is_active"]),

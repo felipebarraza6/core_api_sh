@@ -19,7 +19,7 @@ from .views import (
     OptimizedLoginView, PointsSummaryView, PointSummaryView, MyPointsView,
     DashboardStatsView, PointCalendarView, PublicAnnouncementsView,
     PointVariablesView, ClientStatsChatView, PointRecordsView, PointConfigView,
-    SystemEventsSummaryView,
+    SystemEventsSummaryView, StaffUsersListView,
 )
 from .views_tickets import (
     TicketsListCreateView,
@@ -29,6 +29,11 @@ from .views_tickets import (
     TicketStatusChangeView,
     TicketStatsView,
     TicketAttachmentsView,
+    TicketCategoryListCreateView,
+    TicketCategoryDetailView,
+    TicketMyDeskView,
+    SLAConfigListCreateView,
+    SLAConfigDetailView,
 )
 from .views_telemetry_backfill import TelemetryBackfillView
 from .views_point_gaps import PointGapsView
@@ -66,6 +71,9 @@ urlpatterns = [
 
     # Optimized login (menos datos que el original)
     path('login/', OptimizedLoginView.as_view(), name='login'),
+
+    # Staff users list (para asignación de tickets/soporte)
+    path('staff_users/', StaffUsersListView.as_view(), name='staff_users'),
 
     # Points summary (reemplaza get_profile para Centro de Control)
     path('points_summary/', PointsSummaryView.as_view(), name='points_summary'),
@@ -107,6 +115,11 @@ urlpatterns = [
     path('tickets/<int:pk>/status/', TicketStatusChangeView.as_view(), name='ticket_status'),
     path('tickets/<int:pk>/attachments/', TicketAttachmentsView.as_view(), name='ticket_attachments'),
     path('tickets/stats/', TicketStatsView.as_view(), name='ticket_stats'),
+    path('tickets/my_desk/', TicketMyDeskView.as_view(), name='ticket_my_desk'),
+    path('ticket-categories/', TicketCategoryListCreateView.as_view(), name='ticket_categories_list_create'),
+    path('ticket-categories/<int:pk>/', TicketCategoryDetailView.as_view(), name='ticket_categories_detail'),
+    path('sla-configs/', SLAConfigListCreateView.as_view(), name='sla_configs_list_create'),
+    path('sla-configs/<int:pk>/', SLAConfigDetailView.as_view(), name='sla_configs_detail'),
 
     # Backfill histórico de telemetría
     path('telemetry/backfill/', TelemetryBackfillView.as_view(), name='telemetry_backfill'),

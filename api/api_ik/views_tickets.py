@@ -5,19 +5,20 @@ Endpoints bajo /api/ik/tickets/
 Nada toca el legacy (NotificationsCatchment).
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.db.models import Q, Count
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from .throttles import TicketRateThrottle
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 
 from api.core.models import (
     SupportTicket,
+    TicketCategory,
     TicketComment,
     TicketAttachment,
     TicketActivityLog,
@@ -31,7 +32,12 @@ from api.core.serializers.tickets import (
     TicketCommentSerializer,
     TicketAttachmentSerializer,
     TicketActivityLogSerializer,
+    TicketCategorySerializer,
+    TicketCategoryWriteSerializer,
+    SLAConfigSerializer,
+    SLAConfigWriteSerializer,
 )
+from api.core.signals.tickets import _notify_category_operators
 
 
 # ============================================================================
@@ -53,10 +59,11 @@ def _find_sla_config(ticket):
     """
     Busca la SLAConfig más específica para un ticket.
     Orden de prioridad: más campos coincidentes = más específico.
+    Usa el primer punto vinculado para inferir cliente/proyecto.
     """
-    point = ticket.point_catchment
-    client = point.project.client if point.project else None
-    project = point.project
+    point = ticket.points.first()
+    client = point.project.client if point and point.project else None
+    project = point.project if point else None
     category = ticket.category
     priority = ticket.priority
 
@@ -143,13 +150,33 @@ def _find_sla_config(ticket):
 
 
 def _apply_sla_to_ticket(ticket):
-    """Busca SLA y calcula deadlines."""
+    """Busca SLA y calcula deadlines respetando horario hábil si aplica.
+
+    Los tickets con origen interno se tratan como borradores o eventos
+    internos; no reciben SLA hasta que sean convertidos/pasados a origen
+    cliente o atendidos manualmente.
+    """
+    if ticket.origin == "INTERNO":
+        ticket.sla_config = None
+        ticket.sla_deadline_response = None
+        ticket.sla_deadline_resolution = None
+        return ticket
+
     sla = _find_sla_config(ticket)
     if sla:
         ticket.sla_config = sla
         now = ticket.created or timezone.now()
-        ticket.sla_deadline_response = now + timedelta(hours=sla.response_time_hours)
-        ticket.sla_deadline_resolution = now + timedelta(hours=sla.resolution_time_hours)
+        if sla.business_hours_only:
+            from api.core.utils.business_hours import add_business_hours
+            ticket.sla_deadline_response = add_business_hours(
+                now, sla.response_time_hours
+            )
+            ticket.sla_deadline_resolution = add_business_hours(
+                now, sla.resolution_time_hours
+            )
+        else:
+            ticket.sla_deadline_response = now + timedelta(hours=sla.response_time_hours)
+            ticket.sla_deadline_resolution = now + timedelta(hours=sla.resolution_time_hours)
     else:
         ticket.sla_config = None
         ticket.sla_deadline_response = None
@@ -172,6 +199,12 @@ def _log_activity(ticket, user, field_name, old_value, new_value):
 # ENDPOINTS
 # ============================================================================
 
+class TicketPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 1000
+
+
 class TicketsListCreateView(APIView):
     """
     GET  /api/ik/tickets/      → listar tickets accesibles
@@ -188,40 +221,88 @@ class TicketsListCreateView(APIView):
         status_filter = request.query_params.get("status")
         origin_filter = request.query_params.get("origin")
         category_filter = request.query_params.get("category")
+        category_type_filter = request.query_params.get("category_type")
         priority_filter = request.query_params.get("priority")
         assigned_to = request.query_params.get("assigned_to")
-        point_id = request.query_params.get("point_catchment")
+        point_id = request.query_params.get("point_id") or request.query_params.get("point_catchment")
+        project_id = request.query_params.get("project_id")
+        scheduled_date = request.query_params.get("scheduled_date")
+        has_visit_report = request.query_params.get("has_visit_report")
         search = request.query_params.get("search")
 
         qs = SupportTicket.objects.filter(
-            point_catchment_id__in=accessible_ids,
+            points__id__in=accessible_ids,
             is_active=True,
         ).select_related(
-            "point_catchment", "point_catchment__project", "point_catchment__project__client",
-            "created_by", "assigned_to",
-        ).prefetch_related("comments")
+            "created_by", "assigned_to", "category",
+        ).prefetch_related(
+            "points", "points__project", "points__project__client", "comments"
+        ).distinct()
 
         if status_filter:
             qs = qs.filter(status=status_filter)
         if origin_filter:
             qs = qs.filter(origin=origin_filter)
         if category_filter:
-            qs = qs.filter(category=category_filter)
+            qs = qs.filter(category_id=category_filter)
+        if category_type_filter:
+            qs = qs.filter(category__category_type=category_type_filter.upper())
         if priority_filter:
             qs = qs.filter(priority=priority_filter)
         if assigned_to:
             qs = qs.filter(assigned_to_id=assigned_to)
         if point_id:
-            qs = qs.filter(point_catchment_id=point_id)
+            qs = qs.filter(points__id=point_id)
+        if project_id:
+            try:
+                qs = qs.filter(points__project_id=int(project_id))
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "project_id debe ser un entero válido."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        if scheduled_date:
+            qs = qs.filter(scheduled_date=scheduled_date)
+        if has_visit_report is not None:
+            if has_visit_report.lower() in ("true", "1", "yes"):
+                qs = qs.exclude(visit_report__isnull=True).exclude(visit_report__exact="")
+            elif has_visit_report.lower() in ("false", "0", "no"):
+                qs = qs.filter(visit_report__isnull=True) | qs.filter(visit_report__exact="")
         if search:
             qs = qs.filter(
                 Q(title__icontains=search) | Q(description__icontains=search)
             )
 
+        # Filtro por rango de fecha de creación
+        created_from = request.query_params.get("created_from")
+        created_to = request.query_params.get("created_to")
+        if created_from:
+            try:
+                created_from_dt = timezone.make_aware(
+                    datetime.combine(datetime.fromisoformat(created_from), datetime.min.time())
+                )
+                qs = qs.filter(created__gte=created_from_dt)
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "created_from debe tener formato YYYY-MM-DD."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        if created_to:
+            try:
+                created_to_dt = timezone.make_aware(
+                    datetime.combine(datetime.fromisoformat(created_to), datetime.max.time())
+                )
+                qs = qs.filter(created__lte=created_to_dt)
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "created_to debe tener formato YYYY-MM-DD."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         qs = qs.order_by("-created")
 
         # Paginación
-        paginator = PageNumberPagination()
+        paginator = TicketPagination()
         result_page = paginator.paginate_queryset(qs, request)
         serializer = SupportTicketListSerializer(result_page, many=True)
         return paginator.get_paginated_response(serializer.data)
@@ -229,17 +310,23 @@ class TicketsListCreateView(APIView):
     def post(self, request):
         user = request.user
         data = request.data.copy()
-
-        # Validar que el punto sea accesible
-        point_id = data.get("point_catchment")
         accessible_ids = _get_accessible_point_ids(user)
-        if point_id:
-            try:
-                point_id_int = int(point_id)
-            except (ValueError, TypeError):
-                return Response({"error": "point_id debe ser un entero válido."}, status=status.HTTP_400_BAD_REQUEST)
-            if point_id_int not in accessible_ids:
-                return Response({"error": "No tienes acceso a este punto."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Validar que todos los puntos sean accesibles
+        point_ids = data.get("points", [])
+        if not isinstance(point_ids, list):
+            return Response({"error": "points debe ser una lista de IDs."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            point_ids_int = [int(pid) for pid in point_ids]
+        except (ValueError, TypeError):
+            return Response({"error": "Cada point_id debe ser un entero válido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not point_ids_int:
+            return Response({"error": "Debe enviar al menos un punto."}, status=status.HTTP_400_BAD_REQUEST)
+
+        unauthorized = [pid for pid in point_ids_int if pid not in accessible_ids]
+        if unauthorized:
+            return Response({"error": "No tienes acceso a algunos puntos."}, status=status.HTTP_403_FORBIDDEN)
 
         # Si el usuario no es staff, forzar origin=CLIENTE y source=APP_CLIENTE
         if not (user.is_staff or user.is_superuser):
@@ -254,6 +341,7 @@ class TicketsListCreateView(APIView):
                 "sla_config", "sla_deadline_response", "sla_deadline_resolution"
             ])
             _log_activity(ticket, user, "CREACIÓN", None, "Ticket creado")
+            _notify_category_operators(ticket.id)
             return Response(
                 SupportTicketDetailSerializer(ticket, context={"request": request}).data,
                 status=status.HTTP_201_CREATED,
@@ -273,13 +361,13 @@ class TicketDetailUpdateView(APIView):
         accessible_ids = _get_accessible_point_ids(user)
         try:
             ticket = SupportTicket.objects.select_related(
-                "point_catchment", "point_catchment__project", "point_catchment__project__client",
-                "created_by", "assigned_to", "sla_config",
+                "created_by", "assigned_to", "sla_config", "category",
             ).prefetch_related(
+                "points", "points__project", "points__project__client",
                 "comments", "comments__author",
                 "activity_logs", "activity_logs__user",
                 "attachments",
-            ).get(pk=pk, point_catchment_id__in=accessible_ids)
+            ).get(pk=pk, points__id__in=accessible_ids)
         except SupportTicket.DoesNotExist:
             return None
         return ticket
@@ -300,7 +388,10 @@ class TicketDetailUpdateView(APIView):
         # Clientes solo pueden actualizar ciertos campos
         allowed_fields = ["title", "description", "priority", "category"]
         if user.is_staff or user.is_superuser:
-            allowed_fields.extend(["assigned_to", "status", "is_active"])
+            allowed_fields.extend([
+                "points", "assigned_to", "status", "is_active",
+                "scheduled_date", "visit_report",
+            ])
 
         data = {k: v for k, v in request.data.items() if k in allowed_fields}
 
@@ -338,6 +429,33 @@ class TicketDetailUpdateView(APIView):
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    def delete(self, request, pk):
+        """
+        DELETE /api/ik/tickets/<id>/  → eliminación lógica (solo staff/superuser).
+        """
+        user = request.user
+        if not (user.is_staff or user.is_superuser):
+            return Response(
+                {"error": "No tiene permisos para eliminar tickets."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        ticket = self._get_ticket(pk, user)
+        if not ticket:
+            return Response({"error": "Ticket no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not ticket.is_active:
+            return Response(
+                {"error": "El ticket ya ha sido eliminado."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        ticket.is_active = False
+        ticket.save(update_fields=["is_active"])
+        _log_activity(ticket, user, "is_active", True, False)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class TicketCommentsView(APIView):
     """
@@ -350,7 +468,7 @@ class TicketCommentsView(APIView):
     def _get_ticket(self, pk, user):
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            return SupportTicket.objects.get(pk=pk, point_catchment_id__in=accessible_ids)
+            return SupportTicket.objects.get(pk=pk, points__id__in=accessible_ids)
         except SupportTicket.DoesNotExist:
             return None
 
@@ -421,7 +539,7 @@ class TicketAssignView(APIView):
 
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            ticket = SupportTicket.objects.get(pk=pk, point_catchment_id__in=accessible_ids)
+            ticket = SupportTicket.objects.get(pk=pk, points__id__in=accessible_ids)
         except SupportTicket.DoesNotExist:
             return Response({"error": "Ticket no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -458,7 +576,7 @@ class TicketStatusChangeView(APIView):
 
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            ticket = SupportTicket.objects.get(pk=pk, point_catchment_id__in=accessible_ids)
+            ticket = SupportTicket.objects.get(pk=pk, points__id__in=accessible_ids)
         except SupportTicket.DoesNotExist:
             return Response({"error": "Ticket no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -499,9 +617,9 @@ class TicketStatsView(APIView):
         user = request.user
         accessible_ids = _get_accessible_point_ids(user)
         base_qs = SupportTicket.objects.filter(
-            point_catchment_id__in=accessible_ids,
+            points__id__in=accessible_ids,
             is_active=True,
-        )
+        ).distinct()
 
         by_status = {
             item["status"]: item["count"]
@@ -554,7 +672,7 @@ class TicketAttachmentsView(APIView):
     def _get_ticket(self, pk, user):
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            return SupportTicket.objects.get(pk=pk, point_catchment_id__in=accessible_ids)
+            return SupportTicket.objects.get(pk=pk, points__id__in=accessible_ids)
         except SupportTicket.DoesNotExist:
             return None
 
@@ -605,3 +723,230 @@ class TicketAttachmentsView(APIView):
         )
         serializer = TicketAttachmentSerializer(attachment, context={"request": request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class TicketMyDeskView(APIView):
+    """
+    GET /api/ik/tickets/my_desk/
+
+    Tickets relevantes para el usuario autenticado:
+      - Tickets donde está asignado como responsable.
+      - Tickets en categorías donde figura como operador.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [TicketRateThrottle]
+
+    def get(self, request):
+        user = request.user
+
+        qs = SupportTicket.objects.filter(
+            Q(assigned_to=user) | Q(category__operators=user),
+            is_active=True,
+        ).select_related(
+            "created_by", "assigned_to", "category",
+        ).prefetch_related(
+            "points", "points__project", "points__project__client", "comments"
+        ).distinct()
+
+        # Filtros opcionales
+        status_filter = request.query_params.get("status")
+        priority_filter = request.query_params.get("priority")
+        category_filter = request.query_params.get("category")
+        search = request.query_params.get("search")
+        scheduled_date = request.query_params.get("scheduled_date")
+
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        if priority_filter:
+            qs = qs.filter(priority=priority_filter)
+        if category_filter:
+            qs = qs.filter(category_id=category_filter)
+        if scheduled_date:
+            qs = qs.filter(scheduled_date=scheduled_date)
+        if search:
+            qs = qs.filter(
+                Q(title__icontains=search) | Q(description__icontains=search)
+            )
+
+        qs = qs.order_by("-created")
+
+        paginator = TicketPagination()
+        result_page = paginator.paginate_queryset(qs, request)
+        serializer = SupportTicketListSerializer(result_page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+class IsStaffOrReadOnly(IsAuthenticated):
+    """Permite lectura a usuarios autenticados; escritura solo a staff."""
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return True
+        return request.user.is_staff or request.user.is_superuser
+
+
+class SLAConfigListCreateView(APIView):
+    """
+    GET  /api/ik/sla-configs/ → listar (solo staff)
+    POST /api/ik/sla-configs/ → crear (solo staff)
+    """
+
+    permission_classes = [IsAdminUser]
+    throttle_classes = [TicketRateThrottle]
+
+    def get(self, request):
+        qs = SLAConfig.objects.filter(is_active=True).select_related(
+            "client", "project", "category", "escalation_user"
+        )
+        client_id = request.query_params.get("client_id")
+        project_id = request.query_params.get("project_id")
+        category_id = request.query_params.get("category_id")
+        priority = request.query_params.get("priority")
+
+        if client_id:
+            qs = qs.filter(client_id=client_id)
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+        if category_id:
+            qs = qs.filter(category_id=category_id)
+        if priority:
+            qs = qs.filter(priority=priority.upper())
+
+        serializer = SLAConfigSerializer(qs.order_by("-created"), many=True)
+        return Response({"results": serializer.data})
+
+    def post(self, request):
+        serializer = SLAConfigWriteSerializer(data=request.data)
+        if serializer.is_valid():
+            sla = serializer.save()
+            return Response(SLAConfigSerializer(sla).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SLAConfigDetailView(APIView):
+    """
+    GET    /api/ik/sla-configs/<id>/ → detalle (solo staff)
+    PATCH  /api/ik/sla-configs/<id>/ → editar (solo staff)
+    DELETE /api/ik/sla-configs/<id>/ → eliminar (solo staff)
+    """
+
+    permission_classes = [IsAdminUser]
+    throttle_classes = [TicketRateThrottle]
+
+    def _get_sla(self, pk):
+        try:
+            return SLAConfig.objects.get(pk=pk)
+        except SLAConfig.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        sla = self._get_sla(pk)
+        if not sla:
+            return Response({"error": "SLA no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = SLAConfigSerializer(sla)
+        return Response(serializer.data)
+
+    def patch(self, request, pk):
+        sla = self._get_sla(pk)
+        if not sla:
+            return Response({"error": "SLA no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = SLAConfigWriteSerializer(sla, data=request.data, partial=True)
+        if serializer.is_valid():
+            sla = serializer.save()
+            return Response(SLAConfigSerializer(sla).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        sla = self._get_sla(pk)
+        if not sla:
+            return Response({"error": "SLA no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        sla.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class TicketCategoryListCreateView(APIView):
+    """
+    GET  /api/ik/ticket-categories/ → listar (todos los usuarios autenticados)
+    POST /api/ik/ticket-categories/ → crear (solo staff)
+    """
+
+    permission_classes = [IsStaffOrReadOnly]
+    throttle_classes = [TicketRateThrottle]
+
+    def get(self, request):
+        qs = TicketCategory.objects.filter(is_active=True)
+
+        category_type = request.query_params.get("category_type")
+        if category_type:
+            qs = qs.filter(category_type=category_type.upper())
+
+        parent_id = request.query_params.get("parent_id")
+        if parent_id:
+            try:
+                qs = qs.filter(parent_id=int(parent_id))
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "parent_id debe ser un entero válido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        elif request.query_params.get("top_only", "").lower() in ("true", "1", "yes"):
+            qs = qs.filter(parent__isnull=True)
+
+        serializer = TicketCategorySerializer(qs.order_by("category_type", "name"), many=True)
+        return Response({"categories": serializer.data})
+
+    def post(self, request):
+        serializer = TicketCategoryWriteSerializer(data=request.data)
+        if serializer.is_valid():
+            category = serializer.save()
+            return Response(
+                TicketCategorySerializer(category).data,
+                status=status.HTTP_201_CREATED,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class TicketCategoryDetailView(APIView):
+    """
+    GET    /api/ik/ticket-categories/<id>/ → detalle
+    PATCH  /api/ik/ticket-categories/<id>/ → editar (solo staff)
+    DELETE /api/ik/ticket-categories/<id>/ → desactivar (solo staff)
+    """
+
+    permission_classes = [IsStaffOrReadOnly]
+    throttle_classes = [TicketRateThrottle]
+
+    def _get_category(self, pk):
+        try:
+            return TicketCategory.objects.get(pk=pk)
+        except TicketCategory.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        category = self._get_category(pk)
+        if not category:
+            return Response({"error": "Categoría no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = TicketCategorySerializer(category)
+        return Response(serializer.data)
+
+    def patch(self, request, pk):
+        category = self._get_category(pk)
+        if not category:
+            return Response({"error": "Categoría no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = TicketCategoryWriteSerializer(category, data=request.data, partial=True)
+        if serializer.is_valid():
+            category = serializer.save()
+            return Response(TicketCategorySerializer(category).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        category = self._get_category(pk)
+        if not category:
+            return Response({"error": "Categoría no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+        # Desactivar en lugar de borrar para no romper tickets históricos
+        category.is_active = False
+        category.save(update_fields=["is_active"])
+        return Response(status=status.HTTP_204_NO_CONTENT)

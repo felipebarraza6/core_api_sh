@@ -128,6 +128,20 @@ USE_NEW_CAUDAL_CALCULATION_MEDIO = os.environ.get(
     "USE_NEW_CAUDAL_CALCULATION_MEDIO", "True"
 ).lower() == "true"
 
+# Modo prueba para notificaciones de SLA vencido.
+# Ejemplo: '["felipebarraza@smarthydro.cl"]' para que solo llegue a Felipe.
+# Dejar vacío para notificar a todos los operadores/asignados normales.
+import json as _json
+
+_sla_overdue_test_only = os.environ.get("SLA_OVERDUE_TEST_ONLY", "").strip()
+if _sla_overdue_test_only:
+    try:
+        SLA_OVERDUE_TEST_ONLY = _json.loads(_sla_overdue_test_only)
+    except _json.JSONDecodeError:
+        SLA_OVERDUE_TEST_ONLY = []
+else:
+    SLA_OVERDUE_TEST_ONLY = []
+
 # ========================================
 # DGA CONFIGURATION - Dirección General de Aguas
 # ========================================
@@ -265,7 +279,21 @@ CRONJOBS = [
         "api.cronjobs.reports.dga_mayor_hourly.run",
         ">> /tmp/smarthydro/dga_mayor_hourly.log 2>&1",
     ),
+    # notificación de tickets con SLA vencido
+    (
+        "0 * * * *",
+        "api.core.management.commands.notify_sla_overdue",
+        ">> /tmp/smarthydro/notify_sla_overdue.log 2>&1",
+    ),
+    # limpieza de tickets internos inactivos - 02:00 UTC
+    (
+        "0 2 * * *",
+        "api.core.management.commands.cleanup_stale_internal_tickets",
+        ">> /tmp/smarthydro/cleanup_stale_internal_tickets.log 2>&1",
+    ),
 ]
+
+
 
 # Reordenar apps para que "Operaciones y Telemetría" aparezca primero en el menú
 # LOCAL_APPS primero para que core.apps.CoreAppConfig aparezca antes que auth

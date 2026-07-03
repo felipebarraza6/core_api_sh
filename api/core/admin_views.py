@@ -25,6 +25,7 @@ from api.core.validators.telemetry_validator import (
     validate_flow_impossible, validate_level_impossible, calculate_max_flow_by_diameter,
     calculate_probable_flow_by_velocity
 )
+from api.core.utils.consumption import calculate_consumption_for_point
 
 
 def safe_float(value, default=0.0):
@@ -2029,8 +2030,12 @@ def dga_compliance_report_view(request):
             elif has_caudal_promedio and not has_d6:
                 flow_value = None  # N/A
 
+        # Solo considerar límites DGA para códigos de obra OB. Las configs
+        # SMA (code_dga sin OB) usan total_granted_dga como proceso_id, no límite.
+        is_dga_config = bool(dga_config.code_dga and dga_config.code_dga.upper().startswith('OB'))
+
         # Caudal autorizado vs actual
-        caudal_autorizado = safe_float(dga_config.flow_granted_dga)
+        caudal_autorizado = safe_float(dga_config.flow_granted_dga) if is_dga_config else 0.0
         flow_safe = safe_float(flow_value)
         pct_usado_caudal = None
         diferencia_caudal = None
@@ -2050,13 +2055,16 @@ def dga_compliance_report_view(request):
                 caudal_status = 'proximo'
                 puntos_proximos_caudal += 1
 
-        # Consumo del año en curso (suma de total_diff)
-        consumo_anio = InteractionDetail.objects.filter(
-            catchment_point=point,
-            date_time_medition__year=current_year
-        ).aggregate(sum_diff=Sum('total_diff'))['sum_diff'] or 0
+        # Consumo del año en curso: diferencia entre primer y último total
+        # válido, evitando acumular saltos anómalos de total_diff.
+        if is_dga_config:
+            year_start = timezone.make_aware(datetime(current_year, 1, 1, 0, 0, 0))
+            year_end = timezone.make_aware(datetime(current_year, 12, 31, 23, 59, 59))
+            consumo_anio = calculate_consumption_for_point(point.id, year_start, year_end)
+        else:
+            consumo_anio = 0.0
 
-        total_autorizado = safe_float(dga_config.total_granted_dga)
+        total_autorizado = safe_float(dga_config.total_granted_dga) if is_dga_config else 0.0
         pct_gastado_total = None
         pct_por_gastar_total = None
         total_status = 'ok'

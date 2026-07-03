@@ -14,6 +14,11 @@ class Client(ModelApi):
     address = models.CharField(max_length=300, verbose_name="Direccion")
     phone = models.CharField(max_length=300, verbose_name="Telefono")
     email = models.CharField(max_length=300, verbose_name="Correo")
+    critical = models.BooleanField(
+        default=False,
+        verbose_name="Crítico",
+        help_text="Marca clientes críticos para priorizar monitoreo y alertas.",
+    )
 
     class Meta:
         """Meta data client"""

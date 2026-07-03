@@ -71,9 +71,9 @@ class ClientViewSet(
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
     lookup_field = "id"
-    filterset_fields = ['name', 'rut', 'email']
+    filterset_fields = ['name', 'rut', 'email', 'critical']
     search_fields = ['name', 'rut', 'email']
-    ordering_fields = ['name', 'created']
+    ordering_fields = ['name', 'created', 'critical']
 
     @action(detail=False, methods=['get'], url_path='all')
     def all(self, request):
