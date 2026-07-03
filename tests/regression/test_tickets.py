@@ -349,6 +349,29 @@ class TicketAPITests(TestCase):
         ticket.refresh_from_db()
         self.assertEqual(ticket.status, "EN_ANALISIS")
 
+    def test_detail_with_multiple_accessible_points(self):
+        """Ticket con varios puntos accesibles no debe lanzar MultipleObjectsReturned."""
+        other_point = CatchmentPoint.objects.create(
+            title="Otro Punto API", project=self.project, owner_user=self.user
+        )
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket multipunto",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        ticket.points.add(other_point)
+
+        response = self.client.get(f"/api/ik/tickets/{ticket.id}/")
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get(f"/api/ik/tickets/{ticket.id}/comments/")
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get(f"/api/ik/tickets/{ticket.id}/attachments/")
+        self.assertEqual(response.status_code, 200)
+
     def test_ticket_stats_via_api(self):
         _create_ticket_with_point(
             self.point,

@@ -384,23 +384,24 @@ class TicketDetailUpdateView(APIView):
     def _get_ticket(self, pk, user):
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            qs = SupportTicket.objects.select_related(
+            ticket = SupportTicket.objects.select_related(
                 "created_by", "assigned_to", "sla_config", "category",
             ).prefetch_related(
                 "points", "points__project", "points__project__client",
                 "comments", "comments__author",
                 "activity_logs", "activity_logs__user",
                 "attachments",
-            )
-            # Staff tambien accede a tickets de operaciones sin punto
-            if user.is_staff or user.is_superuser:
-                ticket = qs.get(
-                    Q(pk=pk) & (Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES")),
-                )
-            else:
-                ticket = qs.get(pk=pk, points__id__in=accessible_ids)
+            ).get(pk=pk)
         except SupportTicket.DoesNotExist:
             return None
+
+        # Staff tambien accede a tickets de operaciones sin punto
+        if user.is_staff or user.is_superuser:
+            if ticket.origin != "OPERACIONES" and not ticket.points.filter(id__in=accessible_ids).exists():
+                return None
+        else:
+            if not ticket.points.filter(id__in=accessible_ids).exists():
+                return None
         return ticket
 
     def get(self, request, pk):
@@ -517,13 +518,17 @@ class TicketCommentsView(APIView):
     def _get_ticket(self, pk, user):
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            if user.is_staff or user.is_superuser:
-                return SupportTicket.objects.get(
-                    Q(pk=pk) & (Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"))
-                )
-            return SupportTicket.objects.get(pk=pk, points__id__in=accessible_ids)
+            ticket = SupportTicket.objects.get(pk=pk)
         except SupportTicket.DoesNotExist:
             return None
+
+        if user.is_staff or user.is_superuser:
+            if ticket.origin != "OPERACIONES" and not ticket.points.filter(id__in=accessible_ids).exists():
+                return None
+        else:
+            if not ticket.points.filter(id__in=accessible_ids).exists():
+                return None
+        return ticket
 
     def get(self, request, pk):
         user = request.user
@@ -796,13 +801,17 @@ class TicketAttachmentsView(APIView):
     def _get_ticket(self, pk, user):
         accessible_ids = _get_accessible_point_ids(user)
         try:
-            if user.is_staff or user.is_superuser:
-                return SupportTicket.objects.get(
-                    Q(pk=pk) & (Q(points__id__in=accessible_ids) | Q(origin="OPERACIONES"))
-                )
-            return SupportTicket.objects.get(pk=pk, points__id__in=accessible_ids)
+            ticket = SupportTicket.objects.get(pk=pk)
         except SupportTicket.DoesNotExist:
             return None
+
+        if user.is_staff or user.is_superuser:
+            if ticket.origin != "OPERACIONES" and not ticket.points.filter(id__in=accessible_ids).exists():
+                return None
+        else:
+            if not ticket.points.filter(id__in=accessible_ids).exists():
+                return None
+        return ticket
 
     def get(self, request, pk):
         ticket = self._get_ticket(pk, request.user)
