@@ -608,56 +608,78 @@ class TicketStatusChangeView(APIView):
 class TicketStatsView(APIView):
     """
     GET /api/ik/tickets/stats/
-    Dashboard de soporte: conteos por estado, categoría, prioridad, origen.
+    Dashboard de soporte: conteos por estado, categoria, prioridad, origen y compliance.
     """
     throttle_classes = [TicketRateThrottle]
     permission_classes = [IsAuthenticated]
 
+    def _count_by(self, qs, field):
+        """Cuenta registros agrupados por un campo, usando distinct=True."""
+        return {
+            item[field]: item["count"]
+            for item in qs.values(field).annotate(count=Count("id", distinct=True))
+        }
+
     def get(self, request):
         user = request.user
         accessible_ids = _get_accessible_point_ids(user)
+        # No usar .distinct() previo: el join con points duplica filas y
+        # values().annotate() necesita Count(..., distinct=True) para contar bien.
         base_qs = SupportTicket.objects.filter(
             points__id__in=accessible_ids,
             is_active=True,
-        ).distinct()
+        )
 
-        by_status = {
-            item["status"]: item["count"]
-            for item in base_qs.values("status").annotate(count=Count("id"))
-        }
-        by_category = {
-            item["category"]: item["count"]
-            for item in base_qs.values("category").annotate(count=Count("id"))
-        }
-        by_priority = {
-            item["priority"]: item["count"]
-            for item in base_qs.values("priority").annotate(count=Count("id"))
-        }
-        by_origin = {
-            item["origin"]: item["count"]
-            for item in base_qs.values("origin").annotate(count=Count("id"))
-        }
+        by_status = self._count_by(base_qs, "status")
+        by_category = self._count_by(base_qs, "category")
+        by_priority = self._count_by(base_qs, "priority")
+        by_origin = self._count_by(base_qs, "origin")
+        by_category_type = self._count_by(base_qs, "category__category_type")
 
-        # SLA: vencidos (resolución)
+        # Queryset distinct para conteos y filtros puros de ticket
+        base_qs_distinct = base_qs.distinct()
+
+        # SLA: vencidos
         now = timezone.now()
-        overdue_resolution = base_qs.filter(
+        open_statuses = ["ABIERTO", "EN_ANALISIS", "ESPERA_CLIENTE", "ESPERA_PROVEEDOR"]
+
+        overdue_resolution = base_qs_distinct.filter(
             sla_deadline_resolution__lt=now,
-            status__in=["ABIERTO", "EN_ANALISIS", "ESPERA_CLIENTE", "ESPERA_PROVEEDOR"],
+            status__in=open_statuses,
         ).count()
-        overdue_response = base_qs.filter(
+        overdue_response = base_qs_distinct.filter(
             sla_deadline_response__lt=now,
             sla_responded_at__isnull=True,
-            status__in=["ABIERTO", "EN_ANALISIS", "ESPERA_CLIENTE", "ESPERA_PROVEEDOR"],
+            status__in=open_statuses,
+        ).count()
+
+        # Compliance (categorias de tipo COMPLIANCE)
+        compliance_qs = base_qs_distinct.filter(category__category_type="COMPLIANCE")
+        compliance_overdue_resolution = compliance_qs.filter(
+            sla_deadline_resolution__lt=now,
+            status__in=open_statuses,
+        ).count()
+        compliance_overdue_response = compliance_qs.filter(
+            sla_deadline_response__lt=now,
+            sla_responded_at__isnull=True,
+            status__in=open_statuses,
         ).count()
 
         return Response({
-            "total": base_qs.count(),
+            "total": base_qs_distinct.count(),
             "by_status": by_status,
             "by_category": by_category,
+            "by_category_type": by_category_type,
             "by_priority": by_priority,
             "by_origin": by_origin,
             "sla_overdue_response": overdue_response,
             "sla_overdue_resolution": overdue_resolution,
+            "compliance": {
+                "total": compliance_qs.count(),
+                "by_status": self._count_by(compliance_qs, "status"),
+                "sla_overdue_response": compliance_overdue_response,
+                "sla_overdue_resolution": compliance_overdue_resolution,
+            },
         })
 
 
