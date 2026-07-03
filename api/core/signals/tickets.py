@@ -29,6 +29,11 @@ def _notify_category_operators(ticket_id):
         logger.warning(f"Ticket {ticket_id} no existe; no se envía notificación.")
         return
 
+    # Los tickets de origen interno son borradores/eventos automáticos;
+    # no se notifica a operadores porque aún no requieren atención humana.
+    if ticket.origin == "INTERNO":
+        return
+
     category = ticket.category
     if not category or not category.notify_operators_on_create:
         return
