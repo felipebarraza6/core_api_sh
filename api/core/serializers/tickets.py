@@ -68,13 +68,16 @@ class TicketCategoryWriteSerializer(serializers.ModelSerializer):
 
 class SLAConfigSerializer(serializers.ModelSerializer):
     category_detail = TicketCategorySerializer(source="category", read_only=True)
+    escalation_user_name = serializers.CharField(
+        source="escalation_user.get_full_name", read_only=True
+    )
 
     class Meta:
         model = SLAConfig
         fields = [
             "id", "client", "project", "category", "category_detail", "priority",
             "response_time_hours", "resolution_time_hours",
-            "business_hours_only", "escalation_user", "is_active",
+            "business_hours_only", "escalation_user", "escalation_user_name", "is_active",
             "created", "modified",
         ]
 
