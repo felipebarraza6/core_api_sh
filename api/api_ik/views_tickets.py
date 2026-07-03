@@ -765,6 +765,7 @@ class TicketMyDeskView(APIView):
         qs = SupportTicket.objects.filter(
             Q(assigned_to=user) | Q(category__operators=user),
             is_active=True,
+            origin="CLIENTE",
         ).select_related(
             "created_by", "assigned_to", "category",
         ).prefetch_related(
