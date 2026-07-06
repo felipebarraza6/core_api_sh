@@ -49,7 +49,7 @@ DJANGO_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "jazzmin",  # ✅ Django Jazzmin - DEBE ir ANTES de django.contrib.admin
+    "jazzmin",  # Django Jazzmin - DEBE ir ANTES de django.contrib.admin
     "django.contrib.admin",
 ]
 
@@ -59,25 +59,30 @@ THIRD_PARTY_APPS = [
     "corsheaders",
     "django_filters",
     "django_rest_passwordreset",
+    "drf_spectacular",  # OpenAPI 3.0 documentation
 ]
 
 LOCAL_APPS = [
+    # Core
     "api.core.apps.CoreAppConfig",
-    "api.presentation.apps.PresentationConfig",  # 🆕 Technical Presentation Layer
+    "api.presentation.apps.PresentationConfig",
     "api.chatbot.apps.ChatbotConfig",
     "api.telemetry.apps.TelemetryConfig",
-    "api.ingestion.apps.IngestionConfig",  # 🆕 Gestor de Ingesta y Protocolos (ex-telemetry providers)
-    "api.telemetry.providers.apps.ProvidersConfig",  # Sistema dinámico de proveedores (legacy - migrar a api.providers)
-    "api.crm.apps.CrmConfig",  # 🆕 Gestión de Clientes y Proyectos
-    "api.subscriptions.apps.SubscriptionsConfig",  # 🆕 Módulos y Suscripciones Ikolu
-
-    "api.compliance.apps.ComplianceConfig",  # 🆕 Cumplimiento Normativo (DGA, SMA)
-    "api.notifications.apps.NotificationsConfig",  # 🆕 Sistema de Notificaciones
-    "api.documents.apps.DocumentsConfig",  # 🆕 Gestión Documental
-    "api.infrastructure.apps.InfrastructureConfig",  # 🆕 Infraestructura IoT
+    "api.ingestion.apps.IngestionConfig",
+    "api.telemetry.providers.apps.ProvidersConfig",
+    "api.crm.apps.CrmConfig",
+    "api.subscriptions.apps.SubscriptionsConfig",
+    "api.compliance.apps.ComplianceConfig",
+    "api.notifications.apps.NotificationsConfig",
+    "api.documents.apps.DocumentsConfig",
+    "api.infrastructure.apps.InfrastructureConfig",
     "api.support.apps.SupportConfig",
-    "api.dynamic_registry.apps.DynamicRegistryConfig",  # 🆕 Server-Driven UI Registry
-    "api.unified.apps.UnifiedConfig",  # 🆕 API Unificada v4 (consolida V1, V2, V3)
+    "api.dynamic_registry.apps.DynamicRegistryConfig",
+    "api.unified.apps.UnifiedConfig",
+    # Propuesta VOID - Nuevos módulos
+    "api.gateway.apps.GatewayConfig",       # API Gateway (rate limiting, circuit breaker, versioning)
+    "api.events.apps.EventsConfig",         # Event Bus (arquitectura desacoplada)
+    "api.analytics.apps.AnalyticsConfig",   # API Analytics (usage, performance, health)
     "django_celery_beat",
     "import_export",
 ]
@@ -100,6 +105,15 @@ CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "telemetry@smarthydro.app")
 USE_NEW_CAUDAL_CALCULATION_MEDIO = (
     os.environ.get("USE_NEW_CAUDAL_CALCULATION_MEDIO", "True").lower() == "true"
 )
+
+# Feature flags para módulos VOID
+FEATURE_FLAGS = {
+    "api_gateway": os.environ.get("FF_API_GATEWAY", "True").lower() == "true",
+    "event_bus": os.environ.get("FF_EVENT_BUS", "True").lower() == "true",
+    "api_analytics": os.environ.get("FF_API_ANALYTICS", "True").lower() == "true",
+    "circuit_breaker": os.environ.get("FF_CIRCUIT_BREAKER", "True").lower() == "true",
+    "tenant_throttling": os.environ.get("FF_TENANT_THROTTLING", "True").lower() == "true",
+}
 
 # ========================================
 # DGA CONFIGURATION - Dirección General de Aguas
@@ -124,33 +138,34 @@ USER_DEFAULT_PASSWORD = os.environ.get("USER_DEFAULT_PASSWORD", "pozos.2023")
 INSTALLED_APPS = LOCAL_APPS + DJANGO_APPS + THIRD_PARTY_APPS
 
 MIDDLEWARE = [
-    "django_prometheus.middleware.PrometheusBeforeMiddleware",  # ✅ Prometheus: Before all
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",
+    "api.gateway.middleware.APIGatewayMiddleware",  # VOID: API Gateway lifecycle (request ID, correlation, timing)
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
-    "django.middleware.gzip.GZipMiddleware",  # ✅ RENDIMIENTO: Compresión de respuestas (debe ir temprano)
+    "django.middleware.gzip.GZipMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "corsheaders.middleware.CorsMiddleware",  # Mover antes de CommonMiddleware
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "django_prometheus.middleware.PrometheusAfterMiddleware",  # ✅ Prometheus: After all
+    "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
 
 # Configuración CORS más segura
-CORS_ORIGIN_ALLOW_ALL = False  # Cambiar a False en producción
+CORS_ORIGIN_ALLOW_ALL = False
 CORS_ORIGIN_WHITELIST = [
     "https://smarthydro.app",
     "https://www.smarthydro.app",
     "https://api.smarthydro.app",
     "https://ikolu.smarthydro.app",
-    "http://localhost:3000",  # Solo para desarrollo
-    "http://localhost:8000",  # Solo para desarrollo
-    "http://localhost:3001",  # Local UI development
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "http://localhost:3001",
 ]
 
-# ✅ FIX CORS: Permitir también patrones con regex para subdominios
+# FIX CORS: Permitir también patrones con regex para subdominios
 CORS_ORIGIN_REGEX_WHITELIST = [
     r"^https://.*\.smarthydro\.app$",
 ]
@@ -171,6 +186,10 @@ CORS_ALLOW_HEADERS = [
     "sec-ch-ua",
     "sec-ch-ua-mobile",
     "sec-ch-ua-platform",
+    "x-api-version",           # VOID: Header para versionado de API
+    "x-tenant-id",             # VOID: Header para multi-tenancy
+    "x-correlation-id",        # VOID: Header para correlación de requests
+    "x-request-id",            # VOID: Header para request tracking
 ]
 
 REST_FRAMEWORK = {
@@ -183,6 +202,41 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    # VOID: Enhanced throttling with multi-tenant support
+    "DEFAULT_THROTTLE_CLASSES": [
+        "api.gateway.throttling.TenantRateThrottle",
+        "rest_framework.throttling.AnonRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/hour",
+        "user": "1000/hour",
+    },
+    # VOID: Semantic API versioning
+    "DEFAULT_VERSIONING_CLASS": "api.gateway.versioning.APIVersioning",
+    "DEFAULT_VERSION": "v2",
+    "ALLOWED_VERSIONS": ["v1", "v2", "v3"],
+    # VOID: OpenAPI schema documentation
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# VOID: drf-spectacular configuration
+SPECTACULAR_SETTINGS = {
+    "TITLE": "SmartHydro Core API",
+    "DESCRIPTION": "API de monitoreo hidrologico - Telemetria, alertas, reportes DGA/SMA, CRM y gestion de puntos de captacion.",
+    "VERSION": "2.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": r"/api/",
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
+    "SERVE_AUTHENTICATION": [
+        "rest_framework.authentication.TokenAuthentication",
+    ],
+    "TAGS": [
+        {"name": "Telemetry", "description": "Operaciones de telemetria"},
+        {"name": "Compliance", "description": "Cumplimiento normativo DGA/SMA"},
+        {"name": "CRM", "description": "Gestion de clientes y proyectos"},
+        {"name": "Analytics", "description": "Metricas y analiticas de API"},
+        {"name": "Gateway", "description": "Administracion de API Gateway"},
+    ],
 }
 
 ROOT_URLCONF = "api.urls"
@@ -231,12 +285,12 @@ DATABASES = {
         "OPTIONS": {
             "connect_timeout": 10,
             "application_name": "smarthydro_django",
-            "keepalives": 1,  # Habilitar keepalive para reutilizar conexiones
-            "keepalives_idle": 30,  # Segundos antes de enviar keepalive
-            "keepalives_interval": 10,  # Intervalo entre keepalives
-            "keepalives_count": 5,  # Número de keepalives antes de cerrar
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
         },
-        "CONN_MAX_AGE": 600,  # 10 minutos - reutilizar conexiones
+        "CONN_MAX_AGE": 600,
         "ATOMIC_REQUESTS": True,
     }
 }
@@ -247,9 +301,9 @@ CACHES = {
         "LOCATION": "redis://redis:6379/1",
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "IGNORE_EXCEPTIONS": True,  # Fallback gracefully if Redis is down
+            "IGNORE_EXCEPTIONS": True,
         },
-        "TIMEOUT": 900,  # 15 minutes
+        "TIMEOUT": 900,
     }
 }
 
@@ -294,7 +348,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 # Directorios adicionales para archivos estáticos
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, "static"),  # Archivos estáticos del proyecto
+    os.path.join(BASE_DIR, "static"),
 ]
 
 # Configuración de logging para producción
@@ -312,13 +366,20 @@ LOGGING = {
             "format": "{levelname} {message}",
             "style": "{",
         },
+        "gateway": {
+            "format": (
+                "{levelname} {asctime} [gateway] {request_id} {correlation_id} "
+                "{module} {message}"
+            ),
+            "style": "{",
+        },
     },
     "handlers": {
         "file": {
             "level": "INFO",
             "class": "logging.handlers.RotatingFileHandler",
             "filename": os.environ.get("DJANGO_LOG_FILE", "/app/logs/django.log"),
-            "maxBytes": 1024 * 1024 * 10,  # 10 MB
+            "maxBytes": 1024 * 1024 * 10,
             "backupCount": 5,
             "formatter": "verbose",
             "delay": True,
@@ -328,9 +389,18 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "simple",
         },
+        "gateway_file": {
+            "level": "INFO",
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": "/app/logs/gateway.log",
+            "maxBytes": 1024 * 1024 * 50,
+            "backupCount": 10,
+            "formatter": "gateway",
+            "delay": True,
+        },
     },
     "root": {
-        "handlers": ["console", "file"],
+        "handlers": ["console"],
         "level": "INFO",
     },
     "loggers": {
@@ -342,11 +412,26 @@ LOGGING = {
             "level": "INFO",
             "propagate": False,
         },
+        "api.gateway": {
+            "handlers": ["console", "gateway_file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "api.events": {
+            "handlers": ["console", "file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "api.analytics": {
+            "handlers": ["console", "file"],
+            "level": "INFO",
+            "propagate": False,
+        },
     },
 }
 
 # Configuración de sesiones
-SESSION_COOKIE_AGE = 3600  # 1 hora
+SESSION_COOKIE_AGE = 3600
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_SAVE_EVERY_REQUEST = True
 
@@ -357,23 +442,16 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 # CONFIGURACIÓN DJANGO JAZZMIN - UI MEJORADA
 # ========================================
 JAZZMIN_SETTINGS = {
-    # Título del sitio
-    # Título del sitio
     "site_title": "Ikolu Management",
     "site_header": "Ikolu Management",
     "site_brand": "Ikolu Management",
-    # Logo de Ikolu - Texto en vez de imagen
     "site_logo": None,
     "login_logo": None,
     "login_logo_dark": None,
-    # Tema y colores personalizados - Mejor contraste
-    "theme": "flatly",  # Tema moderno y limpio con buen contraste
-    "dark_mode_theme": "darkly",  # Tema oscuro alternativo
-    # Iconos
-    "site_icon": None,  # Puedes agregar un favicon aquí
-    # Menú personalizado con grupos organizados
+    "theme": "flatly",
+    "dark_mode_theme": "darkly",
+    "site_icon": None,
     "topmenu_links": [
-        # Enlaces externos
         {
             "name": "Ikolu Home",
             "url": "https://ikolu.smarthydro.app",
@@ -387,103 +465,26 @@ JAZZMIN_SETTINGS = {
             "icon": "fas fa-globe",
         },
     ],
-    # Menú lateral personalizado con grupos (Jazzmin 3.x)
     "usermenu_links": [{"model": "auth.user"}],
-    # Configuración del menú lateral
     "show_sidebar": True,
     "navigation_expanded": True,
-    # Orden y agrupación del menú - Organizado por flujo de trabajo
-    "order_with_respect_to": [
-        # OPERACIÓN DE TELEMETRÍA (Prioridad 1)
-        "core.TelemetryRecord",
-        "core.CatchmentPoint",
-        "core.TelemetryScheme",
-        "core.Variable",
-        # CONFIGURACIÓN (Prioridad 2)
-        "core.ProjectCatchments",  # Proyectos
-        "core.Client",  # Clientes
-        # PREPARACIÓN Y ENVÍO (Prioridad 5 - Preparación para DGA)
-        "core.DgaDataConfigCatchment",  # Configuración DGA
-        # ALERTAS Y NOTIFICACIONES (Prioridad 6)
-        "core.NotificationsCatchment",
-        "core.ResponseNotificationsCatchment",
-        # DOCUMENTOS (Prioridad 7)
-        "core.FileCatchment",
-        "core.TypeFileCatchment",
-        # ADMINISTRACIÓN (Prioridad 8)
-        "core.User",
-        "auth.Group",
-        "core.RegisterPersons",
-    ],
-    # Personalización de modelos
-    "custom_links": {},
-    # Iconos personalizados para modelos - Organizados por flujo
-    "icons": {
-        # Autenticación
-        "auth": "fas fa-users-cog",
-        "auth.user": "fas fa-user",
-        "auth.Group": "fas fa-users",
-        # Operación de Telemetría
-        "core.TelemetryRecord": "fas fa-database",
-        "core.CatchmentPoint": "fas fa-map-marker-alt",
-        "core.TelemetryScheme": "fas fa-layer-group",
-        "core.Variable": "fas fa-signal",
-        # Preparación y Envío
-        "core.DgaDataConfigCatchment": "fas fa-paper-plane",  # Envío DGA
-        # Alertas
-        "core.NotificationsCatchment": "fas fa-bell",
-        "core.ResponseNotificationsCatchment": "fas fa-reply",
-        # Documentos
-        "core.FileCatchment": "fas fa-file-alt",
-        "core.TypeFileCatchment": "fas fa-folder-open",
-        # Administración
-        "core.User": "fas fa-user-tie",
-        "core.RegisterPersons": "fas fa-address-book",
-    },
-    # Configuración de UI
     "default_icon_parents": "fas fa-chevron-circle-right",
     "default_icon_children": "fas fa-circle",
-    # Relaciones con modelos relacionados
     "related_modal_active": True,
-    # Personalización de la barra superior
-    "custom_css": "admin/css/admin_improvements.css",  # CSS personalizado para mejoras generales
-    "custom_js": None,  # Puedes agregar JavaScript personalizado aquí
-    # Mostrar UI personalizada
-    "show_ui_builder": False,  # Desactivar el UI builder por defecto
-    # Cambiar el logo en la página de login
-    "changeform_format": "horizontal_tabs",  # horizontal_tabs, collapsible, carousel, single
-    # Configuración de campos
-    "changeform_format_overrides": {
-        "auth.user": "collapsible",
-        "auth.group": "vertical_tabs",
-    },
-    # Idioma
-    "language_chooser": False,  # Ya está en español
-    # Copyright
-    "copyright": "SmartHydro - Sistema de Monitoreo Hidrológico",
-    # Mostrar sidebar
-    "show_sidebar": True,
-    # Navegación
-    "navigation_expanded": True,
-    # Filtros
-    "filter_horizontal": True,
-    # Búsqueda
-    # Búsqueda global desactivada para evitar problemas de layout
-    # "search_model": ["core.CatchmentPoint", "core.TelemetryRecord", "core.Client"],
-    # Personalización de la página de inicio
-    "welcome_sign": "Bienvenido a SmartHydro - Panel de Control de Telemetría",
-    # Colores personalizados (opcional)
-    "usermenu_links": [],
+    "show_ui_builder": False,
+    "changeform_format": "horizontal_tabs",
+    "language_chooser": False,
+    "copyright": "SmartHydro - Sistema de Monitoreo Hidrologico",
+    "welcome_sign": "Bienvenido a SmartHydro - Panel de Control de Telemetria",
 }
 
-# Configuración del tema oscuro (opcional) - Mejorado con mejor contraste
 JAZZMIN_UI_TWEAKS = {
     "navbar_small_text": False,
     "footer_small_text": False,
     "body_small_text": False,
     "brand_small_text": False,
     "brand_colour": "navbar-primary",
-    "accent": "accent-info",  # Cambiado a info para mejor contraste
+    "accent": "accent-info",
     "navbar": "navbar-dark",
     "no_navbar_border": False,
     "navbar_fixed": False,
@@ -493,7 +494,7 @@ JAZZMIN_UI_TWEAKS = {
     "sidebar": "sidebar-dark-primary",
     "sidebar_nav_small_text": False,
     "sidebar_disable_expand": False,
-    "sidebar_nav_child_indent": True,  # Mejor indentación para jerarquía
+    "sidebar_nav_child_indent": True,
     "sidebar_nav_compact_style": False,
     "sidebar_nav_legacy_style": False,
     "sidebar_nav_flat_style": False,
@@ -510,12 +511,8 @@ JAZZMIN_UI_TWEAKS = {
     "actions_sticky_top": True,
 }
 
-# Configuración temporal para debug de CORS
 if not DEBUG:
-    # Permitir X-Frame-Options para CORS
-    X_FRAME_OPTIONS = "SAMEORIGIN"  # Cambiar de DENY a SAMEORIGIN
-
-    # Configuraciones CORS adicionales para producción
+    X_FRAME_OPTIONS = "SAMEORIGIN"
     CORS_PREFLIGHT_MAX_AGE = 86400
     CORS_EXPOSE_HEADERS = [
         "accept",
@@ -527,6 +524,13 @@ if not DEBUG:
         "user-agent",
         "x-csrftoken",
         "x-requested-with",
+        "x-request-id",
+        "x-correlation-id",
+        "x-api-version",
+        "x-response-time-ms",
+        "x-gateway-version",
+        "x-rate-limit-limit",
+        "x-rate-limit-remaining",
     ]
 
 # ========================================
@@ -537,7 +541,6 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # ========================================
 # CELERY CONFIGURATION - Replaces Cronjobs
 # ========================================
-# Using Redis as message broker and result backend
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 CELERY_ACCEPT_CONTENT = ["json"]
@@ -545,9 +548,6 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 
-# Celery Beat settings (replaces traditional cronjobs)
-# Use DatabaseScheduler to manage tasks from Django Admin (optional override)
-# Default Beat schedule is defined in api/celery_app.py
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 # ========================================
@@ -558,3 +558,70 @@ MQTT_BROKER_PORT = int(os.environ.get("MQTT_BROKER_PORT", 1883))
 MQTT_BROKER_USERNAME = os.environ.get("MQTT_BROKER_USERNAME", "smarthydro")
 MQTT_BROKER_PASSWORD = os.environ.get("MQTT_BROKER_PASSWORD", "dev_mqtt_password")
 
+# ========================================
+# VOID: API GATEWAY CONFIGURATION
+# ========================================
+API_GATEWAY = {
+    "VERSION": "1.0.0",
+    "REQUEST_ID_HEADER": "X-Request-ID",
+    "CORRELATION_ID_HEADER": "X-Correlation-ID",
+    "API_VERSION_HEADER": "X-API-Version",
+    "TENANT_ID_HEADER": "X-Tenant-ID",
+    "DEFAULT_VERSION": "v2",
+    "DEPRECATED_VERSIONS": ["v1"],
+    # Circuit breaker defaults
+    "CIRCUIT_BREAKER": {
+        "dga_api": {
+            "failure_threshold": 3,
+            "recovery_timeout": 120,
+            "half_open_max_calls": 2,
+        },
+        "sma_api": {
+            "failure_threshold": 3,
+            "recovery_timeout": 180,
+            "half_open_max_calls": 2,
+        },
+        "mqtt_broker": {
+            "failure_threshold": 5,
+            "recovery_timeout": 30,
+            "half_open_max_calls": 3,
+        },
+    },
+    # Default tenant rate limits
+    "DEFAULT_RATE_LIMITS": {
+        "free": {"rpm": 30, "burst": 5},
+        "basic": {"rpm": 60, "burst": 10},
+        "professional": {"rpm": 300, "burst": 30},
+        "enterprise": {"rpm": 1000, "burst": 100},
+    },
+}
+
+# ========================================
+# VOID: EVENT BUS CONFIGURATION
+# ========================================
+EVENT_BUS = {
+    "STREAM_KEY": "smarthydro:events",
+    "MAX_STREAM_LENGTH": 100000,
+    "PUBLISH_TIMEOUT": 5,
+    "MAX_RETRIES": 3,
+    "RETRY_BACKOFF_BASE": 2,  # Exponential backoff: 2^retry seconds
+    "CONSUMER_BATCH_SIZE": 10,
+}
+
+# ========================================
+# VOID: ANALYTICS CONFIGURATION
+# ========================================
+API_ANALYTICS = {
+    "HEALTH_SCORE_THRESHOLDS": {
+        "latency_p95_ms": 1000,
+        "error_rate_percent": 5.0,
+        "availability_percent": 99.0,
+    },
+    "AGGREGATION_SCHEDULE": {
+        "minute": "* * * * *",      # Every minute
+        "hour": "0 * * * *",         # Every hour
+        "day": "0 0 * * *",          # Every day
+    },
+    "DASHBOARD_SNAPSHOT_RANGES": ["1h", "6h", "24h", "7d", "30d"],
+    "SCORE_HISTORY_RETENTION_HOURS": 24,
+}

@@ -5,6 +5,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path, re_path
 from django.views.static import serve
+
 try:
     from django_prometheus import exports
 except ModuleNotFoundError:
@@ -12,6 +13,13 @@ except ModuleNotFoundError:
 
 from api.core.views.metrics_view import prometheus_metrics
 from api.core.views.health import health_check
+
+# VOID: drf-spectacular views for OpenAPI documentation
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularRedocView,
+    SpectacularSwaggerView,
+)
 
 # Configuración del Admin Site con logo SmartHydro
 admin.site.site_header = "SmartHydro - Control de Telemetría"
@@ -25,12 +33,8 @@ urlpatterns = [
     # ========================================
     # API UNIFICADA (Principal)
     # ========================================
-    # Endpoints: /api/points/, /api/devices/, /api/dashboard/
     path("api/", include(("api.unified.urls", "unified"), namespace="unified")),
 
-    # API Console (Moved to Unified/Dashboard)
-    # path("api/console/", include(("api.core.urls_dashboard", "api_dashboard"), namespace="api_dashboard")),
-    
     # API Dynamic (Dynamic Engine)
     path("api/dynamic/", include(("api.core.urls_dynamic", "api_dynamic"), namespace="api_dynamic")),
 
@@ -40,7 +44,7 @@ urlpatterns = [
     # CRM - Gestión de Clientes, Proyectos y Tareas
     path("api/crm/", include("api.crm.urls")),
     # Compliance
-    path('api/compliance/', include('api.compliance.urls')),
+    path("api/compliance/", include("api.compliance.urls")),
     # Chatbot Integration
     path("api/chat-bot/", include("api.chatbot.urls")),
     # Providers - Sistema dinámico de proveedores de telemetría
@@ -49,6 +53,20 @@ urlpatterns = [
     path("api/registry/", include("api.dynamic_registry.urls")),
     # Document Generation Engine
     path("api/documents/", include("api.documents.urls")),
+
+    # ========================================
+    # VOID: NUEVOS MÓDULOS
+    # ========================================
+    # API Analytics - Métricas y dashboard
+    path("api/analytics/", include("api.analytics.urls")),
+
+    # ========================================
+    # DOCUMENTACIÓN API (OpenAPI/Swagger)
+    # ========================================
+    # VOID: Schema generation and documentation UI
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path("api/schema/swagger-ui/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    path("api/schema/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
 
     # ========================================
     # OTROS
