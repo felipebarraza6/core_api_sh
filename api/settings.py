@@ -101,7 +101,12 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
 ]
 
-LOCAL_APPS = ["api.core.apps.CoreAppConfig", "django_crontab", "import_export"]
+LOCAL_APPS = [
+    "api.core.apps.CoreAppConfig",
+    "void.apps.VoidConfig",
+    "django_crontab",
+    "import_export",
+]
 
 # ========================================
 # CONFIGURACIÓN DE CORREO - GMAIL API
