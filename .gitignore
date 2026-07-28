@@ -185,4 +185,7 @@ health_check.log
 !maintenance/*.sh
 
 backup_cluster_20250812_211918
-backup_cluster_20250812_212722
+backup_cluster_20250812_212722backups/
+tmp/
+tmp_*.py
+=1.6.1,
