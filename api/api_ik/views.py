@@ -619,7 +619,7 @@ class DashboardStatsView(APIView):
             )
 
         total_points = len(point_ids)
-        today = date.today()
+        today = timezone.now().date()
 
         if total_points == 0:
             return Response({

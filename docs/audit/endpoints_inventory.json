@@ -1,0 +1,3818 @@
+[
+  {
+    "route": "",
+    "namespace": "",
+    "name": "index",
+    "view_module": "api.core.views.health",
+    "view": "index",
+    "category": "other"
+  },
+  {
+    "route": "docs/",
+    "namespace": "",
+    "name": "docs_portal",
+    "view_module": "api.core.views.docs",
+    "view": "View.as_view.<locals>.view",
+    "category": "other"
+  },
+  {
+    "route": "docs/sales/",
+    "namespace": "",
+    "name": "sales_docs",
+    "view_module": "api.core.views.docs",
+    "view": "View.as_view.<locals>.view",
+    "category": "other"
+  },
+  {
+    "route": "docs/math/",
+    "namespace": "",
+    "name": "math_docs",
+    "view_module": "api.core.views.docs",
+    "view": "View.as_view.<locals>.view",
+    "category": "other"
+  },
+  {
+    "route": "health/",
+    "namespace": "",
+    "name": "health",
+    "view_module": "api.core.views.health",
+    "view": "health_check",
+    "category": "other"
+  },
+  {
+    "route": "status/",
+    "namespace": "",
+    "name": "status_json",
+    "view_module": "api.core.views.status",
+    "view": "status_json",
+    "category": "other"
+  },
+  {
+    "route": "status/dashboard/",
+    "namespace": "",
+    "name": "status_dashboard",
+    "view_module": "api.core.views.status",
+    "view": "status_dashboard",
+    "category": "other"
+  },
+  {
+    "route": "admin/dashboard/",
+    "namespace": "",
+    "name": "admin_dashboard",
+    "view_module": "api.core.admin_views",
+    "view": "admin_dashboard_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/telemetry-monitoring/",
+    "namespace": "",
+    "name": "telemetry_monitoring",
+    "view_module": "api.core.admin_views",
+    "view": "telemetry_monitoring_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/telemetry-monitoring/api/",
+    "namespace": "",
+    "name": "telemetry_monitoring_api",
+    "view_module": "api.core.admin_views",
+    "view": "telemetry_monitoring_api",
+    "category": "admin"
+  },
+  {
+    "route": "admin/telemetry-monitoring/api/point/<int:point_id>/records/",
+    "namespace": "",
+    "name": "telemetry_point_records_api",
+    "view_module": "api.core.admin_views",
+    "view": "telemetry_point_records_api",
+    "category": "admin"
+  },
+  {
+    "route": "admin/dga-compliance-report/",
+    "namespace": "",
+    "name": "dga_compliance_report",
+    "view_module": "api.core.admin_views",
+    "view": "dga_compliance_report_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/",
+    "namespace": "admin",
+    "name": "index",
+    "view_module": "django.contrib.admin.sites",
+    "view": "AdminSite.index",
+    "category": "admin"
+  },
+  {
+    "route": "admin/login/",
+    "namespace": "admin",
+    "name": "login",
+    "view_module": "django.contrib.admin.sites",
+    "view": "AdminSite.login",
+    "category": "admin"
+  },
+  {
+    "route": "admin/logout/",
+    "namespace": "admin",
+    "name": "logout",
+    "view_module": "django.contrib.admin.sites",
+    "view": "AdminSite.logout",
+    "category": "admin"
+  },
+  {
+    "route": "admin/password_change/",
+    "namespace": "admin",
+    "name": "password_change",
+    "view_module": "django.contrib.admin.sites",
+    "view": "AdminSite.password_change",
+    "category": "admin"
+  },
+  {
+    "route": "admin/password_change/done/",
+    "namespace": "admin",
+    "name": "password_change_done",
+    "view_module": "django.contrib.admin.sites",
+    "view": "AdminSite.password_change_done",
+    "category": "admin"
+  },
+  {
+    "route": "admin/autocomplete/",
+    "namespace": "admin",
+    "name": "autocomplete",
+    "view_module": "django.contrib.admin.sites",
+    "view": "AdminSite.autocomplete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/jsi18n/",
+    "namespace": "admin",
+    "name": "jsi18n",
+    "view_module": "django.contrib.admin.sites",
+    "view": "AdminSite.i18n_javascript",
+    "category": "admin"
+  },
+  {
+    "route": "admin/r/<int:content_type_id>/<path:object_id>/",
+    "namespace": "admin",
+    "name": "view_on_site",
+    "view_module": "django.contrib.contenttypes.views",
+    "view": "shortcut",
+    "category": "admin"
+  },
+  {
+    "route": "admin/auth/group/",
+    "namespace": "admin",
+    "name": "auth_group_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/auth/group/add/",
+    "namespace": "admin",
+    "name": "auth_group_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/auth/group/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "auth_group_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/auth/group/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "auth_group_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/auth/group/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "auth_group_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/auth/group/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/user/export/",
+    "namespace": "admin",
+    "name": "core_user_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/user/<id>/password/",
+    "namespace": "admin",
+    "name": "auth_user_password_change",
+    "view_module": "django.contrib.auth.admin",
+    "view": "UserAdmin.user_change_password",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/user/",
+    "namespace": "admin",
+    "name": "core_user_changelist",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/user/add/",
+    "namespace": "admin",
+    "name": "core_user_add",
+    "view_module": "django.contrib.auth.admin",
+    "view": "UserAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/user/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_user_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/user/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_user_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/user/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_user_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/user/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/interactiondetail/process_import/",
+    "namespace": "admin",
+    "name": "core_interactiondetail_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/interactiondetail/import/",
+    "namespace": "admin",
+    "name": "core_interactiondetail_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/interactiondetail/export/",
+    "namespace": "admin",
+    "name": "core_interactiondetail_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/interactiondetail/",
+    "namespace": "admin",
+    "name": "core_interactiondetail_changelist",
+    "view_module": "api.core.admin",
+    "view": "AdminIndicatorsMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/interactiondetail/add/",
+    "namespace": "admin",
+    "name": "core_interactiondetail_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/interactiondetail/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_interactiondetail_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/interactiondetail/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_interactiondetail_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/interactiondetail/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_interactiondetail_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/interactiondetail/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/client/process_import/",
+    "namespace": "admin",
+    "name": "core_client_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/client/import/",
+    "namespace": "admin",
+    "name": "core_client_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/client/export/",
+    "namespace": "admin",
+    "name": "core_client_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/client/",
+    "namespace": "admin",
+    "name": "core_client_changelist",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/client/add/",
+    "namespace": "admin",
+    "name": "core_client_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/client/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_client_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/client/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_client_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/client/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_client_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/client/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/projectcatchments/process_import/",
+    "namespace": "admin",
+    "name": "core_projectcatchments_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/projectcatchments/import/",
+    "namespace": "admin",
+    "name": "core_projectcatchments_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/projectcatchments/export/",
+    "namespace": "admin",
+    "name": "core_projectcatchments_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/projectcatchments/",
+    "namespace": "admin",
+    "name": "core_projectcatchments_changelist",
+    "view_module": "api.core.admin",
+    "view": "AdminIndicatorsMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/projectcatchments/add/",
+    "namespace": "admin",
+    "name": "core_projectcatchments_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/projectcatchments/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_projectcatchments_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/projectcatchments/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_projectcatchments_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/projectcatchments/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_projectcatchments_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/projectcatchments/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/counterresetlog/",
+    "namespace": "admin",
+    "name": "core_counterresetlog_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/counterresetlog/add/",
+    "namespace": "admin",
+    "name": "core_counterresetlog_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/counterresetlog/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_counterresetlog_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/counterresetlog/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_counterresetlog_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/counterresetlog/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_counterresetlog_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/counterresetlog/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/catchmentpoint/process_import/",
+    "namespace": "admin",
+    "name": "core_catchmentpoint_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/catchmentpoint/import/",
+    "namespace": "admin",
+    "name": "core_catchmentpoint_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/catchmentpoint/export/",
+    "namespace": "admin",
+    "name": "core_catchmentpoint_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/catchmentpoint/",
+    "namespace": "admin",
+    "name": "core_catchmentpoint_changelist",
+    "view_module": "api.core.admin",
+    "view": "CatchmentPointAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/catchmentpoint/add/",
+    "namespace": "admin",
+    "name": "core_catchmentpoint_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/catchmentpoint/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_catchmentpoint_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/catchmentpoint/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_catchmentpoint_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/catchmentpoint/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_catchmentpoint_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/catchmentpoint/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profiledataconfigcatchment/process_import/",
+    "namespace": "admin",
+    "name": "core_profiledataconfigcatchment_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profiledataconfigcatchment/import/",
+    "namespace": "admin",
+    "name": "core_profiledataconfigcatchment_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profiledataconfigcatchment/export/",
+    "namespace": "admin",
+    "name": "core_profiledataconfigcatchment_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profiledataconfigcatchment/",
+    "namespace": "admin",
+    "name": "core_profiledataconfigcatchment_changelist",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profiledataconfigcatchment/add/",
+    "namespace": "admin",
+    "name": "core_profiledataconfigcatchment_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profiledataconfigcatchment/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_profiledataconfigcatchment_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profiledataconfigcatchment/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_profiledataconfigcatchment_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profiledataconfigcatchment/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_profiledataconfigcatchment_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profiledataconfigcatchment/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profileikolucatchment/process_import/",
+    "namespace": "admin",
+    "name": "core_profileikolucatchment_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profileikolucatchment/import/",
+    "namespace": "admin",
+    "name": "core_profileikolucatchment_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profileikolucatchment/export/",
+    "namespace": "admin",
+    "name": "core_profileikolucatchment_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profileikolucatchment/",
+    "namespace": "admin",
+    "name": "core_profileikolucatchment_changelist",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profileikolucatchment/add/",
+    "namespace": "admin",
+    "name": "core_profileikolucatchment_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profileikolucatchment/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_profileikolucatchment_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profileikolucatchment/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_profileikolucatchment_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profileikolucatchment/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_profileikolucatchment_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/profileikolucatchment/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/dgadataconfigcatchment/process_import/",
+    "namespace": "admin",
+    "name": "core_dgadataconfigcatchment_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/dgadataconfigcatchment/import/",
+    "namespace": "admin",
+    "name": "core_dgadataconfigcatchment_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/dgadataconfigcatchment/export/",
+    "namespace": "admin",
+    "name": "core_dgadataconfigcatchment_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/dgadataconfigcatchment/",
+    "namespace": "admin",
+    "name": "core_dgadataconfigcatchment_changelist",
+    "view_module": "api.core.admin",
+    "view": "AdminIndicatorsMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/dgadataconfigcatchment/add/",
+    "namespace": "admin",
+    "name": "core_dgadataconfigcatchment_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/dgadataconfigcatchment/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_dgadataconfigcatchment_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/dgadataconfigcatchment/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_dgadataconfigcatchment_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/dgadataconfigcatchment/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_dgadataconfigcatchment_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/dgadataconfigcatchment/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/schemescatchment/process_import/",
+    "namespace": "admin",
+    "name": "core_schemescatchment_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/schemescatchment/import/",
+    "namespace": "admin",
+    "name": "core_schemescatchment_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/schemescatchment/export/",
+    "namespace": "admin",
+    "name": "core_schemescatchment_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/schemescatchment/",
+    "namespace": "admin",
+    "name": "core_schemescatchment_changelist",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/schemescatchment/add/",
+    "namespace": "admin",
+    "name": "core_schemescatchment_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/schemescatchment/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_schemescatchment_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/schemescatchment/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_schemescatchment_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/schemescatchment/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_schemescatchment_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/schemescatchment/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/telemetryprovider/",
+    "namespace": "admin",
+    "name": "core_telemetryprovider_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/telemetryprovider/add/",
+    "namespace": "admin",
+    "name": "core_telemetryprovider_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/telemetryprovider/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_telemetryprovider_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/telemetryprovider/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_telemetryprovider_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/telemetryprovider/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_telemetryprovider_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/telemetryprovider/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/complianceprovider/",
+    "namespace": "admin",
+    "name": "core_complianceprovider_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/complianceprovider/add/",
+    "namespace": "admin",
+    "name": "core_complianceprovider_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/complianceprovider/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_complianceprovider_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/complianceprovider/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_complianceprovider_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/complianceprovider/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_complianceprovider_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/complianceprovider/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/variable/process_import/",
+    "namespace": "admin",
+    "name": "core_variable_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/variable/import/",
+    "namespace": "admin",
+    "name": "core_variable_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/variable/export/",
+    "namespace": "admin",
+    "name": "core_variable_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/variable/",
+    "namespace": "admin",
+    "name": "core_variable_changelist",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/variable/add/",
+    "namespace": "admin",
+    "name": "core_variable_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/variable/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_variable_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/variable/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_variable_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/variable/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_variable_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/variable/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/notificationscatchment/process_import/",
+    "namespace": "admin",
+    "name": "core_notificationscatchment_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/notificationscatchment/import/",
+    "namespace": "admin",
+    "name": "core_notificationscatchment_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/notificationscatchment/export/",
+    "namespace": "admin",
+    "name": "core_notificationscatchment_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/notificationscatchment/",
+    "namespace": "admin",
+    "name": "core_notificationscatchment_changelist",
+    "view_module": "api.core.admin",
+    "view": "AdminIndicatorsMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/notificationscatchment/add/",
+    "namespace": "admin",
+    "name": "core_notificationscatchment_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/notificationscatchment/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_notificationscatchment_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/notificationscatchment/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_notificationscatchment_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/notificationscatchment/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_notificationscatchment_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/notificationscatchment/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/responsenotificationscatchment/process_import/",
+    "namespace": "admin",
+    "name": "core_responsenotificationscatchment_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/responsenotificationscatchment/import/",
+    "namespace": "admin",
+    "name": "core_responsenotificationscatchment_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/responsenotificationscatchment/export/",
+    "namespace": "admin",
+    "name": "core_responsenotificationscatchment_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/responsenotificationscatchment/",
+    "namespace": "admin",
+    "name": "core_responsenotificationscatchment_changelist",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/responsenotificationscatchment/add/",
+    "namespace": "admin",
+    "name": "core_responsenotificationscatchment_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/responsenotificationscatchment/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_responsenotificationscatchment_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/responsenotificationscatchment/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_responsenotificationscatchment_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/responsenotificationscatchment/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_responsenotificationscatchment_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/responsenotificationscatchment/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/typefilecatchment/process_import/",
+    "namespace": "admin",
+    "name": "core_typefilecatchment_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/typefilecatchment/import/",
+    "namespace": "admin",
+    "name": "core_typefilecatchment_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/typefilecatchment/export/",
+    "namespace": "admin",
+    "name": "core_typefilecatchment_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/typefilecatchment/",
+    "namespace": "admin",
+    "name": "core_typefilecatchment_changelist",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/typefilecatchment/add/",
+    "namespace": "admin",
+    "name": "core_typefilecatchment_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/typefilecatchment/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_typefilecatchment_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/typefilecatchment/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_typefilecatchment_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/typefilecatchment/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_typefilecatchment_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/typefilecatchment/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/filecatchment/process_import/",
+    "namespace": "admin",
+    "name": "core_filecatchment_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/filecatchment/import/",
+    "namespace": "admin",
+    "name": "core_filecatchment_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/filecatchment/export/",
+    "namespace": "admin",
+    "name": "core_filecatchment_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/filecatchment/",
+    "namespace": "admin",
+    "name": "core_filecatchment_changelist",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/filecatchment/add/",
+    "namespace": "admin",
+    "name": "core_filecatchment_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/filecatchment/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_filecatchment_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/filecatchment/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_filecatchment_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/filecatchment/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_filecatchment_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/filecatchment/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/registerpersons/process_import/",
+    "namespace": "admin",
+    "name": "core_registerpersons_process_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.process_import",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/registerpersons/import/",
+    "namespace": "admin",
+    "name": "core_registerpersons_import",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.import_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/registerpersons/export/",
+    "namespace": "admin",
+    "name": "core_registerpersons_export",
+    "view_module": "import_export.admin",
+    "view": "ExportMixin.export_action",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/registerpersons/",
+    "namespace": "admin",
+    "name": "core_registerpersons_changelist",
+    "view_module": "import_export.admin",
+    "view": "ImportMixin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/registerpersons/add/",
+    "namespace": "admin",
+    "name": "core_registerpersons_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/registerpersons/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_registerpersons_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/registerpersons/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_registerpersons_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/registerpersons/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_registerpersons_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/registerpersons/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alertrule/",
+    "namespace": "admin",
+    "name": "core_alertrule_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alertrule/add/",
+    "namespace": "admin",
+    "name": "core_alertrule_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alertrule/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_alertrule_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alertrule/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_alertrule_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alertrule/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_alertrule_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alertrule/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alertchannel/",
+    "namespace": "admin",
+    "name": "core_alertchannel_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alertchannel/add/",
+    "namespace": "admin",
+    "name": "core_alertchannel_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alertchannel/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_alertchannel_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alertchannel/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_alertchannel_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alertchannel/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_alertchannel_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alertchannel/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alerttrigger/",
+    "namespace": "admin",
+    "name": "core_alerttrigger_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alerttrigger/add/",
+    "namespace": "admin",
+    "name": "core_alerttrigger_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alerttrigger/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_alerttrigger_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alerttrigger/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_alerttrigger_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alerttrigger/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_alerttrigger_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/alerttrigger/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/systemevent/",
+    "namespace": "admin",
+    "name": "core_systemevent_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/systemevent/add/",
+    "namespace": "admin",
+    "name": "core_systemevent_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/systemevent/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_systemevent_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/systemevent/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_systemevent_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/systemevent/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_systemevent_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/systemevent/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketcategory/",
+    "namespace": "admin",
+    "name": "core_ticketcategory_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketcategory/add/",
+    "namespace": "admin",
+    "name": "core_ticketcategory_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketcategory/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_ticketcategory_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketcategory/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_ticketcategory_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketcategory/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_ticketcategory_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketcategory/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/slaconfig/",
+    "namespace": "admin",
+    "name": "core_slaconfig_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/slaconfig/add/",
+    "namespace": "admin",
+    "name": "core_slaconfig_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/slaconfig/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_slaconfig_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/slaconfig/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_slaconfig_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/slaconfig/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_slaconfig_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/slaconfig/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/supportticket/",
+    "namespace": "admin",
+    "name": "core_supportticket_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/supportticket/add/",
+    "namespace": "admin",
+    "name": "core_supportticket_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/supportticket/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_supportticket_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/supportticket/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_supportticket_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/supportticket/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_supportticket_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/supportticket/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketcomment/",
+    "namespace": "admin",
+    "name": "core_ticketcomment_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketcomment/add/",
+    "namespace": "admin",
+    "name": "core_ticketcomment_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketcomment/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_ticketcomment_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketcomment/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_ticketcomment_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketcomment/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_ticketcomment_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketcomment/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketattachment/",
+    "namespace": "admin",
+    "name": "core_ticketattachment_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketattachment/add/",
+    "namespace": "admin",
+    "name": "core_ticketattachment_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketattachment/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_ticketattachment_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketattachment/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_ticketattachment_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketattachment/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_ticketattachment_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketattachment/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketactivitylog/",
+    "namespace": "admin",
+    "name": "core_ticketactivitylog_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketactivitylog/add/",
+    "namespace": "admin",
+    "name": "core_ticketactivitylog_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketactivitylog/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "core_ticketactivitylog_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketactivitylog/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "core_ticketactivitylog_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketactivitylog/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "core_ticketactivitylog_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/core/ticketactivitylog/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/authtoken/tokenproxy/",
+    "namespace": "admin",
+    "name": "authtoken_tokenproxy_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/authtoken/tokenproxy/add/",
+    "namespace": "admin",
+    "name": "authtoken_tokenproxy_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/authtoken/tokenproxy/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "authtoken_tokenproxy_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/authtoken/tokenproxy/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "authtoken_tokenproxy_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/authtoken/tokenproxy/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "authtoken_tokenproxy_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/authtoken/tokenproxy/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/django_rest_passwordreset/resetpasswordtoken/",
+    "namespace": "admin",
+    "name": "django_rest_passwordreset_resetpasswordtoken_changelist",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.changelist_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/django_rest_passwordreset/resetpasswordtoken/add/",
+    "namespace": "admin",
+    "name": "django_rest_passwordreset_resetpasswordtoken_add",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.add_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/django_rest_passwordreset/resetpasswordtoken/<path:object_id>/history/",
+    "namespace": "admin",
+    "name": "django_rest_passwordreset_resetpasswordtoken_history",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.history_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/django_rest_passwordreset/resetpasswordtoken/<path:object_id>/delete/",
+    "namespace": "admin",
+    "name": "django_rest_passwordreset_resetpasswordtoken_delete",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.delete_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/django_rest_passwordreset/resetpasswordtoken/<path:object_id>/change/",
+    "namespace": "admin",
+    "name": "django_rest_passwordreset_resetpasswordtoken_change",
+    "view_module": "django.contrib.admin.options",
+    "view": "ModelAdmin.change_view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/django_rest_passwordreset/resetpasswordtoken/<path:object_id>/",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.views.generic.base",
+    "view": "View.as_view.<locals>.view",
+    "category": "admin"
+  },
+  {
+    "route": "admin/^(?P<app_label>auth|core|authtoken|django_rest_passwordreset)/$",
+    "namespace": "admin",
+    "name": "app_list",
+    "view_module": "django.contrib.admin.sites",
+    "view": "AdminSite.app_index",
+    "category": "admin"
+  },
+  {
+    "route": "admin/(?P<url>.*)$",
+    "namespace": "admin",
+    "name": null,
+    "view_module": "django.contrib.admin.sites",
+    "view": "AdminSite.catch_all_view",
+    "category": "admin"
+  },
+  {
+    "route": "reports/active-points/",
+    "namespace": "",
+    "name": "active_points_report",
+    "view_module": "api.core.views.reports",
+    "view": "View.as_view.<locals>.view",
+    "category": "other"
+  },
+  {
+    "route": "compliance/dga/verify/",
+    "namespace": "",
+    "name": "dga_comprobante_verify",
+    "view_module": "api.core.views.compliance",
+    "view": "View.as_view.<locals>.view",
+    "category": "other"
+  },
+  {
+    "route": "api/^users/$",
+    "namespace": "api",
+    "name": "users-list",
+    "view_module": "api.core.views.users",
+    "view": "UserViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^users\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "users-list",
+    "view_module": "api.core.views.users",
+    "view": "UserViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^users/change-password/$",
+    "namespace": "api",
+    "name": "users-change-password",
+    "view_module": "api.core.views.users",
+    "view": "UserViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^users/change-password\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "users-change-password",
+    "view_module": "api.core.views.users",
+    "view": "UserViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^users/login/$",
+    "namespace": "api",
+    "name": "users-login",
+    "view_module": "api.core.views.users",
+    "view": "UserViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^users/login\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "users-login",
+    "view_module": "api.core.views.users",
+    "view": "UserViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^users/me/$",
+    "namespace": "api",
+    "name": "users-me",
+    "view_module": "api.core.views.users",
+    "view": "UserViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^users/me\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "users-me",
+    "view_module": "api.core.views.users",
+    "view": "UserViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^users/signup/$",
+    "namespace": "api",
+    "name": "users-signup",
+    "view_module": "api.core.views.users",
+    "view": "UserViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^users/signup\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "users-signup",
+    "view_module": "api.core.views.users",
+    "view": "UserViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^users/(?P<username>[^/.]+)/$",
+    "namespace": "api",
+    "name": "users-detail",
+    "view_module": "api.core.views.users",
+    "view": "UserViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^users/(?P<username>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "users-detail",
+    "view_module": "api.core.views.users",
+    "view": "UserViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail/$",
+    "namespace": "api",
+    "name": "interactiondetail-list",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionXLS",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "interactiondetail-list",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionXLS",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail/(?P<pk>[^/.]+)/$",
+    "namespace": "api",
+    "name": "interactiondetail-detail",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionXLS",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "interactiondetail-detail",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionXLS",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_dga/$",
+    "namespace": "api",
+    "name": "interaction_detail_dga-list",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionXLSDga",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_dga\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "interaction_detail_dga-list",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionXLSDga",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_dga/(?P<pk>[^/.]+)/$",
+    "namespace": "api",
+    "name": "interaction_detail_dga-detail",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionXLSDga",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_dga/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "interaction_detail_dga-detail",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionXLSDga",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_override/$",
+    "namespace": "api",
+    "name": "interaction_detail_override-list",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionDetailOverrideViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_override\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "interaction_detail_override-list",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionDetailOverrideViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_override/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "interaction_detail_override-detail",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionDetailOverrideViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_override/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "interaction_detail_override-detail",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionDetailOverrideViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_override_month/$",
+    "namespace": "api",
+    "name": "interaction_detail_override_month-list",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionDetailOverrideMonthViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_override_month\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "interaction_detail_override_month-list",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionDetailOverrideMonthViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_override_month/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "interaction_detail_override_month-detail",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionDetailOverrideMonthViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_override_month/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "interaction_detail_override_month-detail",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionDetailOverrideMonthViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_override_month_xlsx/$",
+    "namespace": "api",
+    "name": "interaction_detail_override_month_xlsx-list",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionXLSMonth",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_override_month_xlsx\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "interaction_detail_override_month_xlsx-list",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionXLSMonth",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_override_month_xlsx/(?P<pk>[^/.]+)/$",
+    "namespace": "api",
+    "name": "interaction_detail_override_month_xlsx-detail",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionXLSMonth",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_override_month_xlsx/(?P<pk>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "interaction_detail_override_month_xlsx-detail",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionXLSMonth",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_json/$",
+    "namespace": "api",
+    "name": "interaction_detail_json-list",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionDetailViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_json\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "interaction_detail_json-list",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionDetailViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_json/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "interaction_detail_json-detail",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionDetailViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^interaction_detail_json/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "interaction_detail_json-detail",
+    "view_module": "api.core.views.interaction_detail",
+    "view": "InteractionDetailViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^client/$",
+    "namespace": "api",
+    "name": "client-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ClientViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^client\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "client-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ClientViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^client/all/$",
+    "namespace": "api",
+    "name": "client-all",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ClientViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^client/all\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "client-all",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ClientViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^client/with-projects/$",
+    "namespace": "api",
+    "name": "client-with-projects",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ClientViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^client/with-projects\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "client-with-projects",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ClientViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^client/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "client-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ClientViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^client/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "client-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ClientViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^project_catchments/$",
+    "namespace": "api",
+    "name": "project_catchments-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProjectCatchmentsViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^project_catchments\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "project_catchments-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProjectCatchmentsViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^project_catchments/all/$",
+    "namespace": "api",
+    "name": "project_catchments-all",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProjectCatchmentsViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^project_catchments/all\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "project_catchments-all",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProjectCatchmentsViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^project_catchments/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "project_catchments-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProjectCatchmentsViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^project_catchments/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "project_catchments-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProjectCatchmentsViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^catchment_point/$",
+    "namespace": "api",
+    "name": "catchment_point-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "CatchmentPointViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^catchment_point\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "catchment_point-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "CatchmentPointViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^catchment_point/all/$",
+    "namespace": "api",
+    "name": "catchment_point-all",
+    "view_module": "api.core.views.catchment_points",
+    "view": "CatchmentPointViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^catchment_point/all\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "catchment_point-all",
+    "view_module": "api.core.views.catchment_points",
+    "view": "CatchmentPointViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^catchment_point/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "catchment_point-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "CatchmentPointViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^catchment_point/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "catchment_point-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "CatchmentPointViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^profile_ikolu_catchment/$",
+    "namespace": "api",
+    "name": "profile_ikolu_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProfileIkoluCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^profile_ikolu_catchment\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "profile_ikolu_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProfileIkoluCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^profile_ikolu_catchment/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "profile_ikolu_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProfileIkoluCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^profile_ikolu_catchment/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "profile_ikolu_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProfileIkoluCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^notifications_catchment/$",
+    "namespace": "api",
+    "name": "notifications_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "NotificationsCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^notifications_catchment\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "notifications_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "NotificationsCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^notifications_catchment/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "notifications_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "NotificationsCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^notifications_catchment/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "notifications_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "NotificationsCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^response_notifications_catchment/$",
+    "namespace": "api",
+    "name": "response_notifications_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ResponseNotificationsCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^response_notifications_catchment\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "response_notifications_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ResponseNotificationsCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^response_notifications_catchment/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "response_notifications_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ResponseNotificationsCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^response_notifications_catchment/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "response_notifications_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ResponseNotificationsCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^type_file_catchment/$",
+    "namespace": "api",
+    "name": "type_file_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "TypeFileCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^type_file_catchment\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "type_file_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "TypeFileCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^type_file_catchment/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "type_file_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "TypeFileCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^type_file_catchment/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "type_file_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "TypeFileCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^file_catchment/$",
+    "namespace": "api",
+    "name": "file_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "FileCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^file_catchment\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "file_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "FileCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^file_catchment/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "file_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "FileCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^file_catchment/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "file_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "FileCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^profile_data_config_catchment/$",
+    "namespace": "api",
+    "name": "profile_data_config_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProfileDataConfigCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^profile_data_config_catchment\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "profile_data_config_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProfileDataConfigCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^profile_data_config_catchment/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "profile_data_config_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProfileDataConfigCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^profile_data_config_catchment/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "profile_data_config_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ProfileDataConfigCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^dga_data_config_catchment/$",
+    "namespace": "api",
+    "name": "dga_data_config_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "DgaDataConfigCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^dga_data_config_catchment\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "dga_data_config_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "DgaDataConfigCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^dga_data_config_catchment/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "dga_data_config_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "DgaDataConfigCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^dga_data_config_catchment/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "dga_data_config_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "DgaDataConfigCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^schemes_catchment/$",
+    "namespace": "api",
+    "name": "schemes_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "SchemesCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^schemes_catchment\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "schemes_catchment-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "SchemesCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^schemes_catchment/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "schemes_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "SchemesCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^schemes_catchment/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "schemes_catchment-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "SchemesCatchmentViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^variable/$",
+    "namespace": "api",
+    "name": "variable-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "VariableViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^variable\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "variable-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "VariableViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^variable/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "variable-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "VariableViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^variable/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "variable-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "VariableViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^register_persons/$",
+    "namespace": "api",
+    "name": "register_persons-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "RegisterPersonsViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^register_persons\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "register_persons-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "RegisterPersonsViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^register_persons/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "register_persons-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "RegisterPersonsViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^register_persons/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "register_persons-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "RegisterPersonsViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^counter_reset_logs/$",
+    "namespace": "api",
+    "name": "counter_reset_logs-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "CounterResetLogViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^counter_reset_logs\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "counter_reset_logs-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "CounterResetLogViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^counter_reset_logs/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "counter_reset_logs-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "CounterResetLogViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^counter_reset_logs/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "counter_reset_logs-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "CounterResetLogViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^telemetry_providers/$",
+    "namespace": "api",
+    "name": "telemetry_providers-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "TelemetryProviderViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^telemetry_providers\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "telemetry_providers-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "TelemetryProviderViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^telemetry_providers/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "telemetry_providers-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "TelemetryProviderViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^telemetry_providers/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "telemetry_providers-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "TelemetryProviderViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^compliance_providers/$",
+    "namespace": "api",
+    "name": "compliance_providers-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ComplianceProviderViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^compliance_providers\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "compliance_providers-list",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ComplianceProviderViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^compliance_providers/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "compliance_providers-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ComplianceProviderViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^compliance_providers/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "compliance_providers-detail",
+    "view_module": "api.core.views.catchment_points",
+    "view": "ComplianceProviderViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/clear_dga_queue/$",
+    "namespace": "api",
+    "name": "management-clear-dga-queue",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/clear_dga_queue\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "management-clear-dga-queue",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/dga_queue_status/$",
+    "namespace": "api",
+    "name": "management-dga-queue-status",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/dga_queue_status\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "management-dga-queue-status",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/notifications_summary/$",
+    "namespace": "api",
+    "name": "management-notifications-summary",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/notifications_summary\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "management-notifications-summary",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/points_status/$",
+    "namespace": "api",
+    "name": "management-points-status",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/points_status\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "management-points-status",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/requeue_dga/$",
+    "namespace": "api",
+    "name": "management-requeue-dga",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/requeue_dga\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "management-requeue-dga",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/resources_status/$",
+    "namespace": "api",
+    "name": "management-resources-status",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/resources_status\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "management-resources-status",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/system_map/$",
+    "namespace": "api",
+    "name": "management-system-map",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/system_map\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "management-system-map",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/system_status/$",
+    "namespace": "api",
+    "name": "management-system-status",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/system_status\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "management-system-status",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/telemetry_metrics/$",
+    "namespace": "api",
+    "name": "management-telemetry-metrics",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/telemetry_metrics\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "management-telemetry-metrics",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/toggle_telemetry/$",
+    "namespace": "api",
+    "name": "management-toggle-telemetry",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/toggle_telemetry\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "management-toggle-telemetry",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/update_point_frequency/$",
+    "namespace": "api",
+    "name": "management-update-point-frequency",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^management/update_point_frequency\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "management-update-point-frequency",
+    "view_module": "api.core.views.management",
+    "view": "ManagementViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/annual-compressed/$",
+    "namespace": "api",
+    "name": "reports-annual-compressed",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/annual-compressed\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "reports-annual-compressed",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/by-point/$",
+    "namespace": "api",
+    "name": "reports-by-point",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/by-point\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "reports-by-point",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/by-project/$",
+    "namespace": "api",
+    "name": "reports-by-project",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/by-project\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "reports-by-project",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/json/annual-compressed/$",
+    "namespace": "api",
+    "name": "reports-json-annual-compressed",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/json/annual-compressed\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "reports-json-annual-compressed",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/json/by-point/$",
+    "namespace": "api",
+    "name": "reports-json-by-point",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/json/by-point\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "reports-json-by-point",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/json/by-project/$",
+    "namespace": "api",
+    "name": "reports-json-by-project",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/json/by-project\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "reports-json-by-project",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/json/last-month/$",
+    "namespace": "api",
+    "name": "reports-json-last-month",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/json/last-month\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "reports-json-last-month",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/json/last-year/$",
+    "namespace": "api",
+    "name": "reports-json-last-year",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/json/last-year\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "reports-json-last-year",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/last-month/$",
+    "namespace": "api",
+    "name": "reports-last-month",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/last-month\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "reports-last-month",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/last-year/$",
+    "namespace": "api",
+    "name": "reports-last-year",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^reports/last-year\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "reports-last-year",
+    "view_module": "api.core.views.reports",
+    "view": "ReportsGenerationViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^alert_rules/$",
+    "namespace": "api",
+    "name": "alert_rules-list",
+    "view_module": "api.core.views.alerts",
+    "view": "AlertRuleViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^alert_rules\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "alert_rules-list",
+    "view_module": "api.core.views.alerts",
+    "view": "AlertRuleViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^alert_rules/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "alert_rules-detail",
+    "view_module": "api.core.views.alerts",
+    "view": "AlertRuleViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^alert_rules/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "alert_rules-detail",
+    "view_module": "api.core.views.alerts",
+    "view": "AlertRuleViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^alert_channels/$",
+    "namespace": "api",
+    "name": "alert_channels-list",
+    "view_module": "api.core.views.alerts",
+    "view": "AlertChannelViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^alert_channels\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "alert_channels-list",
+    "view_module": "api.core.views.alerts",
+    "view": "AlertChannelViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^alert_channels/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "alert_channels-detail",
+    "view_module": "api.core.views.alerts",
+    "view": "AlertChannelViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^alert_channels/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "alert_channels-detail",
+    "view_module": "api.core.views.alerts",
+    "view": "AlertChannelViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^alert_triggers/$",
+    "namespace": "api",
+    "name": "alert_triggers-list",
+    "view_module": "api.core.views.alerts",
+    "view": "AlertTriggerViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^alert_triggers\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "alert_triggers-list",
+    "view_module": "api.core.views.alerts",
+    "view": "AlertTriggerViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^alert_triggers/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "alert_triggers-detail",
+    "view_module": "api.core.views.alerts",
+    "view": "AlertTriggerViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^alert_triggers/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "alert_triggers-detail",
+    "view_module": "api.core.views.alerts",
+    "view": "AlertTriggerViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^system_events/$",
+    "namespace": "api",
+    "name": "system_events-list",
+    "view_module": "api.core.views.alerts",
+    "view": "SystemEventViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^system_events\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "system_events-list",
+    "view_module": "api.core.views.alerts",
+    "view": "SystemEventViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^system_events/(?P<id>[^/.]+)/$",
+    "namespace": "api",
+    "name": "system_events-detail",
+    "view_module": "api.core.views.alerts",
+    "view": "SystemEventViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/^system_events/(?P<id>[^/.]+)\\.(?P<format>[a-z0-9]+)/?$",
+    "namespace": "api",
+    "name": "system_events-detail",
+    "view_module": "api.core.views.alerts",
+    "view": "SystemEventViewSet",
+    "category": "legacy"
+  },
+  {
+    "route": "api/",
+    "namespace": "api",
+    "name": "api-root",
+    "view_module": "rest_framework.routers",
+    "view": "View.as_view.<locals>.view",
+    "category": "legacy"
+  },
+  {
+    "route": "api/<drf_format_suffix:format>",
+    "namespace": "api",
+    "name": "api-root",
+    "view_module": "rest_framework.routers",
+    "view": "View.as_view.<locals>.view",
+    "category": "legacy"
+  },
+  {
+    "route": "api/chat/",
+    "namespace": "api",
+    "name": "app_chat",
+    "view_module": "api.core.views.chatbot",
+    "view": "View.as_view.<locals>.view",
+    "category": "legacy"
+  },
+  {
+    "route": "api/telemetry-reprocessor/",
+    "namespace": "api",
+    "name": "telemetry_reprocessor",
+    "view_module": "api.core.views.telemetry_reprocessor_api",
+    "view": "View.as_view.<locals>.view",
+    "category": "legacy"
+  },
+  {
+    "route": "api/ik/batch/telemetry/",
+    "namespace": "api_ik",
+    "name": "batch_telemetry",
+    "view_module": "api.core.views.batch_views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/batch/stats/",
+    "namespace": "api_ik",
+    "name": "batch_stats",
+    "view_module": "api.core.views.batch_views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/login/",
+    "namespace": "api_ik",
+    "name": "login",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/staff_users/",
+    "namespace": "api_ik",
+    "name": "staff_users",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/points_summary/",
+    "namespace": "api_ik",
+    "name": "points_summary",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/point/<int:point_id>/summary/",
+    "namespace": "api_ik",
+    "name": "point_summary",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/my_points/",
+    "namespace": "api_ik",
+    "name": "my_points",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/dashboard_stats/",
+    "namespace": "api_ik",
+    "name": "dashboard_stats",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/control_center/general_stats/",
+    "namespace": "api_ik",
+    "name": "control_center_general_stats",
+    "view_module": "api.api_ik.views_control_center",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/control_center/daily_summary/",
+    "namespace": "api_ik",
+    "name": "control_center_daily_summary",
+    "view_module": "api.api_ik.views_control_center",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/control_center/project_points/",
+    "namespace": "api_ik",
+    "name": "control_center_project_points",
+    "view_module": "api.api_ik.views_control_center",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/control_center/list/",
+    "namespace": "api_ik",
+    "name": "control_center_list",
+    "view_module": "api.api_ik.views_control_center",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/control_center/system_events/",
+    "namespace": "api_ik",
+    "name": "control_center_system_events",
+    "view_module": "api.api_ik.views_control_center",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/control_center/system_events/<int:point_id>/",
+    "namespace": "api_ik",
+    "name": "control_center_system_events_point_detail",
+    "view_module": "api.api_ik.views_control_center",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/point/<int:point_id>/calendar/",
+    "namespace": "api_ik",
+    "name": "point_calendar",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/point/<int:point_id>/variables/",
+    "namespace": "api_ik",
+    "name": "point_variables",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/auth/password-reset/",
+    "namespace": "api_ik",
+    "name": "password_reset_request",
+    "view_module": "django_rest_passwordreset.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/auth/password-reset/confirm/",
+    "namespace": "api_ik",
+    "name": "password_reset_confirm",
+    "view_module": "django_rest_passwordreset.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/auth/password-reset/validate/",
+    "namespace": "api_ik",
+    "name": "password_reset_validate",
+    "view_module": "django_rest_passwordreset.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/announcements/public/",
+    "namespace": "api_ik",
+    "name": "public_announcements",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/tickets/",
+    "namespace": "api_ik",
+    "name": "tickets_list_create",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/tickets/<int:pk>/",
+    "namespace": "api_ik",
+    "name": "ticket_detail_update",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/tickets/<int:pk>/comments/",
+    "namespace": "api_ik",
+    "name": "ticket_comments",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/tickets/<int:pk>/assign/",
+    "namespace": "api_ik",
+    "name": "ticket_assign",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/tickets/<int:pk>/status/",
+    "namespace": "api_ik",
+    "name": "ticket_status",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/tickets/<int:pk>/convert-to-client/",
+    "namespace": "api_ik",
+    "name": "ticket_convert_to_client",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/tickets/<int:pk>/attachments/",
+    "namespace": "api_ik",
+    "name": "ticket_attachments",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/tickets/stats/",
+    "namespace": "api_ik",
+    "name": "ticket_stats",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/tickets/dashboard/",
+    "namespace": "api_ik",
+    "name": "ticket_dashboard",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/tickets/my_desk/",
+    "namespace": "api_ik",
+    "name": "ticket_my_desk",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/ticket-categories/",
+    "namespace": "api_ik",
+    "name": "ticket_categories_list_create",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/ticket-categories/<int:pk>/",
+    "namespace": "api_ik",
+    "name": "ticket_categories_detail",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/sla-configs/",
+    "namespace": "api_ik",
+    "name": "sla_configs_list_create",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/sla-configs/<int:pk>/",
+    "namespace": "api_ik",
+    "name": "sla_configs_detail",
+    "view_module": "api.api_ik.views_tickets",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/telemetry/backfill/",
+    "namespace": "api_ik",
+    "name": "telemetry_backfill",
+    "view_module": "api.api_ik.views_telemetry_backfill",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/point/<int:id>/gaps/",
+    "namespace": "api_ik",
+    "name": "point_gaps",
+    "view_module": "api.api_ik.views_point_gaps",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/compliance/",
+    "namespace": "api_ik",
+    "name": "compliance_list",
+    "view_module": "api.api_ik.views_compliance",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/compliance/<int:point_id>/flow_history/",
+    "namespace": "api_ik",
+    "name": "compliance_flow_history",
+    "view_module": "api.api_ik.views_compliance",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/compliance/<int:point_id>/near_limit/",
+    "namespace": "api_ik",
+    "name": "compliance_near_limit",
+    "view_module": "api.api_ik.views_compliance",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/management/toggle_compliance/",
+    "namespace": "api_ik",
+    "name": "toggle_compliance",
+    "view_module": "api.api_ik.views_compliance",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/chat/client/general_stats/",
+    "namespace": "api_ik",
+    "name": "client_stats_chat",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/point/<int:point_id>/records/",
+    "namespace": "api_ik",
+    "name": "point_records",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/point/<int:point_id>/config/",
+    "namespace": "api_ik",
+    "name": "point_config",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/points/<int:point_id>/config/",
+    "namespace": "api_ik",
+    "name": "points_config",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "api/ik/system-events/summary/",
+    "namespace": "api_ik",
+    "name": "system_events_summary",
+    "view_module": "api.api_ik.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "ikolu"
+  },
+  {
+    "route": "^media/(?P<path>.*)$",
+    "namespace": "",
+    "name": null,
+    "view_module": "django.views.static",
+    "view": "serve",
+    "category": "other"
+  },
+  {
+    "route": "api/password_reset/validate_token/",
+    "namespace": "password_reset",
+    "name": "reset-password-validate",
+    "view_module": "django_rest_passwordreset.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "legacy"
+  },
+  {
+    "route": "api/password_reset/confirm/",
+    "namespace": "password_reset",
+    "name": "reset-password-confirm",
+    "view_module": "django_rest_passwordreset.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "legacy"
+  },
+  {
+    "route": "api/password_reset/",
+    "namespace": "password_reset",
+    "name": "reset-password-request",
+    "view_module": "django_rest_passwordreset.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "legacy"
+  },
+  {
+    "route": "api/chat-bot/",
+    "namespace": "",
+    "name": "google_chat_handler",
+    "view_module": "api.core.chatbot.views",
+    "view": "google_chat_handler",
+    "category": "legacy"
+  },
+  {
+    "route": "api/schema/",
+    "namespace": "",
+    "name": "schema",
+    "view_module": "drf_spectacular.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "legacy"
+  },
+  {
+    "route": "api/schema/swagger-ui/",
+    "namespace": "",
+    "name": "swagger-ui",
+    "view_module": "drf_spectacular.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "legacy"
+  },
+  {
+    "route": "api/schema/redoc/",
+    "namespace": "",
+    "name": "redoc",
+    "view_module": "drf_spectacular.views",
+    "view": "View.as_view.<locals>.view",
+    "category": "legacy"
+  }
+]

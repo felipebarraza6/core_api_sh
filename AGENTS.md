@@ -252,13 +252,45 @@ docker exec cron_jobs_secure cat /app/.cron_env.sh
 
 ---
 
+## 🗺️ ROADMAP APROBADO — Limpieza Legacy + Evolución (2026-07-04)
+
+> **Enfoque aprobado:** Opción C (híbrida). Actualizar a Django 5.x/6.x, mantener `api.core`, crear apps nuevas (`crm`, `subscriptions`, `ai_agents`) solo para funcionalidades nuevas, y migrar Celery para procesamiento nuevo sin matar crontab legacy.
+>
+> **FASE 1.1 completada (2026-07-05):** Celery configurado con Redis, endpoint `/health/celery/`, worker/beat en `docker-compose.celery.yml`, 3 tests nuevos. Suite completa: 294 tests OK.
+> **Principio rector:** los endpoints nunca mueren. Legacy se mantiene como proxy mientras Ikolu evoluciona.
+
+### Fases
+1. **FASE 0 (en curso):** Auditoría y baseline — inventario de endpoints, mapa de duplicación legacy/ikolu, análisis de uso, catálogo de riesgos.
+2. **FASE 1:** Infraestructura — Django 6 + Celery + Redis (paralelo a crontab).
+3. **FASE 2:** Coherencia de modelos — separar `catchment_points.py`, crear base de CRM y suscripciones.
+4. **FASE 3:** Capa de servicios compartidos — extraer `AuthenticationService`, `PointService`, `TelemetryService`, `ComplianceService`.
+5. **FASE 4:** Deprecación controlada de endpoints legacy uno a uno.
+6. **FASE 5:** CRM y suscripciones funcionales.
+7. **FASE 6:** Sistema de agents y LLM configurable.
+
+### Artefactos de auditoría
+- `docs/audit/endpoints_inventory.json` / `.md` — 477 endpoints (177 legacy, 45 ikolu, 245 admin, 10 otros).
+- `docs/audit/legacy_ikolu_mapping.md` — mapa de duplicación.
+- `docs/audit/legacy_usage_analysis.md` — uso real de endpoints legacy (últimos 7 días).
+- `docs/audit/risks.md` — componentes críticos que no tocar sin análisis.
+- `scripts/audit/run_full_audit.py` — regenera inventarios.
+
+### Hallazgo importante: tests
+- `api/settings_test.py` (SQLite) falla en la migración `0059` por SQL específico de PostgreSQL (`DROP CONSTRAINT IF EXISTS`).
+- Los tests de regresión + DGA corren correctamente dentro del contenedor `django_api_secure` contra PostgreSQL.
+- **Comando validado:** `docker exec django_api_secure python manage.py test tests.regression tests.dga --noinput --keepdb`.
+- **Resultado FASE 0:** 291 tests (115 regresión + 5 DGA + resto) pasaron en ~6.5 minutos. OK.
+- **Fix aplicado durante auditoría:** bug de zona horaria en `DashboardStatsView` (`api/api_ik/views.py:622`). `date.today()` → `timezone.now().date()`. Ver `docs/audit/timezone_bug_dashboard.md`.
+
+---
+
 ## ✅ CHECKLIST ANTES DE CUALQUIER CAMBIO EN PRODUCCIÓN
 
 - [ ] ¿El cambio modifica lógica de negocio? → Requiere test + validación manual
 - [ ] ¿El cambio toca modelos? → Requiere migración + backup de DB
 - [ ] ¿El cambio toca cronjobs/telemetría? → Requiere revisar `controllers/total.py`
 - [ ] ¿Hay credenciales hardcodeadas en el código nuevo? → RECHAZAR
-- [ ] ¿Los tests de regresión pasan? (`python manage.py test tests.regression`)
+- [ ] ¿Los tests de regresión pasan? (`docker exec django_api_secure python manage.py test tests.regression tests.dga --noinput --keepdb`)
 - [ ] ¿Sintaxis válida? (`python -m py_compile` en archivos modificados)
 - [ ] ¿No hay prints de debug?
 - [ ] ¿Se actualizó la documentación si cambia la API?

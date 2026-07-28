@@ -90,11 +90,14 @@ def run(frequency: str, dry_run: bool = False, point_id: Optional[int] = None, p
 
     # Buscar todos los puntos telemetría con la frecuencia dada
     # Excluir puntos de formulario (entry_by_form) para evitar procesar puntos manuales
+    # Excluir puntos TheThings.io que reciben datos vía MQTT/webhook
     puntos_qs = CatchmentPoint.objects.filter(
         data_config_profiles__is_telemetry=True,
         frecuency=frequency,
     ).exclude(
         ikolu_profiles__entry_by_form=True,
+    ).exclude(
+        data_config_profiles__disable_thethings_polling=True,
     )
     if point_id:
         puntos_qs = puntos_qs.filter(id=point_id)

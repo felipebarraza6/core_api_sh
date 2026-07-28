@@ -196,11 +196,13 @@ services:
     volumes:
       # ✅ SEGURIDAD: Bind mount restringido (NO expone .env, .git/, credentials/)
       - ./api:/app/api
+      - ./void:/app/void
       - ./templates:/app/templates
       - ./static:/app/static
       - ./scripts:/app/scripts
       - ./conf:/app/conf
       - ./backups:/app/backups:rw
+      - ./tests:/app/tests
       - ./manage.py:/app/manage.py
       - ./docker-entrypoint.sh:/app/docker-entrypoint.sh
       - ./gunicorn_config.py:/app/gunicorn_config.py
@@ -258,6 +260,65 @@ services:
       - /var/spool/cron
 
   # ========================================
+  # THETHINGS.IO MQTT SUBSCRIBER
+  # Reemplaza polling REST para puntos con disable_thethings_polling=True
+  # ========================================
+  thethings_mqtt:
+    build: .
+    container_name: thethings_mqtt
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "python manage.py run_thethings_mqtt"
+    environment:
+      - LOCAL_DB_NAME=smarthydro_prod
+      - LOCAL_DB_USER=smarthydro_user
+      - LOCAL_DB_PASSWORD=${LOCAL_DB_PASSWORD}
+      - LOCAL_DB_HOST=postgres
+      - LOCAL_DB_PORT=5432
+      - DJANGO_DEBUG=False
+      - DJANGO_ALLOWED_HOSTS=localhost
+      - REDIS_HOST=redis_secure
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - THETHINGS_MQTT_HOST=${THETHINGS_MQTT_HOST:-mqtt.thethings.io}
+      - THETHINGS_MQTT_PORT=${THETHINGS_MQTT_PORT:-1883}
+      - THETHINGS_MQTT_KEEPALIVE=${THETHINGS_MQTT_KEEPALIVE:-60}
+      - THETHINGS_MQTT_RECONNECT_DELAY=${THETHINGS_MQTT_RECONNECT_DELAY:-5}
+    volumes:
+      - ./api:/app/api
+      - ./void:/app/void
+      - ./templates:/app/templates
+      - ./static:/app/static
+      - ./scripts:/app/scripts
+      - ./manage.py:/app/manage.py
+      - ./requirements.txt:/app/requirements.txt
+      - django_logs:/app/logs
+      - google_credentials:/app/credentials
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+      - frontend
+    user: "1000:1000"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    tmpfs:
+      - /tmp
+      - /var/tmp
 
   # ========================================
   # CRON JOBS - SOLO LOCAL SEGURO
@@ -290,6 +351,7 @@ services:
     volumes:
       # ✅ SEGURIDAD: Bind mount restringido (NO expone .env, .git/, credentials/)
       - ./api:/app/api
+      - ./void:/app/void
       - ./templates:/app/templates
       - ./scripts:/app/scripts
       - ./conf:/app/conf

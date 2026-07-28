@@ -506,6 +506,12 @@ class ProfileDataConfigCatchment(ModelApi):
         help_text="Envuelve el guardado en transaction.atomic() para prevenir duplicados.",
     )
 
+    disable_thethings_polling = models.BooleanField(
+        default=False,
+        verbose_name="Desactivar polling de TheThings.io",
+        help_text="Si es True, el cron unificado no consulta TheThings.io REST para este punto porque los datos llegan vía MQTT/webhook.",
+    )
+
     # Límites de procesamiento (antes hardcodeados en flow.py/total.py)
     max_diff_m3_per_hour = models.DecimalField(
         default=500.0,

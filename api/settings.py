@@ -2,6 +2,7 @@
 
 import os
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 # Try to load dotenv, but don't fail if not available
@@ -351,7 +352,10 @@ CORS_ALLOW_HEADERS = [
 REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "api.core.exceptions.json_on_error_exception_handler",
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
-    "DEFAULT_AUTHENTICATION_CLASSES": ("rest_framework.authentication.TokenAuthentication",),
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "rest_framework.authentication.TokenAuthentication",
+    ),
     "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
@@ -365,6 +369,15 @@ REST_FRAMEWORK = {
         "user": "1000/hour",
     },
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": False,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
 }
 
 SPECTACULAR_SETTINGS = {
@@ -578,4 +591,15 @@ CORS_EXPOSE_HEADERS = [
 # CHATBOT CONFIGURATION
 # ========================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+
+# ========================================
+# VOID FEATURE FLAGS
+# ========================================
+# Mantiene la automatización de void desactivada en producción hasta que se
+# valide explícitamente. Los endpoints y tareas manuales siguen disponibles,
+# pero las tareas programadas de ingesta/procesamiento/envío no ejecutan
+# trabajo real sin este flag.
+VOID_AUTOMATION_ENABLED = os.environ.get("VOID_AUTOMATION_ENABLED", "false").lower() in (
+    "true", "1", "yes", "on"
+)
 

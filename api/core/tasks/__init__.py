@@ -1,0 +1,1 @@
+"""Tareas Celery de SmartHydro."""

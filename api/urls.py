@@ -10,7 +10,7 @@ from api.core.admin_views import (
     telemetry_monitoring_view, telemetry_monitoring_api, admin_dashboard_view,
     telemetry_point_records_api, dga_compliance_report_view
 )
-from api.core.views.health import health_check, index
+from api.core.views.health import health_check, celery_health_check, index
 from api.core.views.status import status_json, status_dashboard
 from api.core.views.reports import ActiveCatchmentPointsReportView
 from api.core.views.compliance import DgaComprobanteVerifyView
@@ -29,6 +29,7 @@ urlpatterns = [
     path('docs/sales/', SalesDocsPortalView.as_view(), name='sales_docs'),
     path('docs/math/', MathContextDocsPortalView.as_view(), name='math_docs'),
     path('health/', health_check, name='health'),
+    path('health/celery/', celery_health_check, name='celery_health'),
     path('status/', status_json, name='status_json'),
     path('status/dashboard/', status_dashboard, name='status_dashboard'),
 
@@ -49,6 +50,8 @@ urlpatterns = [
     path('api/', include(('api.core.router', 'api'), namespace='api')),
     # API Optimizada (nueva, separada)
     path('api/ik/', include(('api.api_ik.routes', 'api_ik'), namespace='api_ik')),
+    # Void — nueva generación desactivada temporalmente (fuentes .py eliminadas)
+    # path('void/', include(('void.api.urls', 'void'), namespace='void')),
     re_path(r'^media/(?P<path>.*)$', serve,
             {'document_root': settings.MEDIA_ROOT}),
     path('api/password_reset/', include('django_rest_passwordreset.urls', namespace='password_reset')),
