@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 import pytz
 from .interaction_detail import InteractionDetailModelSerializerNoProcessing, InteractionDetailModelSerializer
 from django.db.models import Case, When, IntegerField, Sum
+from api.core.utils.consumption import get_filtered_total_consumption_year
 
 
 class ClientSerializer(serializers.ModelSerializer):
@@ -793,10 +794,7 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
                 catchment_point=obj.id,
                 date_time_medition__date=today
             ).aggregate(sum_diff=Sum('total_diff'))['sum_diff'] or 0,
-            "total_consumed_year": InteractionDetail.objects.filter(
-                catchment_point=obj.id,
-                date_time_medition__year=today.year
-            ).aggregate(sum_diff=Sum('total_diff'))['sum_diff'] or 0,
+            "total_consumed_year": get_filtered_total_consumption_year(obj.id, today.year),
             "files": FileCatchmentDetailSerializer(get_files, many=True).data,
             "alerts": NotificationsCatchmentDetailSerializer(
                 get_alerts,

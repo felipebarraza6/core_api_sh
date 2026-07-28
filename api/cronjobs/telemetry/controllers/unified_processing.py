@@ -102,28 +102,25 @@ def validate_frequency(point_catchment: Dict[str, Any], current_time: datetime, 
         standard = get.standard
 
         if standard == "MAYOR":
-            return current_time.minute == 0  # Cada hora en punto
+            if frequency == "60":
+                return current_time.minute == 0
+            return current_time.minute < int(frequency)
         elif standard == "MEDIO":
-            return current_time.hour == 0 and current_time.minute == 0  # Diario medianoche
+            if frequency == "60":
+                return current_time.hour == 0 and current_time.minute == 0
+            return current_time.hour == 0 and current_time.minute < int(frequency)
         elif standard == "MENOR":
-            return (
-                current_time.day == 1
-                and current_time.hour == 0
-                and current_time.minute == 0
-            )  # Mensual
+            if frequency == "60":
+                return current_time.day == 1 and current_time.hour == 0 and current_time.minute == 0
+            return current_time.day == 1 and current_time.hour == 0 and current_time.minute < int(frequency)
         elif standard == "CAUDALES_MUY_PEQUENOS":
-            return (
-                current_time.month in [1, 7]
-                and current_time.day == 1
-                and current_time.hour == 0
-                and current_time.minute == 0
-            )  # Semestral
+            if frequency == "60":
+                return current_time.month in [1, 7] and current_time.day == 1 and current_time.hour == 0 and current_time.minute == 0
+            return current_time.month in [1, 7] and current_time.day == 1 and current_time.hour == 0 and current_time.minute < int(frequency)
         elif standard == "SIN_ESTANDAR":
-            # SIN_ESTANDAR asume MAYOR (estándar más exigente).
-            # Enviar solo registros en punto (minuto 0).
-            # Si el punto realmente es MEDIO/MENOR, la DGA no penaliza por enviar
-            # con mayor frecuencia; solo ignora/rechaza duplicados.
-            return current_time.minute == 0
+            if frequency == "60":
+                return current_time.minute == 0
+            return current_time.minute < int(frequency)
 
         # Fallback seguro para estándares desconocidos
         telemetry_logger.warning(

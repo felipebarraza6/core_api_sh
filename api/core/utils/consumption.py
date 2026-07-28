@@ -63,3 +63,37 @@ def calculate_consumption_for_point(point_id, start_dt, end_dt):
     """
     result = calculate_consumption_for_points([point_id], start_dt, end_dt)
     return result.get(point_id, 0.0)
+
+
+def get_filtered_total_consumption_year(cp_id, year):
+    from django.db import connection
+    from django.db.models import Sum, Value
+    from django.db.models.functions import Coalesce
+    from api.core.models import InteractionDetail
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT COALESCE(
+                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY total_diff),
+                0.0
+            )
+            FROM core_interactiondetail
+            WHERE catchment_point_id = %s
+              AND EXTRACT(YEAR FROM date_time_medition) = %s
+              AND total_diff > 0
+              AND is_error = false
+        """, [cp_id, year])
+        row = cursor.fetchone()
+        median = float(row[0]) if row and row[0] is not None else 0.0
+
+    threshold = max(median * 5, 10)
+
+    result = InteractionDetail.objects.filter(
+        catchment_point_id=cp_id,
+        date_time_medition__year=year,
+        total_diff__lte=threshold,
+        is_error=False,
+    ).aggregate(
+        total=Coalesce(Sum('total_diff'), Value(0))
+    )
+    return float(result['total']) or 0
