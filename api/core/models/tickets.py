@@ -145,6 +145,12 @@ class SLAConfig(ModelApi):
         verbose_name="Usuario de escalamiento",
         help_text="A quién notificar si se vence el SLA.",
     )
+    webhook_url = models.URLField(
+        blank=True,
+        null=True,
+        verbose_name="Webhook SLA",
+        help_text="URL que recibe un POST JSON cuando el SLA de un ticket con esta configuración vence. Si está vacío, se usa settings.SLA_OVERDUE_WEBHOOK_URL si existe.",
+    )
     is_active = models.BooleanField(default=True, verbose_name="Activo")
 
     class Meta:
@@ -255,6 +261,19 @@ class SupportTicket(ModelApi):
         related_name="tickets",
         verbose_name="Categoría",
     )
+    work_order_category = models.ForeignKey(
+        "core.TicketCategory",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="work_order_tickets",
+        verbose_name="Categoría de orden de trabajo",
+        help_text=(
+            "Subcategoría de tipo WORK_ORDER que describe la orden de trabajo. "
+            "Solo aplica mientras el ticket está en estado EN_ORDEN_TRABAJO; la "
+            "categoría original del ticket se mantiene intacta."
+        ),
+    )
     source = models.CharField(
         max_length=30,
         choices=SOURCE_CHOICES,
@@ -322,6 +341,17 @@ class SupportTicket(ModelApi):
         help_text="Se usa para evitar enviar spam de recordatorios.",
     )
 
+    sla_paused_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="SLA pausado en",
+        help_text=(
+            "Marca cuándo se pausó el SLA (estados de espera). Mientras está "
+            "seteado el reloj del SLA no corre; al salir del estado de espera "
+            "los plazos se desplazan por el tiempo pausado y este campo se limpia."
+        ),
+    )
+
     resolved_at = models.DateTimeField(
         null=True,
         blank=True,
@@ -338,6 +368,52 @@ class SupportTicket(ModelApi):
         blank=True,
         verbose_name="Fecha planificada",
         help_text="Fecha de visita o ejecución planificada por operaciones.",
+    )
+    scheduled_date_confirmed = models.BooleanField(
+        default=False,
+        verbose_name="Fecha planificada confirmada",
+        help_text="Indica si la fecha planificada fue confirmada por el involucrado.",
+    )
+    scheduled_date_confirmed_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="confirmed_ticket_schedules",
+        verbose_name="Fecha confirmada por",
+        help_text="Usuario que confirmó la fecha planificada.",
+    )
+    scheduled_date_confirmed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Fecha confirmada en",
+        help_text="Cuándo se confirmó la fecha planificada.",
+    )
+    scheduled_date_cancelled = models.BooleanField(
+        default=False,
+        verbose_name="Fecha planificada cancelada",
+        help_text="Indica si la fecha planificada fue cancelada y queda a la espera de re-agendar.",
+    )
+    scheduled_date_cancelled_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cancelled_ticket_schedules",
+        verbose_name="Fecha cancelada por",
+        help_text="Usuario que canceló la fecha planificada.",
+    )
+    scheduled_date_cancelled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Fecha cancelada en",
+        help_text="Cuándo se canceló la fecha planificada.",
+    )
+    scheduled_date_cancelled_reason = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Motivo de cancelación",
+        help_text="Motivo por el que se canceló la fecha planificada.",
     )
     visit_report = models.TextField(
         null=True,
@@ -371,6 +447,108 @@ class SupportTicket(ModelApi):
         if self.status != "CERRADO":
             self.closed_at = None
 
+        # La categoría de OT solo aplica mientras el ticket está en orden de
+        # trabajo; en cualquier otro estado se limpia.
+        if self.status != "EN_ORDEN_TRABAJO":
+            self.work_order_category = None
+        elif not self.work_order_category:
+            raise ValidationError(
+                {"work_order_category": "Debe seleccionar una categoría de orden de trabajo."}
+            )
+        elif self.work_order_category.category_type != "WORK_ORDER":
+            raise ValidationError(
+                {"work_order_category": "La categoría de OT debe ser de tipo WORK_ORDER."}
+            )
+        elif self.work_order_category.parent is None:
+            raise ValidationError(
+                {"work_order_category": "Debe ser una subcategoría de orden de trabajo."}
+            )
+
+
+class SupportTicketTask(ModelApi):
+    """
+    Tarea dentro de un ticket de soporte.
+
+    Registra la etapa (created_stage) en que se creó la tarea: es un snapshot
+    del estado del ticket en el momento de la creación. Si el ticket cambia de
+    estado después, la tarea conserva la etapa original.
+    """
+
+    STATUS_CHOICES = [
+        ("PENDIENTE", "Pendiente"),
+        ("EN_PROGRESO", "En progreso"),
+        ("COMPLETADA", "Completada"),
+        ("CANCELADA", "Cancelada"),
+    ]
+
+    PRIORITY_CHOICES = SupportTicket.PRIORITY_CHOICES
+
+    ticket = models.ForeignKey(
+        SupportTicket,
+        on_delete=models.CASCADE,
+        related_name="tasks",
+        verbose_name="Ticket",
+    )
+    title = models.CharField(max_length=300, verbose_name="Título")
+    description = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Descripción",
+    )
+    status = models.CharField(
+        max_length=30,
+        choices=STATUS_CHOICES,
+        default="PENDIENTE",
+        verbose_name="Estado",
+        db_index=True,
+    )
+    priority = models.CharField(
+        max_length=20,
+        choices=PRIORITY_CHOICES,
+        default="MEDIA",
+        verbose_name="Prioridad",
+        db_index=True,
+    )
+    assigned_to = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_ticket_tasks",
+        verbose_name="Asignado a",
+    )
+    due_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Fecha límite",
+    )
+    created_stage = models.CharField(
+        max_length=30,
+        choices=SupportTicket.STATUS_CHOICES,
+        verbose_name="Etapa de creación",
+        help_text="Estado del ticket cuando se creó la tarea (snapshot automático).",
+    )
+    created_by = models.ForeignKey(
+        "core.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_ticket_tasks",
+        verbose_name="Creado por",
+    )
+
+    class Meta:
+        verbose_name = "Tarea de ticket"
+        verbose_name_plural = "Tareas de tickets"
+        ordering = ["-created"]
+        indexes = [
+            models.Index(fields=["ticket", "status"]),
+            models.Index(fields=["assigned_to", "status"]),
+        ]
+
+    def __str__(self):
+        return f"#{self.id} {self.title} ({self.get_status_display()})"
+
 
 class TicketComment(ModelApi):
     """
@@ -382,6 +560,15 @@ class TicketComment(ModelApi):
         on_delete=models.CASCADE,
         related_name="comments",
         verbose_name="Ticket",
+    )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replies",
+        verbose_name="Comentario padre",
+        help_text="Si es una respuesta a otro comentario, referencia al comentario original (hilos).",
     )
     author = models.ForeignKey(
         "core.User",
@@ -415,6 +602,38 @@ class TicketComment(ModelApi):
         return f"{prefix}Comentario #{self.id} en Ticket {self.ticket_id}"
 
 
+class TicketCommentLike(ModelApi):
+    """
+    "Me gusta" de un usuario a un comentario de ticket.
+    """
+
+    comment = models.ForeignKey(
+        TicketComment,
+        on_delete=models.CASCADE,
+        related_name="likes",
+        verbose_name="Comentario",
+    )
+    user = models.ForeignKey(
+        "core.User",
+        on_delete=models.CASCADE,
+        related_name="ticket_comment_likes",
+        verbose_name="Usuario",
+    )
+
+    class Meta:
+        verbose_name = "Me gusta de comentario"
+        verbose_name_plural = "Me gusta de comentarios"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["comment", "user"],
+                name="unique_ticket_comment_like",
+            )
+        ]
+
+    def __str__(self):
+        return f"Like de {self.user_id} al comentario #{self.comment_id}"
+
+
 class TicketAttachment(ModelApi):
     """
     Archivo adjunto a un ticket o a un comentario.
@@ -436,6 +655,14 @@ class TicketAttachment(ModelApi):
         related_name="attachments",
         verbose_name="Comentario",
     )
+    task = models.ForeignKey(
+        SupportTicketTask,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="attachments",
+        verbose_name="Tarea",
+    )
     file = models.FileField(
         upload_to="tickets/%Y/%m/",
         verbose_name="Archivo",
@@ -456,6 +683,15 @@ class TicketAttachment(ModelApi):
     class Meta:
         verbose_name = "Adjunto de ticket"
         verbose_name_plural = "Adjuntos de tickets"
+
+    def clean(self):
+        super().clean()
+        # Cada archivo debe estar ligado a un comentario o a una tarea
+        # (los adjuntos a nivel ticket legacy conviven pero no son el foco).
+        if self.comment and self.task:
+            raise ValidationError(
+                "Un adjunto no puede pertenecer a un comentario y a una tarea a la vez."
+            )
 
     def __str__(self):
         return f"Adjunto {self.original_name or self.file.name}"
@@ -500,3 +736,57 @@ class TicketActivityLog(ModelApi):
 
     def __str__(self):
         return f"[{self.ticket_id}] {self.field_name}: {self.old_value} → {self.new_value}"
+
+
+class TicketNotification(ModelApi):
+    """
+    Notificaciones in-app del subsistema de tickets (p. ej. menciones en comentarios).
+    Se expone vía API bajo /api/ik/tickets/notifications/.
+    """
+
+    MENTION = "MENTION"
+    REFERENCE = "REFERENCE"
+    TYPE_CHOICES = [
+        (MENTION, "Mención en comentario"),
+        (REFERENCE, "Referencia a otro ticket"),
+    ]
+
+    notification_type = models.CharField(
+        max_length=30,
+        choices=TYPE_CHOICES,
+        default=MENTION,
+        verbose_name="Tipo",
+    )
+    user = models.ForeignKey(
+        "core.User",
+        on_delete=models.CASCADE,
+        related_name="ticket_notifications",
+        verbose_name="Usuario",
+    )
+    ticket = models.ForeignKey(
+        SupportTicket,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+        verbose_name="Ticket",
+    )
+    comment = models.ForeignKey(
+        TicketComment,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="notifications",
+        verbose_name="Comentario",
+    )
+    message = models.CharField(max_length=500, verbose_name="Mensaje")
+    is_read = models.BooleanField(default=False, verbose_name="Leída")
+
+    class Meta:
+        verbose_name = "Notificación de ticket"
+        verbose_name_plural = "Notificaciones de tickets"
+        ordering = ["-created"]
+        indexes = [
+            models.Index(fields=["user", "is_read"], name="ik_tktnotif_user_read_idx"),
+        ]
+
+    def __str__(self):
+        return f"[{self.get_notification_type_display()}] para {self.user_id} en Ticket {self.ticket_id}"

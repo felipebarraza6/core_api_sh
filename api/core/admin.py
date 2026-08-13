@@ -17,7 +17,8 @@ from api.core.models import (
     TelemetryProvider, ComplianceProvider,
     ResponseNotificationsCatchment, TypeFileCatchment, FileCatchment,
     AlertRule, AlertChannel, AlertTrigger, SystemEvent, CounterResetLog,
-    SLAConfig, SupportTicket, TicketCategory, TicketComment, TicketAttachment, TicketActivityLog,
+    SLAConfig, SupportTicket, TicketCategory, TicketComment, TicketCommentLike, TicketAttachment, TicketActivityLog,
+    TicketNotification,
 )
 from import_export.admin import ImportExportModelAdmin, ExportActionMixin
 
@@ -195,7 +196,7 @@ class UserAdm(ExportActionMixin, UserAdmin):
             'description': 'Credenciales de acceso del usuario.'
         }),
         ('Información Personal', {
-            'fields': ('first_name', 'last_name', 'email'),
+            'fields': ('first_name', 'last_name', 'email', 'profile_image'),
             'description': 'Datos personales y de contacto del usuario.'
         }),
         ('Permisos', {
@@ -2704,13 +2705,31 @@ class SupportTicketAdmin(admin.ModelAdmin):
         "is_active", "created",
     )
     search_fields = ("title", "description", "points__title")
-    autocomplete_fields = ["created_by", "assigned_to", "sla_config", "alert_trigger", "system_event"]
+    autocomplete_fields = ["created_by", "assigned_to", "sla_config", "alert_trigger", "system_event", "work_order_category"]
     filter_horizontal = ["points"]
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        # Categorías de OT son exclusivas de órdenes de trabajo: el campo
+        # `category` no ofrece tipo WORK_ORDER y `work_order_category` solo
+        # ofrece subcategorías de tipo WORK_ORDER.
+        if db_field.name == "category":
+            kwargs["queryset"] = TicketCategory.objects.filter(
+                category_type__in=["SOFTWARE", "HARDWARE", "COMPLIANCE"]
+            )
+        elif db_field.name == "work_order_category":
+            kwargs["queryset"] = TicketCategory.objects.filter(
+                category_type="WORK_ORDER", parent__isnull=False, is_active=True
+            )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
     readonly_fields = (
         "created", "modified",
         "sla_deadline_response", "sla_deadline_resolution",
         "sla_responded_at", "sla_resolved_at",
         "resolved_at", "closed_at",
+        "scheduled_date_confirmed", "scheduled_date_confirmed_by",
+        "scheduled_date_confirmed_at",
+        "scheduled_date_cancelled", "scheduled_date_cancelled_by",
+        "scheduled_date_cancelled_at", "scheduled_date_cancelled_reason",
     )
     inlines = [TicketCommentInline, TicketAttachmentInline, TicketActivityLogInline]
     fieldsets = (
@@ -2718,10 +2737,20 @@ class SupportTicketAdmin(admin.ModelAdmin):
             "fields": ("points", "title", "description", "is_active"),
         }),
         ("Clasificación", {
-            "fields": ("status", "priority", "category", "origin", "source"),
+            "fields": ("status", "priority", "category", "work_order_category", "origin", "source"),
         }),
         ("Asignación", {
             "fields": ("created_by", "assigned_to"),
+        }),
+        ("Planificación", {
+            "fields": (
+                "scheduled_date", "visit_report",
+                "scheduled_date_confirmed", "scheduled_date_confirmed_by",
+                "scheduled_date_confirmed_at",
+                "scheduled_date_cancelled", "scheduled_date_cancelled_by",
+                "scheduled_date_cancelled_at", "scheduled_date_cancelled_reason",
+            ),
+            "classes": ("collapse",),
         }),
         ("Vinculación", {
             "fields": ("alert_trigger", "system_event"),
@@ -2770,3 +2799,21 @@ class TicketActivityLogAdmin(admin.ModelAdmin):
     list_filter = ("field_name", "created")
     search_fields = ("ticket__title", "field_name")
     autocomplete_fields = ["ticket", "user"]
+
+
+@admin.register(TicketNotification)
+class TicketNotificationAdmin(admin.ModelAdmin):
+    list_display = ("id", "notification_type", "user", "ticket", "comment", "is_read", "created")
+    list_select_related = ['user', 'ticket', 'comment']
+    list_filter = ("notification_type", "is_read", "created")
+    search_fields = ("message", "ticket__title", "user__email")
+    autocomplete_fields = ["user", "ticket", "comment"]
+
+
+@admin.register(TicketCommentLike)
+class TicketCommentLikeAdmin(admin.ModelAdmin):
+    list_display = ("id", "comment", "user", "created")
+    list_select_related = ['comment', 'user']
+    list_filter = ("created",)
+    search_fields = ("comment__content", "user__email")
+    autocomplete_fields = ["comment", "user"]

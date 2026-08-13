@@ -53,6 +53,8 @@ class Command(BaseCommand):
         qs = SupportTicket.objects.filter(
             status__in=OPEN_STATUSES,
             is_active=True,
+            # SLA pausado (estado de espera): el reloj no corre, no se notifica.
+            sla_paused_at__isnull=True,
         ).filter(
             Q(sla_deadline_response__lt=now, sla_responded_at__isnull=True)
             | Q(sla_deadline_resolution__lt=now, sla_resolved_at__isnull=True)
@@ -97,6 +99,9 @@ class Command(BaseCommand):
         """Re-evalúa si el ticket sigue cumpliendo las condiciones de notificación."""
         if ticket.status not in OPEN_STATUSES or not ticket.is_active:
             return False
+        # SLA pausado: el reloj no corre, no se notifica hasta reanudar.
+        if ticket.sla_paused_at is not None:
+            return False
         if ticket.sla_last_overdue_notification and ticket.sla_last_overdue_notification >= min_last_notification:
             return False
 
@@ -117,11 +122,19 @@ class Command(BaseCommand):
         operators = set()
         if category:
             operators.update(
-                category.operators.filter(is_active=True, email__isnull=False)
+                category.operators.filter(
+                    is_active=True,
+                    notify_email=True,
+                    email__isnull=False,
+                )
                 .exclude(email="")
                 .values_list("email", flat=True)
             )
-        if ticket.assigned_to and ticket.assigned_to.email:
+        if (
+            ticket.assigned_to
+            and ticket.assigned_to.email
+            and ticket.assigned_to.notify_email
+        ):
             operators.add(ticket.assigned_to.email)
 
         # Escalamiento: usuario configurado en la SLA aplica
@@ -130,7 +143,11 @@ class Command(BaseCommand):
             if ticket.sla_config and ticket.sla_config.escalation_user
             else None
         )
-        if escalation_user and escalation_user.email:
+        if (
+            escalation_user
+            and escalation_user.email
+            and escalation_user.notify_email
+        ):
             operators.add(escalation_user.email)
 
         # Modo prueba: limitar destinatarios a lista configurada
@@ -138,11 +155,6 @@ class Command(BaseCommand):
         if test_only:
             allowed = set(test_only)
             operators = operators & allowed
-            if not operators:
-                return False
-
-        if not operators:
-            return False
 
         point = ticket.points.first()
         client_name = (
@@ -165,42 +177,92 @@ class Command(BaseCommand):
         if not vencidos:
             return False
 
-        context = {
+        email_sent = False
+        if operators:
+            context = {
+                "ticket_id": ticket.id,
+                "title": ticket.title,
+                "client_name": client_name,
+                "point_name": point_name,
+                "category": str(category) if category else "N/A",
+                "priority": ticket.priority,
+                "priority_display": ticket.get_priority_display(),
+                "status": ticket.status,
+                "status_display": ticket.get_status_display(),
+                "assigned_to_name": ticket.assigned_to.get_full_name() if ticket.assigned_to else "Sin asignar",
+                "overdue_items": vencidos,
+                "now_str": now_str,
+            }
+
+            html_message = render_to_string("tickets/ticket_sla_overdue.html", context)
+            plain_message = strip_tags(html_message)
+            subject = f"[SLA VENCIDO] Ticket #{ticket.id}: {ticket.title}"
+
+            try:
+                sent = send_mail(
+                    subject=subject,
+                    message=plain_message,
+                    from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
+                    recipient_list=sorted(operators),
+                    html_message=html_message,
+                    fail_silently=True,
+                )
+                if sent > 0:
+                    email_sent = True
+                    logger.info(f"Notificación SLA vencido enviada para ticket #{ticket.id}")
+                else:
+                    logger.warning(f"No se pudo enviar notificación SLA para ticket #{ticket.id}")
+            except Exception as e:
+                logger.error(f"Error notificando SLA vencido ticket #{ticket.id}: {e}")
+
+        webhook_sent = self._notify_webhook(ticket, now, vencidos, client_name, point_name)
+
+        if not (email_sent or webhook_sent):
+            return False
+
+        ticket.sla_last_overdue_notification = now
+        ticket.save(update_fields=["sla_last_overdue_notification"])
+        return True
+
+    def _notify_webhook(self, ticket, now, vencidos, client_name, point_name):
+        """Envía POST JSON al webhook SLA configurado (SLAConfig.webhook_url o
+        settings.SLA_OVERDUE_WEBHOOK_URL). Best-effort, nunca rompe el comando."""
+        webhook_url = None
+        if ticket.sla_config and ticket.sla_config.webhook_url:
+            webhook_url = ticket.sla_config.webhook_url
+        elif getattr(settings, "SLA_OVERDUE_WEBHOOK_URL", None):
+            webhook_url = settings.SLA_OVERDUE_WEBHOOK_URL
+
+        if not webhook_url:
+            return False
+
+        payload = {
+            "event": "sla_overdue",
             "ticket_id": ticket.id,
             "title": ticket.title,
-            "client_name": client_name,
-            "point_name": point_name,
-            "category": str(category) if category else "N/A",
-            "priority": ticket.priority,
-            "priority_display": ticket.get_priority_display(),
             "status": ticket.status,
-            "status_display": ticket.get_status_display(),
-            "assigned_to_name": ticket.assigned_to.get_full_name() if ticket.assigned_to else "Sin asignar",
+            "priority": ticket.priority,
+            "client": client_name,
+            "point": point_name,
+            "assigned_to": (
+                ticket.assigned_to.get_full_name()
+                if ticket.assigned_to else None
+            ),
             "overdue_items": vencidos,
-            "now_str": now_str,
+            "notified_at": now.isoformat(),
         }
 
-        html_message = render_to_string("tickets/ticket_sla_overdue.html", context)
-        plain_message = strip_tags(html_message)
-        subject = f"[SLA VENCIDO] Ticket #{ticket.id}: {ticket.title}"
-
         try:
-            sent = send_mail(
-                subject=subject,
-                message=plain_message,
-                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
-                recipient_list=sorted(operators),
-                html_message=html_message,
-                fail_silently=True,
-            )
-            if sent == 0:
-                logger.warning(f"No se pudo enviar notificación SLA para ticket #{ticket.id}")
-                return False
-
-            ticket.sla_last_overdue_notification = now
-            ticket.save(update_fields=["sla_last_overdue_notification"])
-            logger.info(f"Notificación SLA vencido enviada para ticket #{ticket.id}")
+            import requests
+            resp = requests.post(webhook_url, json=payload, timeout=10)
+            resp.raise_for_status()
+            logger.info(f"Webhook SLA enviado para ticket #{ticket.id} → {webhook_url}")
             return True
         except Exception as e:
-            logger.error(f"Error notificando SLA vencido ticket #{ticket.id}: {e}")
+            logger.error(f"Error en webhook SLA ticket #{ticket.id}: {e}")
             return False
+
+
+def run():
+    """Wrapper para django-crontab: ejecuta el comando de notificación de SLA vencido."""
+    Command().handle(dry_run=False)

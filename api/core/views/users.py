@@ -28,7 +28,7 @@ from api.core.permissions import IsAccountOwner
 from api.core.models import User
 
 # Serializers
-from api.core.serializers.users import UserProfile, UserLoginSerializer, UserModelSerializer, UserSignUpSerializer
+from api.core.serializers.users import UserProfile, UserLoginSerializer, UserModelSerializer, UserSignUpSerializer, UserAvatarUploadSerializer
 
 from drf_spectacular.utils import extend_schema, extend_schema_view
 
@@ -134,6 +134,27 @@ class UserViewSet(mixins.RetrieveModelMixin,
         user.save(update_fields=['password'])
 
         return Response({'success': True, 'message': 'Contraseña actualizada correctamente.'})
+
+    @extend_schema(summary="Subir foto de perfil", description="Sube o actualiza la foto de perfil del usuario autenticado. Body: multipart/form-data con el campo 'profile_image'.")
+    @action(detail=False, methods=['post'], url_path='me/avatar')
+    def upload_avatar(self, request):
+        """Sube o actualiza la foto de perfil del usuario autenticado."""
+        user = request.user
+        serializer = UserAvatarUploadSerializer(user, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(
+                {'success': False, 'errors': serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        serializer.save()
+        return Response(
+            {
+                'success': True,
+                'message': 'Foto de perfil actualizada correctamente.',
+                'profile_image': serializer.instance.profile_image.url if serializer.instance.profile_image else None,
+            },
+            status=status.HTTP_200_OK
+        )
 
     def retrieve(self, request, *args, **kwargs):
         """Add extra data to the response."""

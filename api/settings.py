@@ -283,13 +283,13 @@ CRONJOBS = [
     # notificación de tickets con SLA vencido
     (
         "0 * * * *",
-        "api.core.management.commands.notify_sla_overdue",
+        "api.core.management.commands.notify_sla_overdue.run",
         ">> /tmp/smarthydro/notify_sla_overdue.log 2>&1",
     ),
     # limpieza de tickets internos inactivos - 02:00 UTC
     (
         "0 2 * * *",
-        "api.core.management.commands.cleanup_stale_internal_tickets",
+        "api.core.management.commands.cleanup_stale_internal_tickets.run",
         ">> /tmp/smarthydro/cleanup_stale_internal_tickets.log 2>&1",
     ),
 ]
@@ -386,7 +386,7 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "2.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "SCHEMA_PATH_PREFIX": r"/api/",
-    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
     "SERVE_AUTHENTICATION": [
         "rest_framework.authentication.TokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",

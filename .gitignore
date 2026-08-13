@@ -184,8 +184,15 @@ health_check.log
 !maintenance/*.py
 !maintenance/*.sh
 
-backup_cluster_20250812_211918
-backup_cluster_20250812_212722backups/
+# DEV ENVIRONMENT
+# ===============
+# Dump de desarrollo (se genera con scripts/generate_dev_dump.py)
+!dev_database.sql.gz
+
+# BACKUPS & TEMP
+# ==============
+# Copias de respaldo locales y archivos temporales
+backups/
 tmp/
 tmp_*.py
-=1.6.1,
+backup_cluster_*

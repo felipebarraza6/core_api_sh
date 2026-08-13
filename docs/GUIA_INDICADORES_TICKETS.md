@@ -16,6 +16,17 @@
 | **Tickets compliance** | `GET /api/ik/tickets/stats/` | `compliance.total` | Naranja si > 0 |
 | **Compliance con SLA vencido** | `GET /api/ik/tickets/stats/` | `compliance.sla_overdue_resolution` | **Rojo critico** |
 
+> **Nota (2026-07-31):** Los indicadores SLA vencido (tanto en `/stats/` como en `/dashboard/`)
+> solo cuentan tickets en estados abiertos (`ABIERTO`, `EN_ANALISIS`, `ESPERA_CLIENTE`,
+> `ESPERA_PROVEEDOR`, `EN_ORDEN_TRABAJO`). Los tickets `RESUELTO`, `CERRADO` y `CANCELADO`
+> **nunca** se marcan como SLA vencido, aunque `sla_deadline_*` haya pasado o
+> `sla_responded_at`/`sla_resolved_at` estén vacios.
+>
+> **Criterio de "primera respuesta" (`sla_responded_at`):** se marca con la **primera accion
+> de staff** sobre el ticket (comentario no interno, cambio de estado, asignacion, fecha
+> agendada o reporte de visita), no solo con comentarios. Si el ticket fue atendido por el
+> equipo, la respuesta SLA cuenta como dada aunque no haya comentarios.
+
 ### Layout recomendado
 ```
 [Total] [Abiertos] [SLA vencido] [Compliance] [Compliance vencido]

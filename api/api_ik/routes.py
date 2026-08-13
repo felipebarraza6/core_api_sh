@@ -19,18 +19,30 @@ from .views import (
     OptimizedLoginView, PointsSummaryView, PointSummaryView, MyPointsView,
     DashboardStatsView, PointCalendarView, PublicAnnouncementsView,
     PointVariablesView, ClientStatsChatView, PointRecordsView, PointConfigView,
-    SystemEventsSummaryView, StaffUsersListView,
+    SystemEventsSummaryView, StaffUsersListView, MyNotificationPreferenceView,
 )
 from .views_tickets import (
     TicketsListCreateView,
     TicketDetailUpdateView,
     TicketCommentsView,
+    TicketCommentDetailView,
+    TicketCommentLikeView,
+    TicketMentionableUsersView,
+    TicketNotificationsView,
     TicketAssignView,
     TicketStatusChangeView,
     TicketConvertToClientView,
+    TicketConfirmScheduledDateView,
+    TicketCancelScheduledDateView,
     TicketStatsView,
     TicketDashboardView,
+    TicketRankingView,
     TicketAttachmentsView,
+    TicketTasksView,
+    TicketTaskDetailView,
+    TicketCommentAttachmentsView,
+    TicketTaskAttachmentsView,
+    FilesDriveView,
     TicketCategoryListCreateView,
     TicketCategoryDetailView,
     TicketMyDeskView,
@@ -53,6 +65,7 @@ from .views_control_center import (
     ControlCenterSystemEventsListView,
     ControlCenterSystemEventsPointDetailView,
 )
+from .views_agent import AgentPointsTokensView
 
 try:
     from django_rest_passwordreset.views import (
@@ -76,6 +89,9 @@ urlpatterns = [
 
     # Staff users list (para asignación de tickets/soporte)
     path('staff_users/', StaffUsersListView.as_view(), name='staff_users'),
+
+    # Preferencias de notificación del usuario
+    path('me/notify-email/', MyNotificationPreferenceView.as_view(), name='my_notify_email'),
 
     # Points summary (reemplaza get_profile para Centro de Control)
     path('points_summary/', PointsSummaryView.as_view(), name='points_summary'),
@@ -113,13 +129,26 @@ urlpatterns = [
     path('tickets/', TicketsListCreateView.as_view(), name='tickets_list_create'),
     path('tickets/<int:pk>/', TicketDetailUpdateView.as_view(), name='ticket_detail_update'),
     path('tickets/<int:pk>/comments/', TicketCommentsView.as_view(), name='ticket_comments'),
+    path('tickets/<int:pk>/comments/<int:cid>/', TicketCommentDetailView.as_view(), name='ticket_comment_detail'),
+    path('tickets/<int:pk>/comments/<int:cid>/like/', TicketCommentLikeView.as_view(), name='ticket_comment_like'),
+    path('tickets/<int:pk>/mentionable_users/', TicketMentionableUsersView.as_view(), name='ticket_mentionable_users'),
     path('tickets/<int:pk>/assign/', TicketAssignView.as_view(), name='ticket_assign'),
     path('tickets/<int:pk>/status/', TicketStatusChangeView.as_view(), name='ticket_status'),
     path('tickets/<int:pk>/convert-to-client/', TicketConvertToClientView.as_view(), name='ticket_convert_to_client'),
+    path('tickets/<int:pk>/confirm-scheduled-date/', TicketConfirmScheduledDateView.as_view(), name='ticket_confirm_scheduled_date'),
+    path('tickets/<int:pk>/cancel-scheduled-date/', TicketCancelScheduledDateView.as_view(), name='ticket_cancel_scheduled_date'),
     path('tickets/<int:pk>/attachments/', TicketAttachmentsView.as_view(), name='ticket_attachments'),
+    path('tickets/<int:pk>/tasks/', TicketTasksView.as_view(), name='ticket_tasks'),
+    path('tickets/<int:pk>/comments/<int:cid>/attachments/', TicketCommentAttachmentsView.as_view(), name='ticket_comment_attachments'),
+    path('tasks/<int:pk>/', TicketTaskDetailView.as_view(), name='ticket_task_detail'),
+    path('tasks/<int:pk>/attachments/', TicketTaskAttachmentsView.as_view(), name='ticket_task_attachments'),
+    path('files/', FilesDriveView.as_view(), name='files_drive'),
     path('tickets/stats/', TicketStatsView.as_view(), name='ticket_stats'),
     path('tickets/dashboard/', TicketDashboardView.as_view(), name='ticket_dashboard'),
+    path('tickets/ranking/', TicketRankingView.as_view(), name='ticket_ranking'),
     path('tickets/my_desk/', TicketMyDeskView.as_view(), name='ticket_my_desk'),
+    path('tickets/notifications/', TicketNotificationsView.as_view(), name='ticket_notifications'),
+    path('tickets/notifications/mark-read/', TicketNotificationsView.as_view(), name='ticket_notifications_mark_read'),
     path('ticket-categories/', TicketCategoryListCreateView.as_view(), name='ticket_categories_list_create'),
     path('ticket-categories/<int:pk>/', TicketCategoryDetailView.as_view(), name='ticket_categories_detail'),
     path('sla-configs/', SLAConfigListCreateView.as_view(), name='sla_configs_list_create'),
@@ -149,4 +178,7 @@ urlpatterns = [
 
     # Resumen de eventos del sistema (auditoría / informes)
     path('system-events/summary/', SystemEventsSummaryView.as_view(), name='system_events_summary'),
+
+    # Agente: lista puntos + token de equipo (token_service). Solo staff.
+    path('agent/points/', AgentPointsTokensView.as_view(), name='agent_points_tokens'),
 ]

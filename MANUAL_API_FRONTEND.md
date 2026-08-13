@@ -119,6 +119,24 @@ Dashboard HTML de estado (renderiza template, no JSON).
 
 ---
 
+### `POST /api/users/me/avatar/`
+Subir o actualizar la foto de perfil del usuario autenticado. Devuelve la URL pública de la imagen.
+
+**Headers:** `Authorization: Token <token>` — **Body:** `multipart/form-data` con el campo `profile_image` (archivo de imagen).
+
+**Respuesta exitosa:**
+```json
+{
+  "success": true,
+  "message": "Foto de perfil actualizada correctamente.",
+  "profile_image": "/media/profile_images/foto.png"
+}
+```
+
+> La foto de perfil también se entrega en `profile_image` dentro de `GET /api/users/me/`, `GET /api/users/{username}/` y `/api/ik/login/`.
+
+---
+
 ### `POST /api/users/login/`
 Login de usuario. Devuelve token y datos del usuario con sus puntos de captación.
 

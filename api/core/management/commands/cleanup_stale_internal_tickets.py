@@ -78,3 +78,8 @@ class Command(BaseCommand):
             self.style.SUCCESS(f"Tickets internos inactivos cancelados: {cancelled}")
         )
         logger.info(f"cleanup_stale_internal_tickets: cancelados {cancelled} tickets")
+
+
+def run():
+    """Wrapper para django-crontab: ejecuta el comando de limpieza de tickets internos."""
+    Command().handle(days=90, dry_run=False)

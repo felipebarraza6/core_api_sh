@@ -196,7 +196,17 @@ class UserProfile(serializers.ModelSerializer):
         """
         model = User
         fields = ('id','username', 'first_name', 'last_name',
-                  'email', 'is_superuser', 'is_staff', 'is_client_admin', 'catchment_points')
+                  'email', 'profile_image', 'is_superuser', 'is_staff', 'is_client_admin', 'catchment_points')
+
+
+class UserAvatarUploadSerializer(serializers.ModelSerializer):
+    """
+    Serializer para subir/actualizar la foto de perfil del usuario.
+    """
+
+    class Meta:
+        model = User
+        fields = ('profile_image',)
 
 
 class CatchmentPointSerializer(serializers.ModelSerializer):

@@ -39,7 +39,12 @@ pip install -r api/requirements.txt
 # Configurar variables de entorno
 cp .env.example .env  # Editar con tus valores
 
-# Ejecutar migraciones
+# Crear la base de datos y cargar el dump de desarrollo
+# (esquema completo + configuración + mediciones del último mes)
+createdb smarthydro_dev
+gunzip -c dev_database.sql.gz | psql -d smarthydro_dev
+
+# (Alternativa) Si prefieres migrar desde cero:
 python manage.py migrate
 
 # Crear superusuario
@@ -47,6 +52,28 @@ python manage.py createsuperuser
 
 # Iniciar servidor
 python manage.py runserver
+```
+
+### 🗄️ Base de Datos de Desarrollo
+
+El repositorio incluye `dev_database.sql.gz`, un dump listo para clonar
+y levantar un entorno de desarrollo al instante:
+
+- **Esquema completo** de la base de datos (tablas, índices, FKs, migraciones)
+- **Configuración completa** (clientes, puntos de captación, usuarios, tickets, catálogos)
+- **Mediciones del último mes** de `core_interactiondetail` y `django_admin_log`
+
+```bash
+# Restaurar el dump en una base PostgreSQL local
+createdb smarthydro_dev
+gunzip -c dev_database.sql.gz | psql -d smarthydro_dev
+
+# Configurar el .env apuntando a esa base
+LOCAL_DB_NAME=smarthydro_dev
+
+# Regenerar el dump desde producción cuando quieras datos frescos
+source .env  # o exporta LOCAL_DB_HOST, LOCAL_DB_USER, LOCAL_DB_PASSWORD
+python scripts/generate_dev_dump.py
 ```
 
 ## 🧪 Tests

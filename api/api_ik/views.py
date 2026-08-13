@@ -12,6 +12,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.pagination import PageNumberPagination
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from django.contrib.auth import authenticate
 from django.db.models import (
     Count, Q, Prefetch, Sum, Avg, F, FloatField
@@ -105,9 +106,11 @@ class OptimizedLoginView(APIView):
                 "username": user.username,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
+                "profile_image": user.profile_image.url if user.profile_image else None,
                 "is_staff": user.is_staff,
                 "is_superuser": user.is_superuser,
                 "is_client_admin": user.is_client_admin,
+                "notify_email": user.notify_email,
             },
             "points_summary": {
                 "total": len(all_point_ids),
@@ -122,6 +125,34 @@ class OptimizedLoginView(APIView):
         return response
 
 
+class MyNotificationPreferenceView(APIView):
+    """
+    Ajusta la preferencia de correos del subsistema de tickets.
+
+    POST /api/ik/me/notify-email/
+    Body: { "notify_email": false }
+    """
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [DashboardRateThrottle]
+
+    def post(self, request):
+        user = request.user
+        value = request.data.get("notify_email")
+        if value is None:
+            return Response(
+                {"error": "notify_email es requerido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not isinstance(value, bool):
+            return Response(
+                {"error": "notify_email debe ser booleano."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user.notify_email = value
+        user.save(update_fields=["notify_email"])
+        return Response({"ok": True, "notify_email": user.notify_email})
+
+
 class PointsSummaryView(APIView):
     """
     Resumen de todos los puntos del usuario logueado con última telemetría.
@@ -129,11 +160,67 @@ class PointsSummaryView(APIView):
     GET /api/ik/points_summary/
     Auth: Token
 
+    Filtros opcionales:
+    - provider: twin | nettra | novus | none
+      (también acepta los handlers reales tdata/thethings/tago como alias)
+    - limit / offset: paginación opcional
+
     Reemplaza la necesidad de cargar get_profile() con todos los datos.
     """
     permission_classes = [IsAuthenticated]
 
     throttle_classes = [SummaryRateThrottle]
+
+    # Mapa de valores aceptados para ?provider= → Q() de filtrado en BD.
+    # Cubre el nuevo campo telemetry_provider (handler) + booleanos legacy.
+    PROVIDER_FILTERS = {
+        'twin': Q(is_tdata=True) | Q(telemetry_provider__handler_name='tdata'),
+        'nettra': Q(is_thethings=True) | Q(telemetry_provider__handler_name='thethings'),
+        'novus': Q(is_novus=True) | Q(telemetry_provider__handler_name='tago'),
+        'none': (
+            Q(telemetry_provider__isnull=True)
+            & ~Q(is_tdata=True)
+            & ~Q(is_thethings=True)
+            & ~Q(is_novus=True)
+        ),
+        # Aliases: handler reales del proveedor
+        'tdata': Q(is_tdata=True) | Q(telemetry_provider__handler_name='tdata'),
+        'thethings': Q(is_thethings=True) | Q(telemetry_provider__handler_name='thethings'),
+        'tago': Q(is_novus=True) | Q(telemetry_provider__handler_name='tago'),
+    }
+
+    @extend_schema(
+        summary="Resumen de todos los puntos con última telemetría",
+        description=(
+            "Retorna todos los puntos del usuario (o todos si staff) con última telemetría, "
+            "alertas, config DGA, provider y proyecto/cliente. Filtros opcionales:\n\n"
+            "- `provider`: `twin`, `nettra`, `novus` o `none` (alias: `tdata`, `thethings`, `tago`)\n"
+            "- `limit` / `offset`: paginación opcional"
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="provider",
+                type=OpenApiTypes.STR,
+                required=False,
+                description=(
+                    "Filtra por proveedor de telemetría. Valores: twin, nettra, novus, none "
+                    "(o tdata/thethings/tago como alias)."
+                ),
+            ),
+            OpenApiParameter(
+                name="limit",
+                type=OpenApiTypes.INT,
+                required=False,
+                description="Número máximo de puntos a retornar.",
+            ),
+            OpenApiParameter(
+                name="offset",
+                type=OpenApiTypes.INT,
+                required=False,
+                description="Desplazamiento para paginación.",
+            ),
+        ],
+    )
     def get(self, request):
         user = request.user
 
@@ -145,6 +232,23 @@ class PointsSummaryView(APIView):
             points_qs = CatchmentPoint.objects.filter(
                 Q(owner_user=user) | Q(users_viewers=user)
             ).distinct()
+
+        # ── Filtro por proveedor ──
+        provider_param = request.query_params.get('provider', '').strip().lower()
+        if provider_param:
+            provider_filter = self.PROVIDER_FILTERS.get(provider_param)
+            if provider_filter is None:
+                return Response(
+                    {
+                        'error': (
+                            f"provider inválido: '{provider_param}'. "
+                            "Valores válidos: twin, nettra, novus, none "
+                            "(o tdata/thethings/tago como alias)."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            points_qs = points_qs.filter(provider_filter)
 
         points = points_qs.select_related(
             'project', 'project__client', 'owner_user'
@@ -1196,6 +1300,10 @@ class PointVariablesView(APIView):
                     "display_key": v.display_key or v.type_variable,
                     "min_value": str(v.min_value) if v.min_value is not None else None,
                     "max_value": str(v.max_value) if v.max_value is not None else None,
+                    "pulses_factor": v.pulses_factor,
+                    "convert_to_lt": bool(v.convert_to_lt),
+                    "calculate_nivel": v.calculate_nivel,
+                    "store_average_flow": bool(v.store_average_flow),
                 }
                 variables_data.append(var_info)
                 mapping[str(v.id)] = v.display_key or v.type_variable

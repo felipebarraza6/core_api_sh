@@ -39,6 +39,19 @@ class User(ModelApi, AbstractUser):
         help_text='Administrador de clientes. Puede editar datos asociados a sus clientes asignados.'
     )
 
+    notify_email = models.BooleanField(
+        default=True,
+        help_text='Si está activo, el usuario recibe correos del subsistema de tickets (menciones, SLA, etc.).'
+    )
+
+    profile_image = models.ImageField(
+        upload_to='profile_images/',
+        null=True,
+        blank=True,
+        verbose_name='Foto de perfil',
+        help_text='Imagen de perfil del usuario.'
+    )
+
     class Meta:
         verbose_name = 'Usuario'
         verbose_name_plural = 'Usuarios'

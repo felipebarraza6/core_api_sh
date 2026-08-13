@@ -5,6 +5,14 @@
 > **Base URL:** `https://api.smarthydro.app/api/ik/`
 > **Filtrado por usuario:** Todos los endpoints autenticados respetan `owner_user` / `users_viewers`. Staff ve todo.
 
+## Documentación pública (sin auth) — mapeo de rutas
+
+- **OpenAPI schema (JSON):** `https://api.smarthydro.app/api/schema/` (header `Accept: application/json` para JSON; por defecto YAML)
+- **Swagger UI:** `https://api.smarthydro.app/api/schema/swagger-ui/`
+- **Redoc:** `https://api.smarthydro.app/api/schema/redoc/`
+
+El schema se genera automáticamente e incluye métodos, rutas, parámetros y filtros de todos los endpoints (legacy `/api/` + Ikolu `/api/ik/`). Útil para mapear rutas desde el frontend vía GET.
+
 ---
 
 ## Tabla Maestra de Endpoints
@@ -18,7 +26,7 @@
 | 5 | `/api/ik/dashboard_stats/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **KPIs del Centro de Control.** Retorna métricas agregadas: total de puntos, conectados/desconectados hoy, últimos 7 días con consumo/caudal/nivel por punto, warnings (resets/system events), reglas de alerta activas, chat quota. |
 | 5a | `/api/ik/control_center/list/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **Lista paginada de puntos para un día.** Retorna métricas del día, estado, variables y `warnings_count`. Query: `?date=YYYY-MM-DD`, `?project_id`, `?order_by=consumption/-consumption/avg_flow/-avg_flow/avg_level/-avg_level/warnings_count_desc/warnings_count_asc`, `?page`, `?page_size`. |
 | 6 | `/api/ik/point/<id>/calendar/` | GET | Token | — | ✅ Sí | **Histórico de consumo por día.** Retorna los últimos N días (`?days`, default 7, max 30) de un punto con: fecha, total acumulado, caudal promedio/máx, nivel promedio, consumo del día, registros por día. Útil para gráficos de barras de consumo diario. |
-| 7 | `/api/ik/point/<id>/variables/` | GET | Token | `SummaryRateThrottle` | ✅ Sí | **Mapeo de variables del punto.** Retorna la lista de variables configuradas en los esquemas del punto (id, str_variable, label, type_variable, display_key, min_value, max_value). El cliente usa esto para interpretar el payload dinámico de `variable_values` en la telemetría. |
+| 7 | `/api/ik/point/<id>/variables/` | GET | Token | `SummaryRateThrottle` | ✅ Sí | **Mapeo de variables del punto.** Retorna la lista de variables configuradas en los esquemas del punto (id, str_variable, label, type_variable, display_key, min_value, max_value, pulses_factor, convert_to_lt, calculate_nivel, store_average_flow). `pulses_factor` aplica a totalizados ((pulsos × factor)/1000); `convert_to_lt` a caudal; `calculate_nivel` a nivel. El técnico usa estos campos para leer la config del equipo. El cliente usa `display_key`/`mapping` para interpretar el payload dinámico de `variable_values` en la telemetría. |
 | 8 | `/api/ik/point/<id>/records/` | GET | Token | — | ✅ Sí | **Registros de telemetría por rango.** Devuelve campos esenciales + `total_raw` (sin addition). Query: `?start=&end=`. Límites: máx 31 días, máx 500 registros. |
 | 9 | `/api/ik/point/<id>/config/` (`/api/ik/points/<id>/config/`) | GET/PATCH | Token | `DashboardRateThrottle` | ✅ Sí | **Config del punto.** GET retorna d1-d6, addition, is_telemetry, offset nivel y límites de procesamiento. PATCH actualiza esos campos (solo owner o staff); body JSON parcial. Alias plural disponible. |
 | 10 | `/api/ik/compliance/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **Compliance DGA/SMA.** Por defecto lista los puntos accesibles que tienen compliance **configurado** (código DGA o SMA), activo o inactivo. Filtros: `?active_only=true` (solo activos), `?standard=MAYOR` o `?standard=MAYOR,MEDIO`, `?type_dga=SUPERFICIAL` o `?type_dga=SUPERFICIAL,SUBTERRANEO`, `?search` (nombre o código DGA/SMA), `?project_id`. Orden: `order_by=default` (activos primero, luego % consumido desc), `pct_consumed_desc/asc`, `point_name_asc/desc`, `exceedances_desc`, `near_limit_desc`. Paginación `?page`/`?page_size`. |
@@ -32,17 +40,26 @@
 | 14 | `/api/ik/telemetry/backfill/` | POST | Token | `BackfillRateThrottle` | ✅ Sí (staff amplía) | **Re-sync histórico completo.** Ingesta datos del provider (TWIN/NOVUS) para un rango y aplica procesamiento unificado: caudal L/s, nivel+offset, totales en cascada, diffs. Rango máximo 30 días. Body: `{"point_id": 85, "start": "2026-05-01T00:00:00", "end": "2026-05-31T23:00:00"}` |
 | 15 | `/api/ik/tickets/` | GET/POST | Token | `TicketRateThrottle` | ✅ Sí | **Listar/crear tickets de soporte.** GET retorna tickets donde el usuario es creador, asignado, o el punto es de su propiedad. Filtros: `status`, `origin`, `category`, `priority`, `assigned_to`, `point_catchment`, `project_id`, `search`. POST crea ticket vinculado a un punto. |
 | 16 | `/api/ik/tickets/<id>/` | GET/PATCH | Token | `TicketRateThrottle` | ✅ Sí | **Ver/actualizar ticket.** PATCH permite cambiar título/descripción/prioridad/categoría (cliente). Staff puede todo. |
-| 17 | `/api/ik/tickets/<id>/comments/` | GET/POST | Token | `TicketRateThrottle` | ✅ Sí | **Comentarios.** Los internos (`is_internal=true`) solo los ve staff. POST marca SLA responded al primer comentario de staff. |
+| 17 | `/api/ik/tickets/<id>/comments/` | GET/POST | Token | `TicketRateThrottle` | ✅ Sí | **Comentarios con hilos, menciones y referencias.** Los internos (`is_internal=true`) solo los ve staff. POST acepta `parent_id` para responder a otro comentario del mismo ticket (hilos). Menciones `@usuario` y referencias `#<id_ticket>` notifican (email + in-app) a los involucrados. POST marca SLA responded al primer comentario de staff. |
+| 17b | `/api/ik/tickets/<id>/comments/<cid>/` | DELETE | Token | `TicketRateThrottle` | ✅ Sí | **Eliminar comentario.** Permiso: staff/superuser (cualquier comentario) o el autor. Un cliente nunca elimina notas internas. Registra `comment_deleted` en activity log. Los adjuntos del comentario se eliminan en cascada. |
+| 17c | `/api/ik/tickets/<id>/mentionable_users/` | GET | Token | `TicketRateThrottle` | ✅ Sí | **Usuarios etiquetables con @** en los comentarios de este ticket (involucrados: creador, asignado, operadores de categoría, owners/viewers de puntos). Para autocomplete del frontend. |
+| 17d | `/api/ik/tickets/notifications/` | GET | Token | `TicketRateThrottle` | ✅ Sí | **Notificaciones in-app del usuario.** Filtro `?unread_only=true`. Retorna `count`, `unread_count` y `results` (id, type, ticket_title, comment_id, message, is_read, created). |
+| 17e | `/api/ik/tickets/notifications/mark-read/` | POST | Token | `TicketRateThrottle` | ✅ Sí | **Marcar notificaciones como leídas.** Body: `{"ids": [1,2]}` o `{"id": 1}`. Retorna `unread_count` restante. |
 | 18 | `/api/ik/tickets/<id>/assign/` | POST | Token | `TicketRateThrottle` | Staff only | **Asignar ticket.** Solo staff puede reasignar. Valida que el usuario destino exista. |
 | 19 | `/api/ik/tickets/<id>/status/` | POST | Token | `TicketRateThrottle` | ✅ Sí | **Cambiar estado.** Creador puede marcar RESUELTO. Staff puede cualquier estado. Registra en activity log. |
-| 20 | `/api/ik/tickets/<id>/attachments/` | GET/POST | Token | `TicketRateThrottle` | ✅ Sí | **Adjuntos.** Validación de extensión y tamaño (max 10 MB). |
-| 21 | `/api/ik/tickets/stats/` | GET | Token | `TicketRateThrottle` | ✅ Sí | **Métricas de soporte.** Total, por estado, categoría, prioridad, origen, SLA vencidos. |
-| 22 | `/api/ik/announcements/public/` | GET | Público | `PublicReadRateThrottle` | N/A | **Anuncios del sistema sin login.** Mantenimientos, novedades. |
-| 23 | `/api/ik/auth/password-reset/` | POST | Público | — | N/A | Solicitar reset de contraseña. Envía email con token temporal. |
-| 24 | `/api/ik/auth/password-reset/confirm/` | POST | Público | — | N/A | Confirmar reset con token. |
-| 25 | `/api/ik/auth/password-reset/validate/` | POST | Público | — | N/A | Validar token de reset sin cambiar password. |
-| 26 | `/api/ik/chat/client/general_stats/` | POST | Token | `DashboardRateThrottle` | ✅ Sí | **Chat interpretativo con Gemini.** Backend inyecta stats del dashboard como contexto. Body: `{"message": "..."}`. Límite: 12 preguntas diarias por usuario. |
-| 27 | `/api/ik/system-events/summary/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **Resumen de eventos del sistema.** Conteos por severidad, tipo, punto, timeline. Query: `?days=7&point_id=` |
+| 20 | `/api/ik/tickets/<id>/confirm-scheduled-date/` | POST | Token | `TicketRateThrottle` | ✅ Sí | **Confirmar fecha planificada de OT.** Marca `scheduled_date_confirmed`, registra quién/cuándo y envía correo a quien confirma + involucrados del ticket. Requiere `scheduled_date` asignada. |
+| 20b | `/api/ik/tickets/<id>/cancel-scheduled-date/` | POST | Token | `TicketRateThrottle` | ✅ Sí | **Cancelar fecha planificada de OT.** Marca `scheduled_date_cancelled` (quién/cuándo/motivo opcional), desconfirma si estaba confirmada y envía correo a quien cancela + involucrados. Idempotente. Re-agendar (PATCH `scheduled_date`) reinicia la cancelación. |
+| 21 | `/api/ik/tickets/<id>/attachments/` | GET/POST | Token | `TicketRateThrottle` | ✅ Sí | **Adjuntos.** Validación de extensión y tamaño (max 10 MB). |
+| 22 | `/api/ik/tickets/stats/` | GET | Token | `TicketRateThrottle` | ✅ Sí | **Métricas de soporte.** Total, por estado, categoría, prioridad, origen, SLA vencidos. Solo tickets CLIENTE. |
+| 22b | `/api/ik/tickets/ranking/` | GET | Token | `TicketRateThrottle` | ✅ Sí | **Ranking de personas.** Tickets resueltos/cerrados, asignados y creados por persona, + SLA vencidos (resolución y respuesta) por persona asignada. Solo tickets CLIENTE. Filtros: `created_at__gte` / `created_at__lte`, `project_id`, `client_id`. |
+| 23 | `/api/ik/announcements/public/` | GET | Público | `PublicReadRateThrottle` | N/A | **Anuncios del sistema sin login.** Mantenimientos, novedades. |
+| 24 | `/api/ik/auth/password-reset/` | POST | Público | — | N/A | Solicitar reset de contraseña. Envía email con token temporal. |
+| 25 | `/api/ik/auth/password-reset/confirm/` | POST | Público | — | N/A | Confirmar reset con token. |
+| 26 | `/api/ik/auth/password-reset/validate/` | POST | Público | — | N/A | Validar token de reset sin cambiar password. |
+| 27 | `/api/ik/chat/client/general_stats/` | POST | Token | `DashboardRateThrottle` | ✅ Sí | **Chat interpretativo con Gemini.** Backend inyecta stats del dashboard como contexto. Body: `{"message": "..."}`. Límite: 12 preguntas diarias por usuario. |
+| 28 | `/api/ik/system-events/summary/` | GET | Token | `DashboardRateThrottle` | ✅ Sí | **Resumen de eventos del sistema.** Conteos por severidad, tipo, punto, timeline. Query: `?days=7&point_id=` |
+| 29 | `/api/ik/agent/points/` | GET | Token | `SummaryRateThrottle` | **Staff only** | **Puntos + token de equipo para agentes (IA).** Expone `token_service` (credencial del dispositivo) con metadatos mínimos. Solo staff/superuser (403 para el resto). Filtros: `?provider=twin/nettra/novus/none` (o alias `tdata/thethings/tago`), `?project_id`. ⚠️ Manejar con cuidado: el token permite consultar datos al proveedor. |
+| 30 | `/api/ik/me/notify-email/` | POST | Token | `DashboardRateThrottle` | ✅ Sí | **Preferencia de correos del subsistema de tickets.** Body: `{"notify_email": false}`. Si es false, el usuario no recibe correos de tickets (menciones, SLA, operadores); las notificaciones in-app siguen llegando. También se expone en `user.notify_email` del login. |
 
 ---
 
@@ -84,7 +101,11 @@
 
 ### Points Summary (`GET /api/ik/points_summary/`)
 
-**Query params:** `?limit=20&offset=0`
+**Query params:**
+- `?limit=20&offset=0` — paginación opcional
+- `?provider=twin` — filtrar por proveedor. Valores válidos:
+  `twin`, `nettra`, `novus`, `none` (sin proveedor).
+  También acepta los handlers reales como alias: `tdata`, `thethings`, `tago`.
 
 **Response (item de array):**
 ```json
@@ -463,38 +484,107 @@ Campos editables: `d1`-`d6`, `addition`, `is_telemetry`, `nivel_offset`, `max_di
 
 ### Tickets Stats (`GET /api/ik/tickets/stats/`)
 
+Métricas de soporte. Considera **solo tickets CLIENTE** (`origin="CLIENTE"`); INTERNO y OPERACIONES quedan fuera. Sin filtros de fecha (puede pedirse al frontend que agregue rango vía dashboard).
+
 **Response:**
 ```json
 {
-  "total_tickets": 20,
-  "by_status": {
-    "ABIERTO": 5,
-    "EN_ANALISIS": 3,
-    "ESPERA_CLIENTE": 2,
-    "RESUELTO": 8,
-    "CERRADO": 2
-  },
-  "by_category": {
-    "TELEMETRIA": 8,
-    "SOFTWARE": 5,
-    "CONECTIVIDAD": 4,
-    "DGA": 2,
-    "HARDWARE": 1
-  },
-  "by_priority": {
-    "BAJA": 5,
-    "MEDIA": 10,
-    "ALTA": 4,
-    "CRITICA": 1
-  },
-  "sla": {
-    "responded_on_time": 18,
-    "resolved_on_time": 15,
-    "overdue_response": 2,
-    "overdue_resolution": 3
+  "total": 25,
+  "by_status": { "CERRADO": 3, "EN_ANALISIS": 5, "EN_ORDEN_TRABAJO": 6, "ESPERA_CLIENTE": 1, "RESUELTO": 10 },
+  "by_category": { "9": 11, "12": 2, "13": 2, "14": 1, "15": 1, "18": 3, "19": 1, "21": 2, "28": 2 },
+  "by_category_type": { "COMPLIANCE": 2, "HARDWARE": 10, "SOFTWARE": 11, "WORK_ORDER": 2 },
+  "by_priority": { "ALTA": 4, "BAJA": 16, "MEDIA": 5 },
+  "by_origin": { "CLIENTE": 25 },
+  "sla_overdue_response": 0,
+  "sla_overdue_resolution": 6,
+  "compliance": {
+    "total": 2,
+    "by_status": { "RESUELTO": 2 },
+    "sla_overdue_response": 0,
+    "sla_overdue_resolution": 0
   }
 }
 ```
+
+> Notas de auditoría:
+> - `sum(by_status) == sum(by_priority) == sum(by_category_type) == total`.
+> - `by_category` usa **IDs de categoría** como llave → mapear con `/api/ik/ticket-categories/`.
+> - `compliance.by_status` cuenta todos los estados (no solo ABIERTO).
+> - `sla_overdue_resolution` == filas de `tables.sla_resolution_overdue` del dashboard.
+
+---
+
+### Tickets Ranking (`GET /api/ik/tickets/ranking/`)
+
+Ranking de personas según tickets CLIENTE. Útil para ver quién resuelve/atiende/crea más.
+
+**Query params:** `created_at__gte`, `created_at__lte` (YYYY-MM-DD), `project_id`, `client_id`.
+
+**Response:**
+```json
+{
+  "by_resolved": [
+    { "user_id": 71, "name": "Andrés Nuñez", "total": 12 },
+    { "user_id": 77, "name": "Raymundo Anavalon", "total": 1 }
+  ],
+  "by_assigned": [
+    { "user_id": 71, "name": "Andrés Nuñez", "total": 13 },
+    { "user_id": 77, "name": "Raymundo Anavalon", "total": 9 },
+    { "user_id": 99, "name": "Diego Mardones", "total": 1 }
+  ],
+  "by_created": [
+    { "user_id": 71, "name": "Andrés Nuñez", "total": 25 }
+  ],
+  "by_sla_resolution_overdue": [
+    { "user_id": 77, "name": "Raymundo Anavalon", "total": 4 },
+    { "user_id": 99, "name": "Diego Mardones", "total": 1 }
+  ],
+  "by_sla_response_overdue": [],
+  "metadata": {
+    "generated_at": "2026-07-31T18:53:50.238677+00:00",
+    "filters_applied": { "created_at__gte": "2026-07-01", "created_at__lte": "2026-07-31", "project_id": null, "client_id": null }
+  }
+}
+```
+
+> Notas de auditoría:
+> - `by_resolved`: tickets cuya resolución registra `activity log status → RESUELTO`; los cerrados directo a `CERRADO` sin pasar por `RESUELTO` se atribuyen a quien los cerró. `sum(by_resolved)` == tickets RESUELTO + CERRADO finales.
+> - `by_assigned`: solo tickets con `assigned_to` asignado (los sin asignar no aparecen). `sum(by_assigned) <= total`.
+> - `by_created`: tickets cuyo `created_by` está seteado.
+> - `by_sla_resolution_overdue`: tickets con resolución vencida (mismo filtro que el KPI `sla_resolution_overdue` del dashboard) **asignados** a la persona. `sum() <= kpis.sla_resolution_overdue` (los sin asignar no cuentan aquí).
+> - `by_sla_response_overdue`: ídem para respuesta vencida (`sla_responded_at` nulo).
+> - Ordenados por `total` desc. Cada lista es independiente (misma persona puede estar en varias).
+
+---
+
+### Agent Points + Tokens (`GET /api/ik/agent/points/`)
+
+**Solo staff/superuser** (403 para usuarios normales). Para agentes automatizados que necesitan el `token_service` (token del equipo) para consultar datos al proveedor.
+
+**Query params:**
+- `?provider=twin` — filtrar por proveedor (`twin`, `nettra`, `novus`, `none`; alias: `tdata`, `thethings`, `tago`)
+- `?project_id=3` — filtrar por proyecto
+
+**Response:**
+```json
+{
+  "total": 200,
+  "generated_at": "2026-08-04T14:00:00+00:00",
+  "points": [
+    {
+      "id": 3,
+      "nombre": "San Vicente de Tagua Tagua",
+      "proyecto": "Oceano",
+      "cliente": "Essbio",
+      "es_dga": true,
+      "codigo_obra": "OB-0802-768",
+      "token": "4t0oCOg35GVh4wo3iKubYsQ5O6esThgYHjcTnTLVCGE"
+    }
+  ]
+}
+```
+
+> ⚠️ El campo `token` es una credencial de dispositivo. No exponerlo en el frontend ni en logs.
 
 ---
 
