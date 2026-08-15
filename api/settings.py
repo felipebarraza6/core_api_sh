@@ -292,6 +292,13 @@ CRONJOBS = [
         "api.core.management.commands.cleanup_stale_internal_tickets.run",
         ">> /tmp/smarthydro/cleanup_stale_internal_tickets.log 2>&1",
     ),
+    # Reporte semanal por cliente - Viernes 16:00 PM Chile (20:00 UTC en invierno,
+    # 17:00 PM CLST en verano) - envía a usuarios con User.recibir_reporte activo
+    (
+        "0 20 * * 5",
+        "api.cronjobs.reports.weekly_client_report.run_weekly",
+        ">> /tmp/smarthydro/weekly_client_report.log 2>&1",
+    ),
 ]
 
 

@@ -184,9 +184,9 @@ class UserAdm(ExportActionMixin, UserAdmin):
     Usuarios del sistema con acceso al panel de administración.
     Define permisos y roles para gestionar la plataforma de telemetría.
     """
-    list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff', 'is_active', 'date_joined')
+    list_display = ('username', 'email', 'first_name', 'last_name', 'recibir_reporte', 'is_staff', 'is_active', 'date_joined')
     search_fields = ('username', 'email', 'first_name', 'last_name')
-    list_filter = ('is_staff', 'is_active', 'is_superuser', 'date_joined')
+    list_filter = ('is_staff', 'is_active', 'is_superuser', 'recibir_reporte', 'date_joined')
     ordering = ('-date_joined',)
 
     # Fieldsets para el formulario de edición
@@ -198,6 +198,11 @@ class UserAdm(ExportActionMixin, UserAdmin):
         ('Información Personal', {
             'fields': ('first_name', 'last_name', 'email', 'profile_image'),
             'description': 'Datos personales y de contacto del usuario.'
+        }),
+        ('Reporte Semanal', {
+            'fields': ('recibir_reporte', 'reporte_cc_emails'),
+            'description': 'Si "Recibir reporte semanal" está activo, este usuario (owner) recibe el reporte '
+                           'semanal con todos sus puntos; los emails de CC reciben copia.'
         }),
         ('Permisos', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),

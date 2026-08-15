@@ -52,6 +52,19 @@ class User(ModelApi, AbstractUser):
         help_text='Imagen de perfil del usuario.'
     )
 
+    recibir_reporte = models.BooleanField(
+        default=False,
+        verbose_name='Recibir reporte semanal',
+        help_text='Si está activo, el usuario (owner) recibe el reporte semanal automáticamente con todos sus puntos.'
+    )
+
+    reporte_cc_emails = models.TextField(
+        blank=True,
+        default='',
+        verbose_name='CC reporte semanal',
+        help_text='Emails adicionales (separados por coma) que reciben copia del reporte semanal.'
+    )
+
     class Meta:
         verbose_name = 'Usuario'
         verbose_name_plural = 'Usuarios'
