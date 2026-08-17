@@ -85,8 +85,18 @@ def get_token(provider=None):
     }
     response = requests.request(
         "POST", url, headers=headers, data=payload, timeout=5)
+    if response.status_code != 200:
+        logger.error(
+            f"TDATA login falló: HTTP {response.status_code} desde {url}"
+        )
+        raise RuntimeError(
+            f"TDATA login falló con HTTP {response.status_code}"
+        )
     response_data = response.json()
-    token = response_data["token"]
+    token = response_data.get("token")
+    if not token:
+        logger.error(f"TDATA login: respuesta sin 'token': {list(response_data.keys())}")
+        raise RuntimeError("TDATA login: respuesta sin campo 'token'")
 
     ttl = _jwt_expiry_ttl(token)
     try:

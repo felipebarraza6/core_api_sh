@@ -47,8 +47,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         now = timezone.now()
         dry_run = options["dry_run"]
-        # Notificar máximo una vez al día por ticket
-        min_last_notification = now - timedelta(hours=23)
+        # Primera notificación al vencer, recordatorios cada 2 días
+        min_last_notification = now - timedelta(days=2)
 
         qs = SupportTicket.objects.filter(
             status__in=OPEN_STATUSES,

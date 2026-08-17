@@ -114,6 +114,24 @@ def run(frequency: str, dry_run: bool = False, point_id: Optional[int] = None, p
 
     processed = 0
     errors = 0
+    skipped_lock = 0
+
+    # Health check de Redis antes del loop: si está caído, todos los locks fallan
+    # y cada punto loguea "bloqueado por otro proceso" (misleading). Mejor skip uma vez.
+    try:
+        from django.core.cache import cache
+        cache.set("_smarthydro:healthcheck", 1, 10)
+    except Exception as e:
+        telemetry_logger.critical(
+            f"[UNIFIED] Redis NO disponible ({e}). "
+            f"Todos los puntos serán omitidos en este ciclo. "
+            f"La ingesta se reanudará cuando Redis recupere."
+        )
+        telemetry_logger.info(
+            f"[UNIFIED] Frecuencia={frequency} | Procesados=0 | Errores=0 | "
+            f"Omitidos_redis={len(serializer.data)} | dry_run={dry_run}"
+        )
+        return
 
     # Calcular TTL del lock dinámicamente según frecuencia:
     # nunca debe expirar antes del siguiente ciclo del mismo punto.
@@ -129,9 +147,9 @@ def run(frequency: str, dry_run: bool = False, point_id: Optional[int] = None, p
         # Adquirir lock por punto para prevenir race condition en total_m3
         from api.cronjobs.telemetry.utils.locks import acquire_point_lock, release_point_lock
         if not acquire_point_lock(point_id, timeout=lock_timeout):
-            telemetry_logger.warning(
-                f"[UNIFIED] Punto {point_id} bloqueado por otro proceso. "
-                f"Saltando para evitar race condition en totales."
+            skipped_lock += 1
+            telemetry_logger.debug(
+                f"[UNIFIED] Punto {point_id} omitido (lock no adquirido)."
             )
             continue
 
@@ -151,7 +169,8 @@ def run(frequency: str, dry_run: bool = False, point_id: Optional[int] = None, p
                 pass  # Ya logueado en locks.py; no enmascarar excepción original
 
     telemetry_logger.info(
-        f"[UNIFIED] Frecuencia={frequency} | Procesados={processed} | Errores={errors} | dry_run={dry_run}"
+        f"[UNIFIED] Frecuencia={frequency} | Procesados={processed} | Errores={errors} | "
+        f"Omitidos_lock={skipped_lock} | dry_run={dry_run}"
     )
 
 

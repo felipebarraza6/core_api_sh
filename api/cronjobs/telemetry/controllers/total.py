@@ -559,19 +559,15 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
         return final_int
 
     except Exception as e:
-        import traceback, sys
-        tb = traceback.format_exc()
-        # Escribir a archivo para debug
-        with open('/tmp/total_m3_errors.log', 'a') as f:
-            f.write(f"Error en total_m3 punto {point_catchment.get('id', '?')}: {e}\n{tb}\n")
-            # Imprimir tipos de variables clave
-            frame = sys.exc_info()[2].tb_frame
-            locals_dict = frame.f_locals
-            for var in ['offset', 'current_raw_m3', 'last_total', 'potential_new_total', 'diff', 'amount_to_add', 'new_addition', 'final_total', 'profile']:
-                val = locals_dict.get(var, 'NO_EXISTE')
-                f.write(f"  {var}: {type(val).__name__} = {val}\n")
-            f.write(f"{'='*40}\n")
-        logger.error(f"Error en total_m3: {e}")
+        point_id = point_catchment.get('id', '?') if isinstance(point_catchment, dict) else getattr(point_catchment, 'id', '?')
+        logger.error(
+            f"Error en total_m3 punto {point_id}: {e}",
+            exc_info=True,
+            extra={
+                "point_id": point_id,
+                "error_type": type(e).__name__,
+            },
+        )
         if return_full_details:
              return 0, {"error": str(e), "status": "ERROR"}
         return 0
