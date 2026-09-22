@@ -62,6 +62,7 @@ class InteractionDetailViewSet(mixins.CreateModelMixin,
                 'catchment_point__data_config_profiles',
                 queryset=ProfileDataConfigCatchment.objects.only('point_catchment_id', 'd6')
             ),
+            'catchment_point__dga_data_config_profiles',
             Prefetch(
                 'catchment_point__schemes',
                 queryset=SchemesCatchment.objects.prefetch_related(
@@ -166,6 +167,7 @@ class InteractionDetailOverrideViewSet(mixins.CreateModelMixin,
                 'catchment_point__data_config_profiles',
                 queryset=ProfileDataConfigCatchment.objects.only('point_catchment_id', 'd6')
             ),
+            'catchment_point__dga_data_config_profiles',
             Prefetch(
                 'catchment_point__schemes',
                 queryset=SchemesCatchment.objects.prefetch_related(
@@ -317,10 +319,19 @@ class InteractionDetailOverrideMonthViewSet(mixins.CreateModelMixin,
                 'catchment_point__data_config_profiles',
                 queryset=ProfileDataConfigCatchment.objects.only('point_catchment_id', 'd6')
             ),
+            'catchment_point__dga_data_config_profiles',
             # ✅ Prefetch schemes para optimizar consultas de Variable en el serializer
-            'catchment_point__schemes'
+            Prefetch(
+                'catchment_point__schemes',
+                queryset=SchemesCatchment.objects.prefetch_related(
+                    Prefetch(
+                        'variables',
+                        queryset=Variable.objects.only('id', 'type_variable', 'scheme_catchment_id')
+                    )
+                )
+            )
         )
-        
+
         return queryset
     
 class InteractionXLSMonth(XLSXFileMixin, ReadOnlyModelViewSet):

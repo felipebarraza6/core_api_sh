@@ -49,9 +49,29 @@ class InteractionDetailModelSerializer(serializers.ModelSerializer):
                 total_d6 = sum(int(profile.d6) if profile.d6 is not None else 0 for profile in profiles)
             else:
                 total_d6 = ProfileDataConfigCatchment.objects.filter(point_catchment=catchment_point).aggregate(total=Sum("d6"))["total"] or 0
-            
-            has_avg_flow = Variable.objects.filter(type_variable="CAUDAL_PROMEDIO", scheme_catchment__points_catchment=catchment_point).exists()
-            dga_config = DgaDataConfigCatchment.objects.filter(point_catchment=catchment_point).first()
+
+            # has_avg_flow: usar schemes prefetcheadas si están disponibles
+            has_avg_flow = False
+            if hasattr(catchment_point, '_prefetched_objects_cache') and 'schemes' in catchment_point._prefetched_objects_cache:
+                for scheme in catchment_point._prefetched_objects_cache['schemes']:
+                    if hasattr(scheme, '_prefetched_objects_cache') and 'variables' in scheme._prefetched_objects_cache:
+                        if any(v.type_variable == 'CAUDAL_PROMEDIO' for v in scheme._prefetched_objects_cache['variables']):
+                            has_avg_flow = True
+                            break
+                    else:
+                        if scheme.variables.filter(type_variable='CAUDAL_PROMEDIO').exists():
+                            has_avg_flow = True
+                            break
+            else:
+                has_avg_flow = Variable.objects.filter(type_variable="CAUDAL_PROMEDIO", scheme_catchment__points_catchment=catchment_point).exists()
+
+            # dga_config: usar prefetch si está disponible
+            if hasattr(catchment_point, '_prefetched_objects_cache') and 'dga_data_config_profiles' in catchment_point._prefetched_objects_cache:
+                dga_list = catchment_point._prefetched_objects_cache['dga_data_config_profiles']
+                dga_config = dga_list[0] if dga_list else None
+            else:
+                dga_config = DgaDataConfigCatchment.objects.filter(point_catchment=catchment_point).first()
+
             request_cache['points_config'][cp_id] = {'total_d6': total_d6, 'has_avg_flow': has_avg_flow, 'dga_config': dga_config}
 
         config = request_cache['points_config'][cp_id]
@@ -281,8 +301,28 @@ class InteractionDetailModelSerializerNoProcessing(serializers.ModelSerializer):
 
         if cp_id not in request_cache['points_config']:
             from api.core.models import DgaDataConfigCatchment
-            has_avg_flow = Variable.objects.filter(type_variable="CAUDAL_PROMEDIO", scheme_catchment__points_catchment=catchment_point).exists()
-            dga_config = DgaDataConfigCatchment.objects.filter(point_catchment=catchment_point).first()
+            # has_avg_flow: usar schemes prefetcheadas si están disponibles
+            has_avg_flow = False
+            if hasattr(catchment_point, '_prefetched_objects_cache') and 'schemes' in catchment_point._prefetched_objects_cache:
+                for scheme in catchment_point._prefetched_objects_cache['schemes']:
+                    if hasattr(scheme, '_prefetched_objects_cache') and 'variables' in scheme._prefetched_objects_cache:
+                        if any(v.type_variable == 'CAUDAL_PROMEDIO' for v in scheme._prefetched_objects_cache['variables']):
+                            has_avg_flow = True
+                            break
+                    else:
+                        if scheme.variables.filter(type_variable='CAUDAL_PROMEDIO').exists():
+                            has_avg_flow = True
+                            break
+            else:
+                has_avg_flow = Variable.objects.filter(type_variable="CAUDAL_PROMEDIO", scheme_catchment__points_catchment=catchment_point).exists()
+
+            # dga_config: usar prefetch si está disponible
+            if hasattr(catchment_point, '_prefetched_objects_cache') and 'dga_data_config_profiles' in catchment_point._prefetched_objects_cache:
+                dga_list = catchment_point._prefetched_objects_cache['dga_data_config_profiles']
+                dga_config = dga_list[0] if dga_list else None
+            else:
+                dga_config = DgaDataConfigCatchment.objects.filter(point_catchment=catchment_point).first()
+
             request_cache['points_config'][cp_id] = {'has_avg_flow': has_avg_flow, 'dga_config': dga_config, 'total_d6': 0}
 
         config = request_cache['points_config'][cp_id]

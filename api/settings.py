@@ -160,6 +160,10 @@ else:
 # Modo prueba: registra sin enviar.
 NOTIFICATIONS_DRY_RUN = os.environ.get("NOTIFICATIONS_DRY_RUN", "False").lower() == "true"
 
+# Cache opt-in de respuestas GET idénticas (ver core/utils/response_cache.py).
+# TTL en segundos; 0 (default) = deshabilitado. Ej: API_RESPONSE_CACHE_TTL=30
+API_RESPONSE_CACHE_TTL = int(os.environ.get("API_RESPONSE_CACHE_TTL", "0") or 0)
+
 # ========================================
 # DGA CONFIGURATION - Dirección General de Aguas
 # ========================================

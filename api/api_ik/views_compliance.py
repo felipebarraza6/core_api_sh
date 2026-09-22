@@ -23,6 +23,7 @@ from django.core.paginator import Paginator
 from django.utils import timezone
 from api.core.models import CatchmentPoint, DgaDataConfigCatchment, InteractionDetail
 from api.core.utils.consumption import calculate_consumption_for_points
+from api.core.utils.response_cache import cached_get_response
 from .throttles import DashboardRateThrottle
 
 
@@ -98,6 +99,7 @@ class ComplianceListView(APIView):
     permission_classes = [IsAuthenticated]
     throttle_classes = [DashboardRateThrottle]
 
+    @cached_get_response
     def get(self, request):
         from datetime import date, datetime, timedelta
         from django.core.paginator import Paginator
