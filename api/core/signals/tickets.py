@@ -122,9 +122,10 @@ def _notify_scheduled_date_confirmed(ticket, confirmer):
     if ticket.category:
         involved.extend(ticket.category.operators.all())
 
-    for point in ticket.points.prefetch_related("users_viewers").all():
-        involved.append(point.owner_user)
-        involved.extend(point.users_viewers.all())
+    # [DESHABILITADO 2026-08-27] No enviar correos a clientes directos por ahora
+    # for point in ticket.points.prefetch_related("users_viewers").all():
+    #     involved.append(point.owner_user)
+    #     involved.extend(point.users_viewers.all())
 
     for user in involved:
         if not user or not user.is_active or not user.email:
@@ -230,9 +231,10 @@ def _notify_scheduled_date_cancelled(ticket, canceller):
     if ticket.category:
         involved.extend(ticket.category.operators.all())
 
-    for point in ticket.points.prefetch_related("users_viewers").all():
-        involved.append(point.owner_user)
-        involved.extend(point.users_viewers.all())
+    # [DESHABILITADO 2026-08-27] No enviar correos a clientes directos por ahora
+    # for point in ticket.points.prefetch_related("users_viewers").all():
+    #     involved.append(point.owner_user)
+    #     involved.extend(point.users_viewers.all())
 
     for user in involved:
         if not user or not user.is_active or not user.email:
@@ -337,10 +339,11 @@ def _ticket_involved_users(ticket):
         involved.add(ticket.assigned_to)
     if ticket.category:
         involved.update(ticket.category.operators.filter(is_active=True))
-    for point in ticket.points.prefetch_related("users_viewers").all():
-        if point.owner_user:
-            involved.add(point.owner_user)
-        involved.update(point.users_viewers.filter(is_active=True))
+    # for point in ticket.points.prefetch_related("users_viewers").all():
+    #     if point.owner_user:
+    #         involved.add(point.owner_user)
+    #     involved.update(point.users_viewers.filter(is_active=True))
+    # [DESHABILITADO 2026-08-27] No enviar correos a clientes directos por ahora
     return [u for u in involved if u.is_active]
 
 

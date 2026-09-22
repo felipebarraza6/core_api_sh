@@ -57,29 +57,29 @@ def send_async_notifications(instance_id):
         if not recipient_list and owner_email:
             recipient_list.append(owner_email)
 
-        # 3c. Send email if we have recipients
-        if recipient_list:
-            subject = f"Nuevo Ticket de Soporte: {instance.title}"
-            email_body = (
-                f"Se ha creado un nuevo ticket en el sistema:\n\n"
-                f"ID: {instance.id}\n"
-                f"Título: {instance.title}\n"
-                f"Cliente: {client_name}\n"
-                f"Punto: {point_name}\n"
-                f"Tipo: {instance.get_type_notification_display()}\n"
-                f"Mensaje: {instance.message}\n\n"
-                f"Fecha: {instance.created}\n"
-                f"Link: https://api.smarthydro.app/admin/core/notificationscatchment/{instance.id}/change/"
-            )
-
-            send_mail(
-                subject=subject,
-                message=email_body,
-                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
-                recipient_list=recipient_list,
-                fail_silently=True,
-            )
-            logger.info(f"Email de ticket enviado a {', '.join(recipient_list)}")
+        # [DESHABILITADO 2026-08-27] No enviar correos a clientes directos por ahora
+        # if recipient_list:
+        #     subject = f"Nuevo Ticket de Soporte: {instance.title}"
+        #     email_body = (
+        #         f"Se ha creado un nuevo ticket en el sistema:\n\n"
+        #         f"ID: {instance.id}\n"
+        #         f"Título: {instance.title}\n"
+        #         f"Cliente: {client_name}\n"
+        #         f"Punto: {point_name}\n"
+        #         f"Tipo: {instance.get_type_notification_display()}\n"
+        #         f"Mensaje: {instance.message}\n\n"
+        #         f"Fecha: {instance.created}\n"
+        #         f"Link: https://api.smarthydro.app/admin/core/notificationscatchment/{instance.id}/change/"
+        #     )
+        #
+        #     send_mail(
+        #         subject=subject,
+        #         message=email_body,
+        #         from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
+        #         recipient_list=recipient_list,
+        #         fail_silently=True,
+        #     )
+        #     logger.info(f"Email de ticket enviado a {', '.join(recipient_list)}")
 
     except Exception as e:
         logger.error(f"Error in send_async_notifications: {e}")

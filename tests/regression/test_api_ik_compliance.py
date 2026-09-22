@@ -522,9 +522,8 @@ class ComplianceEndpointTests(TestCase):
     def test_flow_history_with_exceedance(self):
         """flow_history refleja registros que superan el caudal autorizado."""
         from django.utils import timezone
-        from datetime import date
-        current_year = date.today().year
-        dt = timezone.make_aware(timezone.datetime(current_year, 6, 15, 10, 0, 0))
+        from datetime import timedelta
+        dt = timezone.now() - timedelta(days=30)
         self._create_interaction(self.point, 0, 15.0, date_time=dt)  # auth=10
 
         response = self.client.get('/api/ik/compliance/')
@@ -537,9 +536,8 @@ class ComplianceEndpointTests(TestCase):
     def test_near_limit_history(self):
         """near_limit_history refleja registros entre 90% y 100% del caudal autorizado."""
         from django.utils import timezone
-        from datetime import date
-        current_year = date.today().year
-        dt = timezone.make_aware(timezone.datetime(current_year, 6, 15, 10, 0, 0))
+        from datetime import timedelta
+        dt = timezone.now() - timedelta(days=30)
         self._create_interaction(self.point, 0, 9.5, date_time=dt)  # 95% de 10
 
         response = self.client.get('/api/ik/compliance/')
@@ -562,9 +560,8 @@ class ComplianceEndpointTests(TestCase):
     def test_flow_history_endpoint(self):
         """El endpoint de flow_history trae los registros que exceden el caudal."""
         from django.utils import timezone
-        from datetime import date, timedelta
-        current_year = date.today().year
-        dt = timezone.make_aware(timezone.datetime(current_year, 6, 15, 10, 0, 0))
+        from datetime import timedelta
+        dt = timezone.now() - timedelta(days=30)
         self._create_interaction(self.point, 0, 15.0, date_time=dt)
         self._create_interaction(self.point, 0, 9.0, date_time=dt + timedelta(minutes=1))
 
@@ -581,9 +578,8 @@ class ComplianceEndpointTests(TestCase):
     def test_near_limit_endpoint(self):
         """El endpoint de near_limit trae registros entre 90% y 100% del caudal."""
         from django.utils import timezone
-        from datetime import date, timedelta
-        current_year = date.today().year
-        dt = timezone.make_aware(timezone.datetime(current_year, 6, 15, 10, 0, 0))
+        from datetime import timedelta
+        dt = timezone.now() - timedelta(days=30)
         self._create_interaction(self.point, 0, 9.5, date_time=dt)
         self._create_interaction(self.point, 0, 15.0, date_time=dt + timedelta(minutes=1))
 
@@ -600,9 +596,8 @@ class ComplianceEndpointTests(TestCase):
     def test_flow_history_pagination(self):
         """flow_history respeta page y page_size."""
         from django.utils import timezone
-        from datetime import date, timedelta
-        current_year = date.today().year
-        base_dt = timezone.make_aware(timezone.datetime(current_year, 6, 15, 10, 0, 0))
+        from datetime import timedelta
+        base_dt = timezone.now() - timedelta(days=30)
         for i in range(5):
             self._create_interaction(
                 self.point, 0, 15.0,
@@ -621,11 +616,10 @@ class ComplianceEndpointTests(TestCase):
     def test_flow_history_inactive_point(self):
         """El endpoint de flow_history funciona para puntos con compliance inactivo."""
         from django.utils import timezone
-        from datetime import date
+        from datetime import timedelta
         self.dga.send_dga = False
         self.dga.save(update_fields=['send_dga'])
-        current_year = date.today().year
-        dt = timezone.make_aware(timezone.datetime(current_year, 6, 15, 10, 0, 0))
+        dt = timezone.now() - timedelta(days=30)
         self._create_interaction(self.point, 0, 15.0, date_time=dt)
 
         response = self.client.get(

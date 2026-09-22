@@ -518,6 +518,7 @@ class ComplianceListView(APIView):
         return {
             'point_id': cp_id,
             'project_id': point.project_id,
+            'project_name': point.project.name if point.project else None,
             'point_name': point.title,
             'client_name': (
                 point.project.client.name

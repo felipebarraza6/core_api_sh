@@ -124,9 +124,10 @@ def _send_via_channel(trigger, channel: AlertChannel, dry_run: bool) -> tuple:
         return True, None
 
     try:
-        if channel.channel_type == "EMAIL":
-            _send_email(channel.destination, message)
-        elif channel.channel_type == "GOOGLE_CHAT":
+        # [DESHABILITADO 2026-08-27] No enviar correos a clientes directos por ahora
+        # if channel.channel_type == "EMAIL":
+        #     _send_email(channel.destination, message)
+        if channel.channel_type == "GOOGLE_CHAT":
             send_google_chat_message(message, webhook_url=channel.destination)
         elif channel.channel_type == "WEBHOOK":
             _send_webhook(channel.destination, trigger, message)

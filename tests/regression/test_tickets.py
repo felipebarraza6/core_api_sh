@@ -515,7 +515,6 @@ class TicketAPITests(TestCase):
         mentionee = User.objects.create_user(
             email="mentionee@smarthydro.cl", password="pass", username="mentionee"
         )
-        self.point.users_viewers.add(mentionee)
         ticket = _create_ticket_with_point(
             self.point,
             title="Ticket mención",
@@ -523,6 +522,8 @@ class TicketAPITests(TestCase):
             origin="CLIENTE",
             source="APP_CLIENTE",
         )
+        ticket.assigned_to = mentionee
+        ticket.save(update_fields=["assigned_to"])
         mail.outbox = []
         response = self.client.post(
             f"/api/ik/tickets/{ticket.id}/comments/",
@@ -542,7 +543,6 @@ class TicketAPITests(TestCase):
             email="quiet@smarthydro.cl", password="pass", username="quiet",
             notify_email=False,
         )
-        self.point.users_viewers.add(quiet)
         ticket = _create_ticket_with_point(
             self.point,
             title="Ticket mención silenciosa",
@@ -550,6 +550,8 @@ class TicketAPITests(TestCase):
             origin="CLIENTE",
             source="APP_CLIENTE",
         )
+        ticket.assigned_to = quiet
+        ticket.save(update_fields=["assigned_to"])
         mail.outbox = []
         response = self.client.post(
             f"/api/ik/tickets/{ticket.id}/comments/",
@@ -611,14 +613,16 @@ class TicketAPITests(TestCase):
         colleague = User.objects.create_user(
             email="colleague@smarthydro.cl", password="pass", username="colleague"
         )
-        self.point.users_viewers.add(colleague)
         ticket = _create_ticket_with_point(
             self.point,
             title="Ticket etiquetables",
             description="...",
             origin="CLIENTE",
             source="APP_CLIENTE",
+            created_by=self.user,
         )
+        ticket.assigned_to = colleague
+        ticket.save(update_fields=["assigned_to"])
         response = self.client.get(f"/api/ik/tickets/{ticket.id}/mentionable_users/")
         self.assertEqual(response.status_code, 200)
         usernames = [u["username"] for u in response.json()["users"]]
@@ -699,7 +703,6 @@ class TicketAPITests(TestCase):
         colleague = User.objects.create_user(
             email="refcolleague@smarthydro.cl", password="pass", username="refcolleague"
         )
-        self.point.users_viewers.add(colleague)
         source = _create_ticket_with_point(
             self.point,
             title="Fuente", description="...", origin="CLIENTE", source="APP_CLIENTE",
@@ -708,6 +711,8 @@ class TicketAPITests(TestCase):
             self.point,
             title="Target", description="...", origin="CLIENTE", source="APP_CLIENTE",
         )
+        target.assigned_to = colleague
+        target.save(update_fields=["assigned_to"])
         mail.outbox = []
         response = self.client.post(
             f"/api/ik/tickets/{source.id}/comments/",
