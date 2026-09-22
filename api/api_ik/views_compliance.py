@@ -18,7 +18,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 
-from django.db.models import Q, Exists, OuterRef
+from django.db.models import Q, Exists, OuterRef, Count, Case, When, F, Value, DecimalField
 from django.core.paginator import Paginator
 from django.utils import timezone
 from api.core.models import CatchmentPoint, DgaDataConfigCatchment, InteractionDetail
@@ -315,18 +315,42 @@ class ComplianceListView(APIView):
             lookback_date = timezone.make_aware(
                 datetime.combine(today - timedelta(days=90), datetime.min.time())
             )
+            # Batch: 2 queries en vez de 2N (N+1 resuelto)
+            # Query 1: excedencias (flow > auth_flow) por punto
+            exceed_q = Q()
             for cp_id, auth_flow in threshold_map.items():
-                base_qs = InteractionDetail.objects.filter(
-                    catchment_point_id=cp_id,
-                    date_time_medition__gte=lookback_date,
+                exceed_q |= Q(catchment_point_id=cp_id, flow__gt=auth_flow)
+            if exceed_q:
+                exceed_rows = (
+                    InteractionDetail.objects.filter(
+                        date_time_medition__gte=lookback_date
+                    )
+                    .filter(exceed_q)
+                    .values('catchment_point_id')
+                    .annotate(n=Count('id'))
                 )
-                flow_exceedances_count[cp_id] = base_qs.filter(
-                    flow__gt=auth_flow
-                ).count()
-                near_limit_records_count[cp_id] = base_qs.filter(
+                for row in exceed_rows:
+                    flow_exceedances_count[row['catchment_point_id']] = row['n']
+
+            # Query 2: near_limit (90% <= flow <= auth_flow) por punto
+            near_q = Q()
+            for cp_id, auth_flow in threshold_map.items():
+                near_q |= Q(
+                    catchment_point_id=cp_id,
                     flow__gte=auth_flow * 0.9,
                     flow__lte=auth_flow,
-                ).count()
+                )
+            if near_q:
+                near_rows = (
+                    InteractionDetail.objects.filter(
+                        date_time_medition__gte=lookback_date
+                    )
+                    .filter(near_q)
+                    .values('catchment_point_id')
+                    .annotate(n=Count('id'))
+                )
+                for row in near_rows:
+                    near_limit_records_count[row['catchment_point_id']] = row['n']
 
         # Orden: activos primero; luego según criterio elegido.
         if order_by == 'default':
@@ -395,25 +419,35 @@ class ComplianceListView(APIView):
         page_point_ids = [p.id for p in page_points]
 
         # Último registro con voucher o general por punto
+        # Batch con DISTINCT ON (PostgreSQL): 1-2 queries en vez de 2N (N+1 resuelto)
         last_map = {}
         voucher_ids = set()
-        for cp_id in page_point_ids:
-            last_voucher = InteractionDetail.objects.filter(
-                catchment_point_id=cp_id,
-                n_voucher__isnull=False
-            ).order_by('-date_time_medition').first()
-            if last_voucher:
-                last_map[cp_id] = last_voucher
-                voucher_ids.add(cp_id)
+        if page_point_ids:
+            # Query 1: último registro CON voucher por punto
+            voucher_qs = (
+                InteractionDetail.objects.filter(
+                    catchment_point_id__in=page_point_ids,
+                    n_voucher__isnull=False,
+                )
+                .order_by('catchment_point_id', '-date_time_medition')
+                .distinct('catchment_point_id')
+            )
+            for obj in voucher_qs:
+                last_map[obj.catchment_point_id] = obj
+                voucher_ids.add(obj.catchment_point_id)
 
-        for cp_id in page_point_ids:
-            if cp_id in voucher_ids:
-                continue
-            last_any = InteractionDetail.objects.filter(
-                catchment_point_id=cp_id
-            ).order_by('-date_time_medition').first()
-            if last_any:
-                last_map[cp_id] = last_any
+            # Query 2: último registro cualquiera solo para puntos sin voucher
+            remaining_ids = [pid for pid in page_point_ids if pid not in voucher_ids]
+            if remaining_ids:
+                any_qs = (
+                    InteractionDetail.objects.filter(
+                        catchment_point_id__in=remaining_ids,
+                    )
+                    .order_by('catchment_point_id', '-date_time_medition')
+                    .distinct('catchment_point_id')
+                )
+                for obj in any_qs:
+                    last_map[obj.catchment_point_id] = obj
 
         points = [
             self._build_compliance_item(
