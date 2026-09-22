@@ -5,33 +5,41 @@ Signals para crear tickets automáticamente desde alertas y eventos del sistema.
 import logging
 import re
 
-from django.conf import settings
-from django.core.mail import send_mail
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 
+from api.core.notifications import notify
 from api.core.models.alerts import AlertTrigger, SystemEvent
 from api.core.models.tickets import SupportTicket, TicketCategory
 
 logger = logging.getLogger(__name__)
 
 
-def _notify_category_operators(ticket_id):
+def _ticket_point_context(ticket):
+    point = ticket.points.first()
+    client_name = point.project.client.name if point and point.project and point.project.client else "N/A"
+    point_name = point.title if point else "N/A"
+    return client_name, point_name
+
+
+def _notify_ticket_created(ticket_id):
     """
-    Envía notificación por correo a los operadores de la categoría del ticket.
-    Se ejecuta sincrónicamente para evitar problemas de concurrencia en tests
-    y mantener la trazabilidad; `fail_silently=True` evita que falle la request.
+    Notifica la creación de un ticket (solo correo vía orquestador).
+
+    Destinatarios: creador y asignado (si los hay). Los operadores de la
+    categoría reciben notificación in-app, no correo.
+    Se omite si origin=INTERNO o la categoría tiene notify_operators_on_create=False.
     """
     try:
-        ticket = SupportTicket.objects.select_related("category").get(id=ticket_id)
+        ticket = SupportTicket.objects.select_related("category", "created_by", "assigned_to").get(id=ticket_id)
     except SupportTicket.DoesNotExist:
         logger.warning(f"Ticket {ticket_id} no existe; no se envía notificación.")
         return
 
     # Los tickets de origen interno son borradores/eventos automáticos;
-    # no se notifica a operadores porque aún no requieren atención humana.
+    # no se notifica porque aún no requieren atención humana.
     if ticket.origin == "INTERNO":
         return
 
@@ -39,23 +47,15 @@ def _notify_category_operators(ticket_id):
     if not category or not category.notify_operators_on_create:
         return
 
-    operators = set(category.operators.filter(is_active=True, notify_email=True).values_list("email", flat=True))
-
-    # Modo prueba: limitar destinatarios a lista configurada
-    test_only = getattr(settings, "SLA_OVERDUE_TEST_ONLY", None)
-    if test_only:
-        allowed = set(test_only)
-        operators = operators & allowed
-        if not operators:
-            return
-
-    if not operators:
+    recipients = []
+    if ticket.created_by:
+        recipients.append(ticket.created_by)
+    if ticket.assigned_to and ticket.assigned_to_id != getattr(ticket.created_by, "id", None):
+        recipients.append(ticket.assigned_to)
+    if not recipients:
         return
 
-    point = ticket.points.first()
-    client_name = point.project.client.name if point and point.project and point.project.client else "N/A"
-    point_name = point.title if point else "N/A"
-
+    client_name, point_name = _ticket_point_context(ticket)
     context = {
         "ticket_id": ticket.id,
         "title": ticket.title,
@@ -76,85 +76,43 @@ def _notify_category_operators(ticket_id):
     plain_message = strip_tags(html_message)
     subject = f"Nuevo ticket #{ticket.id}: {ticket.title}"
 
-    recipient_list = sorted(operators)
+    notify(
+        subject=subject,
+        message=plain_message,
+        recipients=recipients,
+        ticket=ticket,
+        html_message=html_message,
+    )
 
-    try:
-        send_mail(
-            subject=subject,
-            message=plain_message,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
-            recipient_list=recipient_list,
-            html_message=html_message,
-            fail_silently=True,
-        )
-        logger.info(f"Notificación de ticket #{ticket.id} enviada a {', '.join(recipient_list)}")
-    except Exception as e:
-        logger.error(f"Error enviando notificación de ticket #{ticket.id}: {e}")
+
+# Alias legacy (evitar imports rotos en terceros).
+_notify_category_operators = _notify_ticket_created
 
 
 def _notify_scheduled_date_confirmed(ticket, confirmer):
     """
-    Envía notificación por correo cuando se confirma la fecha planificada de
-    una OT (orden de trabajo).
+    Notifica por correo cuando se confirma la fecha planificada de una OT.
 
-    Destinatarios:
-      - La persona que confirmó la fecha.
-      - Los involucrados en el ticket de soporte: creador, asignado,
-        operadores de la categoría y dueños/visores de los puntos vinculados.
-
-    Correo configurable con lo ya existente: `DEFAULT_FROM_EMAIL` y el modo
-    prueba `SLA_OVERDUE_TEST_ONLY` (lista blanca de destinatarios).
+    Destinatarios (Users, filtrados por el orquestador): quien confirma,
+    creador, asignado y operadores de la categoría.
     """
     if not ticket.scheduled_date or not ticket.scheduled_date_confirmed:
         return
 
-    confirmer_email = confirmer.email if confirmer else None
-    recipients = set()
-    if confirmer_email:
-        recipients.add(confirmer_email)
-
-    # Involucrados en el ticket
-    involved = []
+    recipients = []
+    if confirmer:
+        recipients.append(confirmer)
     if ticket.created_by and ticket.created_by.id != getattr(confirmer, "id", None):
-        involved.append(ticket.created_by)
+        recipients.append(ticket.created_by)
     if ticket.assigned_to and ticket.assigned_to.id != getattr(confirmer, "id", None):
-        involved.append(ticket.assigned_to)
+        recipients.append(ticket.assigned_to)
     if ticket.category:
-        involved.extend(ticket.category.operators.all())
+        recipients.extend(ticket.category.operators.filter(is_active=True))
 
-    # [DESHABILITADO 2026-08-27] No enviar correos a clientes directos por ahora
-    # for point in ticket.points.prefetch_related("users_viewers").all():
-    #     involved.append(point.owner_user)
-    #     involved.extend(point.users_viewers.all())
-
-    for user in involved:
-        if not user or not user.is_active or not user.email:
-            continue
-        if not user.notify_email:
-            continue
-        if user.id == getattr(confirmer, "id", None):
-            continue
-        recipients.add(user.email)
-
-    recipients.discard("")
     if not recipients:
         return
 
-    # Modo prueba: limitar destinatarios a lista configurada
-    test_only = getattr(settings, "SLA_OVERDUE_TEST_ONLY", None)
-    if test_only:
-        allowed = set(test_only)
-        recipients = recipients & allowed
-        if not recipients:
-            return
-
-    point = ticket.points.first()
-    client_name = (
-        point.project.client.name
-        if point and point.project and point.project.client
-        else "N/A"
-    )
-    point_name = point.title if point else "N/A"
+    client_name, point_name = _ticket_point_context(ticket)
     confirmed_by_name = (
         confirmer.get_full_name() or confirmer.email
         if confirmer
@@ -187,82 +145,39 @@ def _notify_scheduled_date_confirmed(ticket, confirmer):
     plain_message = strip_tags(html_message)
     subject = f"Fecha confirmada Ticket #{ticket.id}: {ticket.title}"
 
-    recipient_list = sorted(recipients)
-
-    try:
-        send_mail(
-            subject=subject,
-            message=plain_message,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
-            recipient_list=recipient_list,
-            html_message=html_message,
-            fail_silently=True,
-        )
-        logger.info(
-            f"Notificación de fecha confirmada Ticket #{ticket.id} enviada a "
-            f"{', '.join(recipient_list)}"
-        )
-    except Exception as e:
-        logger.error(f"Error enviando notificación de fecha confirmada Ticket #{ticket.id}: {e}")
+    notify(
+        subject=subject,
+        message=plain_message,
+        recipients=recipients,
+        ticket=ticket,
+        html_message=html_message,
+    )
 
 
 def _notify_scheduled_date_cancelled(ticket, canceller):
     """
-    Envía notificación por correo cuando se cancela la fecha planificada de una OT.
+    Notifica por correo cuando se cancela la fecha planificada de una OT.
 
-    Los destinatarios son los mismos que en la confirmación: la persona que
-    cancela y los involucrados (creador, asignado, operadores de la categoría y
-    dueños/visores de los puntos). Reutiliza `DEFAULT_FROM_EMAIL` y el modo
-    prueba `SLA_OVERDUE_TEST_ONLY`.
+    Destinatarios (Users, filtrados por el orquestador): quien cancela,
+    creador, asignado y operadores de la categoría.
     """
     if not ticket.scheduled_date or not ticket.scheduled_date_cancelled:
         return
 
-    canceller_email = canceller.email if canceller else None
-    recipients = set()
-    if canceller_email:
-        recipients.add(canceller_email)
-
-    involved = []
+    recipients = []
+    if canceller:
+        recipients.append(canceller)
     if ticket.created_by and ticket.created_by.id != getattr(canceller, "id", None):
-        involved.append(ticket.created_by)
+        recipients.append(ticket.created_by)
     if ticket.assigned_to and ticket.assigned_to.id != getattr(canceller, "id", None):
-        involved.append(ticket.assigned_to)
+        recipients.append(ticket.assigned_to)
     if ticket.category:
-        involved.extend(ticket.category.operators.all())
+        recipients.extend(ticket.category.operators.filter(is_active=True))
 
-    # [DESHABILITADO 2026-08-27] No enviar correos a clientes directos por ahora
-    # for point in ticket.points.prefetch_related("users_viewers").all():
-    #     involved.append(point.owner_user)
-    #     involved.extend(point.users_viewers.all())
-
-    for user in involved:
-        if not user or not user.is_active or not user.email:
-            continue
-        if not user.notify_email:
-            continue
-        if user.id == getattr(canceller, "id", None):
-            continue
-        recipients.add(user.email)
-
-    recipients.discard("")
     if not recipients:
         return
 
-    test_only = getattr(settings, "SLA_OVERDUE_TEST_ONLY", None)
-    if test_only:
-        allowed = set(test_only)
-        recipients = recipients & allowed
-        if not recipients:
-            return
-
-    point = ticket.points.first()
-    client_name = (
-        point.project.client.name
-        if point and point.project and point.project.client
-        else "N/A"
-    )
-    point_name = point.title if point else "N/A"
+    client_name, point_name = _ticket_point_context(ticket)
     cancelled_by_name = (
         canceller.get_full_name() or canceller.email
         if canceller
@@ -296,23 +211,13 @@ def _notify_scheduled_date_cancelled(ticket, canceller):
     plain_message = strip_tags(html_message)
     subject = f"Fecha cancelada Ticket #{ticket.id}: {ticket.title}"
 
-    recipient_list = sorted(recipients)
-
-    try:
-        send_mail(
-            subject=subject,
-            message=plain_message,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
-            recipient_list=recipient_list,
-            html_message=html_message,
-            fail_silently=True,
-        )
-        logger.info(
-            f"Notificación de fecha cancelada Ticket #{ticket.id} enviada a "
-            f"{', '.join(recipient_list)}"
-        )
-    except Exception as e:
-        logger.error(f"Error enviando notificación de fecha cancelada Ticket #{ticket.id}: {e}")
+    notify(
+        subject=subject,
+        message=plain_message,
+        recipients=recipients,
+        ticket=ticket,
+        html_message=html_message,
+    )
 
 
 def _get_category(category_type, name):
@@ -330,8 +235,9 @@ def _get_category(category_type, name):
 
 
 def _ticket_involved_users(ticket):
-    """Usuarios involucrados en un ticket: creador, asignado, operadores de la
-    categoría y dueños/visores de los puntos vinculados. Solo usuarios activos."""
+    """Usuarios involucrados en un ticket: creador, asignado y operadores de la
+    categoría. Solo usuarios activos. Dueños/visores de puntos se excluyen
+    (el orquestador los trata como clientes y se filtran por NOTIFY_CLIENTS)."""
     involved = set()
     if ticket.created_by:
         involved.add(ticket.created_by)
@@ -339,11 +245,6 @@ def _ticket_involved_users(ticket):
         involved.add(ticket.assigned_to)
     if ticket.category:
         involved.update(ticket.category.operators.filter(is_active=True))
-    # for point in ticket.points.prefetch_related("users_viewers").all():
-    #     if point.owner_user:
-    #         involved.add(point.owner_user)
-    #     involved.update(point.users_viewers.filter(is_active=True))
-    # [DESHABILITADO 2026-08-27] No enviar correos a clientes directos por ahora
     return [u for u in involved if u.is_active]
 
 
@@ -389,7 +290,7 @@ def _resolve_mentioned_users(content, ticket):
 
 def _notify_comment_mentions(comment, ticket, author):
     """Notifica por email + in-app a los usuarios mencionados (@usuario) en un
-    comentario. Respeta la preferencia notify_email y excluye al autor."""
+    comentario. El orquestador aplica notify_email y filtrado de clientes."""
     from api.core.models.tickets import TicketNotification
 
     mentioned = [
@@ -401,13 +302,7 @@ def _notify_comment_mentions(comment, ticket, author):
         return []
 
     author_name = author.get_full_name() or author.email if author else "Usuario"
-    point = ticket.points.first()
-    client_name = (
-        point.project.client.name
-        if point and point.project and point.project.client
-        else "N/A"
-    )
-    point_name = point.title if point else "N/A"
+    client_name, point_name = _ticket_point_context(ticket)
 
     context = {
         "ticket_id": ticket.id,
@@ -423,11 +318,6 @@ def _notify_comment_mentions(comment, ticket, author):
     plain_message = strip_tags(html_message)
     subject = f"Te mencionaron en Ticket #{ticket.id}: {ticket.title}"
 
-    test_only = getattr(settings, "SLA_OVERDUE_TEST_ONLY", None)
-    allowed = set(test_only) if test_only else None
-
-    recipients = []
-    seen = set()
     for user in mentioned:
         TicketNotification.objects.create(
             user=user,
@@ -436,28 +326,14 @@ def _notify_comment_mentions(comment, ticket, author):
             notification_type=TicketNotification.MENTION,
             message=f"{author_name} te mencionó en el ticket #{ticket.id}",
         )
-        if not user.notify_email or not user.email or user.email in seen:
-            continue
-        if allowed is not None and user.email not in allowed:
-            continue
-        seen.add(user.email)
-        recipients.append(user.email)
 
-    if recipients:
-        try:
-            send_mail(
-                subject=subject,
-                message=plain_message,
-                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
-                recipient_list=sorted(recipients),
-                html_message=html_message,
-                fail_silently=True,
-            )
-            logger.info(
-                f"Mención en Ticket #{ticket.id}: correo a {', '.join(sorted(recipients))}"
-            )
-        except Exception as e:
-            logger.error(f"Error enviando mención Ticket #{ticket.id}: {e}")
+    notify(
+        subject=subject,
+        message=plain_message,
+        recipients=mentioned,
+        ticket=ticket,
+        html_message=html_message,
+    )
 
     return mentioned
 
@@ -483,11 +359,8 @@ def _notify_ticket_references(comment, ticket, author):
         return []
 
     author_name = author.get_full_name() or author.email if author else "Usuario"
-    test_only = getattr(settings, "SLA_OVERDUE_TEST_ONLY", None)
-    allowed = set(test_only) if test_only else None
 
     recipients = []
-    seen = set()
     notified = []
     for ref in ref_tickets:
         for user in _ticket_involved_users(ref):
@@ -504,12 +377,7 @@ def _notify_ticket_references(comment, ticket, author):
                 ),
             )
             notified.append(user)
-            if not user.notify_email or not user.email or user.email in seen:
-                continue
-            if allowed is not None and user.email not in allowed:
-                continue
-            seen.add(user.email)
-            recipients.append(user.email)
+            recipients.append(user)
 
     if recipients:
         context = {
@@ -523,20 +391,13 @@ def _notify_ticket_references(comment, ticket, author):
         html_message = render_to_string("tickets/ticket_reference.html", context)
         plain_message = strip_tags(html_message)
         subject = f"Referenciaron tu ticket en #{ticket.id}: {ticket.title}"
-        try:
-            send_mail(
-                subject=subject,
-                message=plain_message,
-                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
-                recipient_list=sorted(recipients),
-                html_message=html_message,
-                fail_silently=True,
-            )
-            logger.info(
-                f"Referencia en Ticket #{ticket.id}: correo a {', '.join(sorted(recipients))}"
-            )
-        except Exception as e:
-            logger.error(f"Error enviando referencia Ticket #{ticket.id}: {e}")
+        notify(
+            subject=subject,
+            message=plain_message,
+            recipients=recipients,
+            ticket=ticket,
+            html_message=html_message,
+        )
 
     return notified
 
@@ -545,8 +406,7 @@ def _notify_ticket_assigned(ticket, actor, new_assignee):
     """Notifica por correo cuando un ticket es asignado/reasignado.
 
     Destinatarios: el nuevo asignado, los operadores de la categoría y el
-    creador del ticket. Excluye a quien realiza la acción. Respeta la
-    preferencia notify_email y el modo prueba SLA_OVERDUE_TEST_ONLY.
+    creador del ticket. Excluye a quien realiza la acción.
     """
     if not new_assignee:
         return []
@@ -563,13 +423,7 @@ def _notify_ticket_assigned(ticket, actor, new_assignee):
     actor_name = actor.get_full_name() or actor.email if actor else "Usuario"
     assignee_name = new_assignee.get_full_name() or new_assignee.email
 
-    point = ticket.points.first()
-    client_name = (
-        point.project.client.name
-        if point and point.project and point.project.client
-        else "N/A"
-    )
-    point_name = point.title if point else "N/A"
+    client_name, point_name = _ticket_point_context(ticket)
 
     context = {
         "ticket_id": ticket.id,
@@ -585,46 +439,23 @@ def _notify_ticket_assigned(ticket, actor, new_assignee):
     plain_message = strip_tags(html_message)
     subject = f"Te asignaron el ticket #{ticket.id}: {ticket.title}"
 
-    test_only = getattr(settings, "SLA_OVERDUE_TEST_ONLY", None)
-    allowed = set(test_only) if test_only else None
+    recipients = [u for u in users if u.id != actor_id]
+    notify(
+        subject=subject,
+        message=plain_message,
+        recipients=recipients,
+        ticket=ticket,
+        html_message=html_message,
+    )
 
-    recipients = []
-    seen = set()
-    for user in sorted(users, key=lambda u: u.email or ""):
-        if not user.is_active or user.id == actor_id:
-            continue
-        if not user.notify_email or not user.email or user.email in seen:
-            continue
-        if allowed is not None and user.email not in allowed:
-            continue
-        seen.add(user.email)
-        recipients.append(user.email)
-
-    if recipients:
-        try:
-            send_mail(
-                subject=subject,
-                message=plain_message,
-                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
-                recipient_list=sorted(recipients),
-                html_message=html_message,
-                fail_silently=True,
-            )
-            logger.info(
-                f"Asignación Ticket #{ticket.id}: correo a {', '.join(sorted(recipients))}"
-            )
-        except Exception as e:
-            logger.error(f"Error enviando asignación Ticket #{ticket.id}: {e}")
-
-    return recipients
+    return [u.email for u in recipients if u.email]
 
 
 def _notify_ticket_status_changed(ticket, actor, old_status, new_status):
     """Notifica por correo a los involucrados del ticket cuando cambia su estado.
 
-    Destinatarios: involucrados del ticket (creador, asignado, operadores de la
-    categoría y dueños/visores de los puntos). Excluye a quien realiza la acción.
-    Respeta la preferencia notify_email y el modo prueba SLA_OVERDUE_TEST_ONLY.
+    Destinatarios: creador, asignado y operadores de la categoría.
+    Excluye a quien realiza la acción.
     """
     if not new_status or new_status == old_status:
         return []
@@ -639,13 +470,7 @@ def _notify_ticket_status_changed(ticket, actor, old_status, new_status):
         return []
 
     actor_name = actor.get_full_name() or actor.email if actor else "Usuario"
-    point = ticket.points.first()
-    client_name = (
-        point.project.client.name
-        if point and point.project and point.project.client
-        else "N/A"
-    )
-    point_name = point.title if point else "N/A"
+    client_name, point_name = _ticket_point_context(ticket)
 
     context = {
         "ticket_id": ticket.id,
@@ -664,37 +489,15 @@ def _notify_ticket_status_changed(ticket, actor, old_status, new_status):
         f"{ticket.title}"
     )
 
-    test_only = getattr(settings, "SLA_OVERDUE_TEST_ONLY", None)
-    allowed = set(test_only) if test_only else None
+    notify(
+        subject=subject,
+        message=plain_message,
+        recipients=users,
+        ticket=ticket,
+        html_message=html_message,
+    )
 
-    recipients = []
-    seen = set()
-    for user in sorted(users, key=lambda u: u.email or ""):
-        if not user.is_active or not user.notify_email or not user.email or user.email in seen:
-            continue
-        if allowed is not None and user.email not in allowed:
-            continue
-        seen.add(user.email)
-        recipients.append(user.email)
-
-    if recipients:
-        try:
-            send_mail(
-                subject=subject,
-                message=plain_message,
-                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
-                recipient_list=sorted(recipients),
-                html_message=html_message,
-                fail_silently=True,
-            )
-            logger.info(
-                f"Estado Ticket #{ticket.id}: {old_status} → {new_status}, "
-                f"correo a {', '.join(sorted(recipients))}"
-            )
-        except Exception as e:
-            logger.error(f"Error enviando cambio de estado Ticket #{ticket.id}: {e}")
-
-    return recipients
+    return [u.email for u in users if u.email]
 
 
 @receiver(post_save, sender=AlertTrigger)
@@ -759,7 +562,7 @@ def create_ticket_from_alert_trigger(sender, instance, created, **kwargs):
     )
     ticket.points.add(point)
     logger.info(f"Ticket #{ticket.id} creado automáticamente desde AlertTrigger {instance.id}.")
-    _notify_category_operators(ticket.id)
+    _notify_ticket_created(ticket.id)
 
 
 @receiver(post_save, sender=SystemEvent)
@@ -809,4 +612,4 @@ def create_ticket_from_system_event(sender, instance, created, **kwargs):
     )
     ticket.points.add(point)
     logger.info(f"Ticket #{ticket.id} creado automáticamente desde SystemEvent {instance.id}.")
-    _notify_category_operators(ticket.id)
+    _notify_ticket_created(ticket.id)

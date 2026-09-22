@@ -46,8 +46,9 @@ from api.core.serializers.tickets import (
     FileDriveSerializer,
     TicketNotificationSerializer,
 )
+from api.core.notifications import batch_notifications
 from api.core.signals.tickets import (
-    _notify_category_operators,
+    _notify_ticket_created,
     _notify_scheduled_date_cancelled,
     _notify_scheduled_date_confirmed,
     _notify_comment_mentions,
@@ -478,7 +479,7 @@ class TicketsListCreateView(APIView):
                 update_fields.append("sla_paused_at")
             ticket.save(update_fields=update_fields)
             _log_activity(ticket, user, "CREACIÓN", None, "Ticket creado")
-            _notify_category_operators(ticket.id)
+            _notify_ticket_created(ticket.id)
             return Response(
                 SupportTicketDetailSerializer(ticket, context={"request": request}).data,
                 status=status.HTTP_201_CREATED,
@@ -606,17 +607,18 @@ class TicketDetailUpdateView(APIView):
                 if pause_fields:
                     updated_ticket.save(update_fields=pause_fields)
 
-            # Notificación por correo en cambios de estado y/o asignación
-            if "status" in data and str(old_values.get("status")) != str(updated_ticket.status):
-                _notify_ticket_status_changed(
-                    updated_ticket, user, old_values.get("status"), updated_ticket.status
-                )
-            if "assigned_to" in data:
-                old_assignee_id = getattr(old_values.get("assigned_to"), "id", None)
-                if old_assignee_id != updated_ticket.assigned_to_id and updated_ticket.assigned_to_id:
-                    from api.core.models import User
-                    new_assignee = User.objects.get(id=updated_ticket.assigned_to_id)
-                    _notify_ticket_assigned(updated_ticket, user, new_assignee)
+            # Notificaciones por correo (orquestador agrupa por subject)
+            with batch_notifications():
+                if "status" in data and str(old_values.get("status")) != str(updated_ticket.status):
+                    _notify_ticket_status_changed(
+                        updated_ticket, user, old_values.get("status"), updated_ticket.status
+                    )
+                if "assigned_to" in data:
+                    old_assignee_id = getattr(old_values.get("assigned_to"), "id", None)
+                    if old_assignee_id != updated_ticket.assigned_to_id and updated_ticket.assigned_to_id:
+                        from api.core.models import User
+                        new_assignee = User.objects.get(id=updated_ticket.assigned_to_id)
+                        _notify_ticket_assigned(updated_ticket, user, new_assignee)
 
             return Response(
                 SupportTicketDetailSerializer(updated_ticket, context={"request": request}).data
@@ -747,10 +749,11 @@ class TicketCommentsView(APIView):
             comment = serializer.save(**save_kwargs)
             is_internal = comment.is_internal
 
-            # Notificar menciones @usuario del comentario (email + in-app).
-            _notify_comment_mentions(comment, ticket, user)
-            # Notificar referencias a otros tickets #<id> (email + in-app).
-            _notify_ticket_references(comment, ticket, user)
+            # Notificar menciones @usuario y referencias #<id> (email + in-app),
+            # agrupadas por subject en el orquestador.
+            with batch_notifications():
+                _notify_comment_mentions(comment, ticket, user)
+                _notify_ticket_references(comment, ticket, user)
 
             # Si es la primera respuesta de staff y no es interna, marcar SLA respondido
             if (

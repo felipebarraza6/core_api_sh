@@ -143,6 +143,23 @@ if _sla_overdue_test_only:
 else:
     SLA_OVERDUE_TEST_ONLY = []
 
+# Orquestador de notificaciones (solo correo).
+# NOTIFY_CLIENTS: si es False, no se envían correos a clientes (dueño/visor
+# de puntos del ticket). Whitelist permite excepciones puntuales.
+NOTIFY_CLIENTS = os.environ.get("NOTIFY_CLIENTS", "False").lower() == "true"
+_notify_clients_wl = os.environ.get("NOTIFY_CLIENTS_WHITELIST", "").strip()
+if _notify_clients_wl:
+    try:
+        NOTIFY_CLIENTS_WHITELIST = _json.loads(_notify_clients_wl)
+        if not isinstance(NOTIFY_CLIENTS_WHITELIST, list):
+            NOTIFY_CLIENTS_WHITELIST = []
+    except _json.JSONDecodeError:
+        NOTIFY_CLIENTS_WHITELIST = []
+else:
+    NOTIFY_CLIENTS_WHITELIST = []
+# Modo prueba: registra sin enviar.
+NOTIFICATIONS_DRY_RUN = os.environ.get("NOTIFICATIONS_DRY_RUN", "False").lower() == "true"
+
 # ========================================
 # DGA CONFIGURATION - Dirección General de Aguas
 # ========================================

@@ -1580,7 +1580,8 @@ class TicketScheduledDateConfirmationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(mail.outbox), 1)
         recipients = set(mail.outbox[0].to)
-        self.assertIn(self.client_user.email, recipients)
+        # client_user es dueño del punto → cliente; NOTIFY_CLIENTS=False lo excluye.
+        self.assertNotIn(self.client_user.email, recipients)
         self.assertIn(self.staff.email, recipients)
         self.assertIn(self.operator.email, recipients)
         self.assertIn("Fecha confirmada", mail.outbox[0].subject)
@@ -1752,7 +1753,8 @@ class TicketScheduledDateCancellationTests(TestCase):
 
         self.assertEqual(len(mail.outbox), 1)
         recipients = set(mail.outbox[0].to)
-        self.assertIn(self.client_user.email, recipients)
+        # client_user es dueño del punto → cliente; NOTIFY_CLIENTS=False lo excluye.
+        self.assertNotIn(self.client_user.email, recipients)
         self.assertIn(self.staff.email, recipients)
         self.assertIn(self.operator.email, recipients)
         self.assertIn("Fecha cancelada", mail.outbox[0].subject)
@@ -1878,40 +1880,66 @@ class TicketOperatorNotificationTests(TestCase):
         self.cat_hardware.notify_operators_on_create = True
         self.cat_hardware.save()
 
-    def test_notify_category_operators_sends_email(self):
+    def test_notify_ticket_created_sends_to_creator(self):
+        creator = User.objects.create_user(
+            email="createop@smarthydro.cl", password="pass", username="createop"
+        )
         ticket = _create_ticket_with_point(
             self.point,
             title="Falla notificable",
             description="...",
             category=self.cat_hardware,
+            created_by=creator,
             origin="CLIENTE",
             source="APP_CLIENTE",
         )
         from django.core import mail
-        from api.core.signals.tickets import _notify_category_operators
+        from api.core.signals.tickets import _notify_ticket_created
 
         mail.outbox = []
-        _notify_category_operators(ticket.id)
+        _notify_ticket_created(ticket.id)
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn(self.operator.email, mail.outbox[0].to)
+        self.assertIn(creator.email, mail.outbox[0].to)
+        # Política: operadores de categoría no reciben correo al crear.
+        self.assertNotIn(self.operator.email, mail.outbox[0].to)
         self.assertIn("Falla notificable", mail.outbox[0].subject)
 
-    def test_notify_respects_disabled_flag(self):
-        self.cat_hardware.notify_operators_on_create = False
-        self.cat_hardware.save()
+    def test_notify_ticket_created_no_email_without_creator(self):
         ticket = _create_ticket_with_point(
             self.point,
-            title="Falla silenciada",
+            title="Falla sin creador",
             description="...",
             category=self.cat_hardware,
             origin="CLIENTE",
             source="APP_CLIENTE",
         )
         from django.core import mail
-        from api.core.signals.tickets import _notify_category_operators
+        from api.core.signals.tickets import _notify_ticket_created
 
         mail.outbox = []
-        _notify_category_operators(ticket.id)
+        _notify_ticket_created(ticket.id)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_notify_respects_disabled_flag(self):
+        self.cat_hardware.notify_operators_on_create = False
+        self.cat_hardware.save()
+        creator = User.objects.create_user(
+            email="createsilenced@smarthydro.cl", password="pass", username="createsilenced"
+        )
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Falla silenciada",
+            description="...",
+            category=self.cat_hardware,
+            created_by=creator,
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        from django.core import mail
+        from api.core.signals.tickets import _notify_ticket_created
+
+        mail.outbox = []
+        _notify_ticket_created(ticket.id)
         self.assertEqual(len(mail.outbox), 0)
 
 
@@ -3855,8 +3883,11 @@ class TicketAssignmentEmailNotificationTests(TestCase):
         )
         self.client_obj = Client.objects.create(name="Cliente Asig")
         self.project = ProjectCatchments.objects.create(name="Proyecto Asig", client=self.client_obj)
+        self.point_owner = User.objects.create_user(
+            email="asigowner@smarthydro.cl", password="pass", username="asigowner"
+        )
         self.point = CatchmentPoint.objects.create(
-            title="Punto Asig", project=self.project, owner_user=self.creator
+            title="Punto Asig", project=self.project, owner_user=self.point_owner
         )
         self.cat = TicketCategory.objects.get(category_type="HARDWARE", name="Telemetría")
         self.cat.operators.add(self.operator)
@@ -3955,8 +3986,11 @@ class TicketStatusEmailNotificationTests(TestCase):
         )
         self.client_obj = Client.objects.create(name="Cliente Estado")
         self.project = ProjectCatchments.objects.create(name="Proyecto Estado", client=self.client_obj)
+        self.point_owner = User.objects.create_user(
+            email="stator@smarthydro.cl", password="pass", username="stator"
+        )
         self.point = CatchmentPoint.objects.create(
-            title="Punto Estado", project=self.project, owner_user=self.creator
+            title="Punto Estado", project=self.project, owner_user=self.point_owner
         )
         self.cat = TicketCategory.objects.get(category_type="HARDWARE", name="Telemetría")
         self.cat.operators.add(self.operator)

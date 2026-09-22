@@ -28,8 +28,23 @@ def send_async_notifications(instance_id):
             if instance.point_catchment.owner_user and instance.point_catchment.owner_user.email:
                 owner_email = instance.point_catchment.owner_user.email
 
+        # Solo enviar Chat para tipos que requieren atención humana.
+        # INFO es meramente informativo → se omite (evita ruido en Chat).
+        if instance.type_notification == "INFO":
+            return
+
+        type_titles = {
+            "WARNING": "⚠️ **ADVERTENCIA**",
+            "ALERT": "🚨 **ALERTA**",
+            "CRITICAL": "🔴 **CRÍTICO**",
+            "SUPPORT": "🎫 **NUEVO TICKET DE SOPORTE**",
+        }
+        chat_title = type_titles.get(
+            instance.type_notification,
+            f"🔔 **{instance.get_type_notification_display()}**",
+        )
         chat_msg = (
-            f"🎫 **NUEVO TICKET DE SOPORTE**\n\n"
+            f"{chat_title}\n\n"
             f"📌 **Título:** {instance.title}\n"
             f"🏢 **Cliente:** {client_name}\n"
             f"📍 **Punto:** {point_name}\n"
