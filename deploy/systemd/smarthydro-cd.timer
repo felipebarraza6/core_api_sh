@@ -1,0 +1,11 @@
+[Unit]
+Description=Revisa cada 5 min si production avanzó y lo despliega con seguridad
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=smarthydro-cd.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=CD de core_api_sh: despliegue seguro con backup y rollback
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=@REPO@/scripts/cd_watch.sh
+TimeoutStartSec=20min
+StandardOutput=journal
+StandardError=journal
