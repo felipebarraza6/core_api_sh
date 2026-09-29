@@ -3,6 +3,12 @@
 > **Última auditoría:** 2026-06-10
 > **Estado:** Producción activa — CAUTELA MÁXIMA en todo cambio
 >
+> **Cambios recientes (2026-09-29):**
+> - **Fix 413 en adjuntos de tickets:** el edge real es `nginx_proxy` y **no** tenía `client_max_body_size` → default `1m` rechazaba con HTTP 413 cualquier adjunto >1 MB (aunque la app permite 10 MB). Fix en `conf/nginx-conf.d/zz-client-max-body-size.conf` (nivel `http`, 20m) aplicado con `conf/apply_nginx_proxy_conf.sh`. **Ojo:** NO usar `vhost.d/<host>` para esto — el contenedor `letsencrypt` escribe su bloque ACME ahí y ambos chocan (`duplicate location /.well-known/acme-challenge/`) dejando a nginx sin arrancar → **HTTP 521 en toda la API**. Los `conf/nginx-*.conf` del repo no se usan (el nginx embebido del contenedor Django está deshabilitado en `docker-entrypoint.sh`).
+> - **Fix 405 PATCH en comentarios:** `TicketCommentDetailView` ahora implementa `patch` (`content` para autor/staff, `is_internal` solo staff) en `api/api_ik/views_tickets.py`. Antes solo existía `delete`, por eso el frontend recibía `405 Method "PATCH" not allowed`.
+> - **CORS:** `http://localhost:3001` ya estaba en `CORS_ORIGIN_WHITELIST` (`api/settings.py:354`). Si el navegador reporta "No Access-Control-Allow-Origin" sin cambiar el código, verificar primero que la API responda (ej. `curl -I https://api.smarthydro.app/health/`): un 521/502 de Cloudflare devuelve la página de error sin cabeceras CORS y se ve como error de CORS.
+> - **Tests:** 8 tests nuevos de edición de comentarios; `tests.regression` completo en verde (416).
+>
 > **Cambios recientes (2026-06-10):**
 > - **Endpoint Telemetry Reprocessor:** `POST /api/telemetry-reprocessor/` expone audit/fix-totals/fix-flow/fix-nivel/fix-water-table como API REST. Requiere staff. Dry-run por defecto. Documentado en `docs/API_TELEMETRY_REPROCESSOR.md`
 >

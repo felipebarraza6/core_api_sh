@@ -510,6 +510,209 @@ class TicketAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    # =========================================================================
+    # Edición de comentarios (PATCH) — regresión 405 Method PATCH not allowed
+    # =========================================================================
+
+    def test_patch_comment_updates_content(self):
+        """PATCH /comments/<cid>/ edita el contenido (staff)."""
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket editar comentario",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        comment = TicketComment.objects.create(
+            ticket=ticket, author=self.user, content="Texto original"
+        )
+        response = self.client.patch(
+            f"/api/ik/tickets/{ticket.id}/comments/{comment.id}/",
+            {"content": "Texto corregido"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        comment.refresh_from_db()
+        self.assertEqual(comment.content, "Texto corregido")
+        self.assertEqual(response.json()["content"], "Texto corregido")
+        self.assertTrue(
+            TicketActivityLog.objects.filter(
+                ticket=ticket, field_name="comment_edited"
+            ).exists()
+        )
+
+    def test_patch_comment_staff_can_toggle_internal(self):
+        """Staff puede cambiar is_internal vía PATCH."""
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket patch interno",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        comment = TicketComment.objects.create(
+            ticket=ticket, author=self.user, content="Nota", is_internal=False
+        )
+        response = self.client.patch(
+            f"/api/ik/tickets/{ticket.id}/comments/{comment.id}/",
+            {"is_internal": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        comment.refresh_from_db()
+        self.assertTrue(comment.is_internal)
+        self.assertTrue(
+            TicketActivityLog.objects.filter(
+                ticket=ticket, field_name="comment_is_internal"
+            ).exists()
+        )
+
+    def test_patch_comment_own_by_author_client(self):
+        """El autor (cliente) puede editar su propio comentario."""
+        author = User.objects.create_user(
+            email="editauthor@smarthydro.cl", password="pass", username="editauthor"
+        )
+        self.point.users_viewers.add(author)
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket autor edita",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        comment = TicketComment.objects.create(
+            ticket=ticket, author=author, content="Mi comentario"
+        )
+
+        client = APIClient()
+        token = Token.objects.create(user=author)
+        client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        response = client.patch(
+            f"/api/ik/tickets/{ticket.id}/comments/{comment.id}/",
+            {"content": "Mi comentario editado"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        comment.refresh_from_db()
+        self.assertEqual(comment.content, "Mi comentario editado")
+
+    def test_patch_comment_forbidden_for_non_author_client(self):
+        """Cliente no autor no puede editar un comentario ajeno."""
+        author = User.objects.create_user(
+            email="ajeno@smarthydro.cl", password="pass", username="ajenoauthor"
+        )
+        other = User.objects.create_user(
+            email="otro@smarthydro.cl", password="pass", username="otroclient"
+        )
+        self.point.users_viewers.add(other)
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket permisos patch",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        comment = TicketComment.objects.create(
+            ticket=ticket, author=author, content="Comentario ajeno"
+        )
+
+        client = APIClient()
+        token = Token.objects.create(user=other)
+        client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        response = client.patch(
+            f"/api/ik/tickets/{ticket.id}/comments/{comment.id}/",
+            {"content": "Intento de edicion"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        comment.refresh_from_db()
+        self.assertEqual(comment.content, "Comentario ajeno")
+
+    def test_patch_comment_client_cannot_set_internal(self):
+        """Un cliente no puede convertir su comentario en nota interna."""
+        author = User.objects.create_user(
+            email="nointernal@smarthydro.cl", password="pass", username="nointernal"
+        )
+        self.point.users_viewers.add(author)
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket cliente interno",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        comment = TicketComment.objects.create(
+            ticket=ticket, author=author, content="Visible"
+        )
+
+        client = APIClient()
+        token = Token.objects.create(user=author)
+        client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        response = client.patch(
+            f"/api/ik/tickets/{ticket.id}/comments/{comment.id}/",
+            {"is_internal": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        comment.refresh_from_db()
+        self.assertFalse(comment.is_internal)
+
+    def test_patch_comment_empty_content_rejected(self):
+        """Contenido vacío en blanco debe retornar 400."""
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket patch vacio",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        comment = TicketComment.objects.create(
+            ticket=ticket, author=self.user, content="Con texto"
+        )
+        response = self.client.patch(
+            f"/api/ik/tickets/{ticket.id}/comments/{comment.id}/",
+            {"content": "   "},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        comment.refresh_from_db()
+        self.assertEqual(comment.content, "Con texto")
+
+    def test_patch_comment_no_editable_fields_rejected(self):
+        """PATCH sin campos editables responde 400 (no 405)."""
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket patch sin campos",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        comment = TicketComment.objects.create(
+            ticket=ticket, author=self.user, content="Texto"
+        )
+        response = self.client.patch(
+            f"/api/ik/tickets/{ticket.id}/comments/{comment.id}/",
+            {"status_change": "CERRADO"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("editables", response.json().get("error", ""))
+
+    def test_patch_comment_not_found(self):
+        ticket = _create_ticket_with_point(
+            self.point,
+            title="Ticket patch inexistente",
+            description="...",
+            origin="CLIENTE",
+            source="APP_CLIENTE",
+        )
+        response = self.client.patch(
+            f"/api/ik/tickets/{ticket.id}/comments/999999/",
+            {"content": "x"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)
+
     def test_comment_mention_notifies_involved_user(self):
         from django.core import mail
         mentionee = User.objects.create_user(

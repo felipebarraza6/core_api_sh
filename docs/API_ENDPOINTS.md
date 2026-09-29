@@ -487,6 +487,7 @@ Eventos del sistema generados automáticamente.
 | `POST /api/ik/tickets/<id>/assign/` | POST | Staff only | Asignar ticket a usuario |
 | `POST /api/ik/tickets/<id>/status/` | POST | Staff only | Cambiar estado (maneja `RESUELTO`/`CERRADO` con fechas) |
 | `GET /api/ik/tickets/<id>/comments/` | GET, POST | Token | Comentarios. Staff puede notas internas; clientes no. Marca SLA responded al primer comentario de staff. |
+| `GET /api/ik/tickets/<id>/comments/<cid>/` | PATCH, DELETE | Token | Editar (`content`, `is_internal` solo staff) o eliminar comentario. Permiso: staff o autor. |
 | `GET /api/ik/tickets/<id>/attachments/` | GET, POST | Token | Adjuntos. Validación tipo/tamaño (max 10 MB) |
 | `GET /api/ik/tickets/stats/` | GET | Token | Dashboard de soporte: conteos por estado, categoría, prioridad, origen, SLA vencidos |
 

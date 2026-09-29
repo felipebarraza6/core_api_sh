@@ -47,6 +47,7 @@ BAJA | MEDIA | ALTA | CRITICA
 | POST | `/api/ik/tickets/<id>/cancel-scheduled-date/` | Cancelar fecha planificada de OT | Autenticado con acceso al ticket |
 | GET | `/api/ik/tickets/<id>/comments/` | Listar comentarios | Autenticado |
 | POST | `/api/ik/tickets/<id>/comments/` | Agregar comentario (opcional `parent_id` para responder en hilo; soporta `@usuario` y `#<id_ticket>`) | Autenticado |
+| PATCH | `/api/ik/tickets/<id>/comments/<cid>/` | Editar comentario (`content`, `is_internal`; este último solo staff) | Staff o autor del comentario |
 | DELETE | `/api/ik/tickets/<id>/comments/<cid>/` | Eliminar comentario | Staff o autor del comentario |
 | GET | `/api/ik/tickets/<id>/mentionable_users/` | Usuarios etiquetables con @ (autocomplete) | Autenticado |
 | GET | `/api/ik/tickets/notifications/` | Mis notificaciones in-app (`?unread_only=true`) | Autenticado |

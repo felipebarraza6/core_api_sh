@@ -849,10 +849,12 @@ class TicketCommentsView(APIView):
 
 class TicketCommentDetailView(APIView):
     """
+    PATCH  /api/ik/tickets/<id>/comments/<cid>/ → editar un comentario.
     DELETE /api/ik/tickets/<id>/comments/<cid>/ → eliminar un comentario.
 
     Permisos: staff/superuser (cualquier comentario) o el autor del comentario.
-    Un cliente nunca puede eliminar notas internas, aunque sea su autor.
+    Un cliente nunca puede ver/eliminar/editar notas internas, aunque sea su autor.
+    Campos editables en PATCH: `content` (autor o staff) e `is_internal` (solo staff).
     """
     permission_classes = [IsAuthenticated]
     throttle_classes = [TicketRateThrottle]
@@ -871,6 +873,85 @@ class TicketCommentDetailView(APIView):
             if not ticket.points.filter(id__in=accessible_ids).exists():
                 return None
         return ticket
+
+    def patch(self, request, pk, cid):
+        user = request.user
+        ticket = self._get_ticket(pk, user)
+        if not ticket:
+            return Response({"error": "Ticket no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            comment = TicketComment.objects.get(pk=cid, ticket=ticket)
+        except TicketComment.DoesNotExist:
+            return Response({"error": "Comentario no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        is_staff = user.is_staff or user.is_superuser
+        is_author = comment.author_id == user.id
+        if not (is_staff or is_author):
+            return Response(
+                {"error": "No tiene permisos para editar este comentario."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Clientes nunca editan notas internas, aunque sean el autor.
+        if not is_staff and comment.is_internal:
+            return Response(
+                {"error": "No tiene permisos para editar este comentario."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        data = request.data
+        if not hasattr(data, "get"):
+            return Response(
+                {"error": "Cuerpo inválido. Envíe un objeto con los campos a editar."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        updates = {}
+
+        if "content" in data:
+            raw_content = data.get("content")
+            content = raw_content.strip() if isinstance(raw_content, str) else ""
+            if not content:
+                return Response(
+                    {"error": "El contenido del comentario no puede estar vacío."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            updates["content"] = content
+
+        if "is_internal" in data:
+            if not is_staff:
+                return Response(
+                    {"error": "Solo el equipo de soporte puede cambiar la visibilidad del comentario."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            raw_internal = data.get("is_internal")
+            if isinstance(raw_internal, str):
+                updates["is_internal"] = raw_internal.strip().lower() in ("1", "true", "yes", "si", "sí")
+            else:
+                updates["is_internal"] = bool(raw_internal)
+
+        if not updates:
+            return Response(
+                {"error": "No se enviaron campos editables. Use: content, is_internal."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        old_content = comment.content
+        old_internal = comment.is_internal
+
+        for field, value in updates.items():
+            setattr(comment, field, value)
+        comment.save(update_fields=list(updates) + ["modified"])
+
+        if "content" in updates and updates["content"] != old_content:
+            _log_activity(ticket, user, "comment_edited", old_content, updates["content"])
+        if "is_internal" in updates and updates["is_internal"] != old_internal:
+            _log_activity(
+                ticket, user, "comment_is_internal", old_internal, updates["is_internal"]
+            )
+
+        return Response(TicketCommentSerializer(comment, context={"request": request}).data)
 
     def delete(self, request, pk, cid):
         user = request.user

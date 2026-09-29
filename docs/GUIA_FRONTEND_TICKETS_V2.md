@@ -15,6 +15,7 @@
 | Menciones `@usuario` | mismo endpoint (texto) + `/api/ik/tickets/<id>/mentionable_users/` (autocomplete) | POST / GET |
 | Referencias `#<id_ticket>` | mismo endpoint (texto) | POST |
 | Me gusta en comentarios | `/api/ik/tickets/<id>/comments/<cid>/like/` | POST (toggle) |
+| Editar comentario | `/api/ik/tickets/<id>/comments/<cid>/` | PATCH (`content`, `is_internal`) |
 | Eliminar comentario | `/api/ik/tickets/<id>/comments/<cid>/` | DELETE |
 | Notificaciones in-app | `/api/ik/tickets/notifications/` | GET |
 | Marcar leídas | `/api/ik/tickets/notifications/mark-read/` | POST |
@@ -174,6 +175,26 @@ Authorization: Token <token>
 - `403` → sin permiso. `404` → no existe.
 - Al eliminar, las respuestas (hijos) se conservan como comentarios sueltos
   (su `parent_id` queda `null`).
+
+---
+
+## 5b. Editar comentario (PATCH)
+
+```
+PATCH /api/ik/tickets/<id>/comments/<cid>/
+Authorization: Token <token>
+Content-Type: application/json
+
+{ "content": "Texto corregido", "is_internal": true }
+```
+
+- `200` → comentario actualizado (se devuelve el objeto completo).
+- Campos editables: `content` (autor o staff) e `is_internal` (**solo staff**).
+- Permisos: **staff/superuser** o **el autor** del comentario. Un cliente nunca
+  edita notas internas.
+- `400` → `content` vacío o sin campos editables.
+  `403` → sin permiso. `404` → no existe.
+- Registra `comment_edited` / `comment_is_internal` en el activity log del ticket.
 
 ---
 
