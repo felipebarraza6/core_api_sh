@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev, production]
+  pull_request:
+    branches: [main, dev, production]
+  workflow_dispatch:
+
+# Un solo workflow por rama: si llegan varios push seguidos, se cancela el anterior.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Solo lectura: este workflow NUNCA despliega ni toca la base de datos de prod.
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Sintaxis + check + tests (regresión y DGA)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:15.6-alpine
+        env:
+          POSTGRES_USER: smarthydro_user
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: smarthydro_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smarthydro_user -d smarthydro_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7.2-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # settings.py exige estas variables (no hay .env en CI)
+      DJANGO_SECRET_KEY: ci-only-not-a-real-secret
+      DJANGO_DEBUG: "false"
+      LOCAL_DB_NAME: smarthydro_ci
+      LOCAL_DB_USER: smarthydro_user
+      LOCAL_DB_PASSWORD: ci_password
+      LOCAL_DB_HOST: 127.0.0.1
+      LOCAL_DB_PORT: "5432"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # settings.py arma la URL de Redis con el host "redis_secure" (hardcodeado).
+      - name: Mapear redis_secure a localhost
+        run: echo "127.0.0.1 redis_secure" | sudo tee -a /etc/hosts
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Sintaxis (solo lectura, no escribe .pyc)
+        run: |
+          python - <<'EOF'
+          import ast, pathlib, sys
+          bad = []
+          for p in sorted(pathlib.Path("api").rglob("*.py")):
+              try:
+                  ast.parse(p.read_text(encoding="utf-8", errors="replace"))
+              except SyntaxError as e:
+                  bad.append(f"{p}:{e.lineno} {e.msg}")
+          if bad:
+              print("\n".join(bad))
+              sys.exit(1)
+          print("sintaxis OK")
+          EOF
+
+      - name: Django check
+        run: python manage.py check
+
+      - name: Tests de regresión + DGA
+        run: python manage.py test tests.regression tests.dga --noinput
