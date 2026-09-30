@@ -228,18 +228,15 @@ def process_totalizado_variable(
     created_register["total_today_diff"] = total_today_diff
 
     # 6. ASIGNAR TIMESTAMP DEL ÚLTIMO LOGGER
+    # FIX 30-09-2026: si el logger no envía fecha NO se usa la hora de la medición.
+    # Ese fallback hacía que un punto sin datos apareciera con 0 días sin conexión.
+    # La fecha final del logger y los días sin conexión se calculan una sola vez en
+    # _process_point, con la variable más fresca (ver utils/connection.py).
     if data.get("date_time"):
         created_register["date_time_last_logger"] = data["date_time"]
         date_time_last_logger_total = data["date_time"]
     else:
-        # Fallback: Usar fecha de medición si el logger no envía fecha
-        # Esto asegura que audits y history tengan fecha válida
-        created_register["date_time_last_logger"] = created_register["date_time_medition"]
-        date_time_last_logger_total = created_register["date_time_last_logger"]
-
-    # 7. CALCULAR DÍAS SIN CONEXIÓN
-    # CORRECCIÓN: Pasar point_catchment para poder buscar historial si falta info
-    created_register = calculate_days_not_connection(created_register, chile_tz, point_catchment)
+        date_time_last_logger_total = None
 
     # 8. LOGGING DE ÉXITO
     telemetry_logger.info(
@@ -607,58 +604,16 @@ def calculate_days_not_connection(
     created_register: Dict[str, Any], chile_tz: Any, point_catchment: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
-    Calcular días sin conexión.
-    Si no hay date_time_last_logger, busca el último registro válido en BD.
-    
-    Args:
-        created_register: Registro en construcción
-        chile_tz: Zona horaria
-        point_catchment: Info del punto para búsquedas históricas
+    Calcular días sin conexión a partir de created_register["date_time_last_logger"].
+
+    FIX 30-09-2026: se mantiene por compatibilidad. El runner unificado calcula los
+    días en _process_point con la fecha más fresca entre TODAS las variables; esta
+    función ya no inventa fechas ni usa la hora de la medición como fallback.
     """
-    current_dt = datetime.now(chile_tz)
-    
-    if created_register.get("date_time_last_logger"):
-        # CASO 1: Tenemos timestamp del logger
-        date_time_medition_str = current_dt.strftime("%Y-%m-%dT%H:%M:00")
-        date_time_last_logger_str = created_register["date_time_last_logger"]
+    from api.cronjobs.telemetry.utils.connection import days_since, parse_logger_ts
 
-        try:
-            dt_med = datetime.strptime(date_time_medition_str, "%Y-%m-%dT%H:%M:00")
-            dt_log = datetime.strptime(date_time_last_logger_str, "%Y-%m-%dT%H:%M:%S")
-            
-            days = (dt_med - dt_log).days
-            created_register["days_not_conection"] = max(0, days)
-            
-        except Exception as e:
-            telemetry_logger.error(f"Error calculando días con timestamp: {e}")
-            created_register["days_not_conection"] = 0
-            
-    elif point_catchment and point_catchment.get('id'):
-        # CASO 2: No hay timestamp (ej. sensor enviando 0s), buscar último dato válido en BD
-        try:
-            # Buscar último registro que NO tenga total=0 o que tenga un logger stamp válido
-            ultimo_valido = InteractionDetail.objects.filter(
-                catchment_point_id=point_catchment['id']
-            ).exclude(date_time_last_logger__isnull=True).order_by('-created').first()
-            
-            if ultimo_valido and ultimo_valido.created:
-                # Calcular días desde ese último registro válido
-                days = (current_dt - ultimo_valido.created.astimezone(chile_tz)).days
-                created_register["days_not_conection"] = max(0, days)
-                
-                # Opcional: Si el último válido fue hace mucho, inyectar el timestamp antiguo
-                # para que se vea en el frontend
-                if days > 1 and ultimo_valido.date_time_last_logger:
-                     created_register["date_time_last_logger"] = str(ultimo_valido.date_time_last_logger)
-            else:
-                created_register["days_not_conection"] = 0
-                
-        except Exception as e:
-            telemetry_logger.error(f"Error fallback días sin conexión: {e}")
-            created_register["days_not_conection"] = 0
-    else:
-        created_register["days_not_conection"] = 0
-
+    logger_dt = parse_logger_ts(created_register.get("date_time_last_logger"))
+    created_register["days_not_conection"] = days_since(logger_dt, datetime.now(chile_tz))
     return created_register
 
 

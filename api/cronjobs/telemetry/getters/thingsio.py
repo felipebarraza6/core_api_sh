@@ -1,6 +1,6 @@
 import logging
 import requests
-from datetime import datetime
+from api.cronjobs.telemetry.utils.connection import utc_iso_to_chile_str
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +25,9 @@ def get_data_thethings(provider, token_service, str_variable):
         # Debug logs removidos para evitar fuga de tokens en producción
         if data and len(data) > 0:
             item = data[0]  # Obtener el último elemento
-            ts = datetime.strptime(
-                item["datetime"], "%Y-%m-%dT%H:%M:%S.%fZ")
-            formatted_ts = ts.strftime("%Y-%m-%dT%H:%M:%S")
+            # TheThings.io entrega la fecha en UTC ("...Z"): convertir a hora de Chile.
+            # Antes se guardaba la hora UTC como si fuera local (3-4 h adelantada).
+            formatted_ts = utc_iso_to_chile_str(item.get("datetime"))
             value = item.get("value", 0)
             # Valores procesados sin log de debug
             return {"value": value, "date_time": formatted_ts}

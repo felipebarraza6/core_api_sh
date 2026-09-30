@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional
 import requests
 from django.utils import timezone
 
-from django.db.models import Q
+from django.db.models import F, Q
 
 from api.core.models import CatchmentPoint, DgaDataConfigCatchment, InteractionDetail
 from api.core.serializers import CatchmentPointSerializerDetailCron
@@ -32,6 +32,13 @@ from api.cronjobs.telemetry.controllers.unified_processing import (
     validate_frequency,
 )
 from api.cronjobs.telemetry.getters.universal import get_data_universal
+from api.cronjobs.telemetry.utils.connection import (
+    LOGGER_FMT,
+    days_since,
+    freshest_logger_ts,
+    parse_logger_ts,
+    stale_variables,
+)
 from api.cronjobs.utils.logging_config import telemetry_logger
 
 # Session HTTP persistente: reutiliza conexiones TCP y reduce overhead.
@@ -207,8 +214,12 @@ def _process_point(
         return
 
     date_time_last_logger_total: Optional[str] = None
-    max_days_not_conection = 0
     best_date_time_last_logger: Optional[datetime] = None
+    # Fecha real reportada por cada variable (None si el getter no trajo fecha)
+    variable_ts: Dict[str, Optional[datetime]] = {}
+    has_totalizado = any(
+        (v.get("type_variable") or "").upper() == "TOTALIZADO" for v in variables
+    )
     variable_details: list = []
 
     for variable in variables:
@@ -289,18 +300,12 @@ def _process_point(
             medition_str=medition_str,
         )
 
-        # Tracking de días sin conexión (mismo patrón que legacy)
-        days_not_conection = created_register.get("days_not_conection", 0)
-        if days_not_conection > max_days_not_conection:
-            max_days_not_conection = days_not_conection
-
-        if created_register.get("date_time_last_logger"):
-            try:
-                dt_lg = datetime.strptime(created_register["date_time_last_logger"], "%Y-%m-%dT%H:%M:%S")
-                if best_date_time_last_logger is None or dt_lg > best_date_time_last_logger:
-                    best_date_time_last_logger = dt_lg
-            except Exception as e:
-                telemetry_logger.debug(f"[UNIFIED] Fecha logger inválida para punto {point_id}: {e}")
+        # FIX 30-09-2026: la conexión se mide con la fecha REAL de cada variable
+        # (la que trajo el getter), no con lo que quedó en created_register.
+        if variable.get("type_variable") != "CAUDAL_PROMEDIO":
+            variable_ts[variable.get("str_variable") or str(variable.get("id"))] = parse_logger_ts(
+                data.get("date_time")
+            )
 
         # Guardar valor crudo en variable_values (esquema dinámico)
         var_id = variable.get("id")
@@ -317,10 +322,47 @@ def _process_point(
             "type_variable": variable.get("type_variable"),
             "value": data.get("value"),
             "success": getter_succeeded,
+            "date_time": data.get("date_time"),
         })
 
+    # FIX 30-09-2026: fecha del logger = la más fresca entre todas las variables.
+    # Antes cada variable pisaba la fecha y los días salían solo del TOTALIZADO.
+    best_date_time_last_logger = freshest_logger_ts(variable_ts.values())
+    connection_dt = best_date_time_last_logger
+    if connection_dt is None:
+        # Nada llegó en esta corrida: arrastrar la última fecha real guardada
+        # (excluye registros donde la fecha del logger es la hora de medición,
+        # firma del fallback antiguo que simulaba conexión).
+        prev = (
+            InteractionDetail.objects.filter(catchment_point_id=point_id)
+            .exclude(date_time_last_logger__isnull=True)
+            .exclude(date_time_last_logger=F("date_time_medition"))
+            .exclude(date_time_medition=medition_str)
+            .order_by("-date_time_medition")
+            .values_list("date_time_last_logger", flat=True)
+            .first()
+        )
+        connection_dt = parse_logger_ts(prev)
+
+    created_register["date_time_last_logger"] = (
+        connection_dt.strftime(LOGGER_FMT) if connection_dt else None
+    )
+    created_register["days_not_conection"] = days_since(connection_dt, now)
+
+    stale = stale_variables(variable_ts, best_date_time_last_logger)
+    if stale:
+        telemetry_logger.warning(
+            f"[UNIFIED] Punto {point_id}: logger conectado pero variables sin actualizar "
+            f"(>24 h): {', '.join(stale)}"
+        )
+        for detail in variable_details:
+            if detail.get("str_variable") in stale:
+                detail["stale"] = True
+
     # Replicar último registro si no hay datos y está configurado (Nettra legacy)
-    if replicate_on_missing and best_date_time_last_logger is None:
+    # Mismo comportamiento previo: con TOTALIZADO configurado el fallback antiguo
+    # nunca dejaba la fecha vacía, así que la réplica solo aplicaba a puntos sin él.
+    if replicate_on_missing and best_date_time_last_logger is None and not has_totalizado:
         _replicate_last_record(point_id, created_register, now)
 
     created_register["variable_details"] = variable_details
@@ -370,7 +412,9 @@ def _replicate_last_record(point_id: int, created_register: Dict[str, Any], now:
                 if last_valid.date_time_last_logger
                 else None
             )
-            created_register["days_not_conection"] = 9999
+            created_register["days_not_conection"] = days_since(
+                parse_logger_ts(last_valid.date_time_last_logger), now
+            )
             created_register["is_partial"] = False
             created_register["variable_details"] = []
             telemetry_logger.info(f"[UNIFIED] Punto {point_id}: replicado último registro válido")
