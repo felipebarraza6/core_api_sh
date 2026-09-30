@@ -311,7 +311,7 @@ class InteractionDetailOverrideMonthViewSet(mixins.CreateModelMixin,
         
         # ✅ OPTIMIZACIÓN: Prefetch relacionado (NO cambia resultados, solo mejora rendimiento)
         # Esto evita N+1 queries en el serializer cuando accede a data_config_profiles
-        from api.core.models import ProfileDataConfigCatchment
+        from api.core.models import ProfileDataConfigCatchment, SchemesCatchment, Variable
         from django.db.models import Prefetch
         
         queryset = queryset.prefetch_related(

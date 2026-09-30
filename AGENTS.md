@@ -3,6 +3,13 @@
 > **Última auditoría:** 2026-06-10
 > **Estado:** Producción activa — CAUTELA MÁXIMA en todo cambio
 >
+> **Cambios recientes (2026-09-30):**
+> - **Fix 500 en mediciones mensuales (`GET /api/interaction_detail_override_month/`):** `NameError: name 'SchemesCatchment' is not defined` en `api/core/views/interaction_detail.py` (`InteractionDetailOverrideMonthViewSet.get_queryset`, línea ~314).
+>   - **Síntoma:** HTTP 500 al ver mediciones de cualquier punto/mes/año (ej. `?catchment_point=5&date_time_medition__month=09&date_time_medition__year=2026`). El OPTIONS respondía 200, solo fallaba el GET.
+>   - **Causa raíz:** el commit `31cbc51` (2026-09-22, *"perf(api): prefetch interaction_detail + cache opt-in de respuestas GET"*) agregó el `Prefetch('catchment_point__schemes')` con `SchemesCatchment`/`Variable` en los **3** viewsets, pero en el viewset **mensual** el import local solo traía `ProfileDataConfigCatchment`. Los otros dos viewsets (`InteractionDetailViewSet`, `InteractionDetailOverrideViewSet`) sí importaban `SchemesCatchment, Variable`. El `NameError` ocurre al construir el queryset, **antes** de aplicar filtros, por eso fallaba siempre (no dependía de la fecha).
+>   - **Fix:** importar en el mismo scope → `from api.core.models import ProfileDataConfigCatchment, SchemesCatchment, Variable`.
+>   - **Lección:** al agregar `Prefetch` con clases de modelo, importarlas en el mismo scope donde se usan. Los 3 viewsets repiten el mismo bloque de prefetch: si se toca uno, revisar los tres. Verificado con test client: `200` y 30 registros para punto 5 / sep-2026.
+>
 > **Cambios recientes (2026-09-29):**
 > - **Fix 413 en adjuntos de tickets:** el edge real es `nginx_proxy` y **no** tenía `client_max_body_size` → default `1m` rechazaba con HTTP 413 cualquier adjunto >1 MB (aunque la app permite 10 MB). Fix en `conf/nginx-conf.d/zz-client-max-body-size.conf` (nivel `http`, 20m) aplicado con `conf/apply_nginx_proxy_conf.sh`. **Ojo:** NO usar `vhost.d/<host>` para esto — el contenedor `letsencrypt` escribe su bloque ACME ahí y ambos chocan (`duplicate location /.well-known/acme-challenge/`) dejando a nginx sin arrancar → **HTTP 521 en toda la API**. Los `conf/nginx-*.conf` del repo no se usan (el nginx embebido del contenedor Django está deshabilitado en `docker-entrypoint.sh`).
 > - **Fix 405 PATCH en comentarios:** `TicketCommentDetailView` ahora implementa `patch` (`content` para autor/staff, `is_internal` solo staff) en `api/api_ik/views_tickets.py`. Antes solo existía `delete`, por eso el frontend recibía `405 Method "PATCH" not allowed`.
