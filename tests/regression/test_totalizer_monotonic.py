@@ -89,7 +89,12 @@ class TotalizerMonotonicFailureTests(TestCase):
         self.assertIn(meta.get("status"), ("ZERO_KEPT", "MONOTONIC_PRESERVED"))
 
     def test_zero_kept_restores_pulses_in_register(self):
-        """process_totalizado_variable debe restaurar pulses al último válido."""
+        """process_totalizado_variable debe restaurar pulses al último válido.
+
+        Tras integrar lectores: sin date_time, is_getter_success es False y
+        process_totalizado sale temprano (el runner usa _apply_last_valid_*).
+        Este test ejercita ZERO_KEPT con una lectura cero *válida* (timestamp OK).
+        """
         now = timezone.now()
         InteractionDetail.objects.create(
             catchment_point=self.point,
@@ -98,7 +103,12 @@ class TotalizerMonotonicFailureTests(TestCase):
             pulses=50000,
             is_error=False,
         )
-        data = {"value": 0, "date_time": None}
+        # Lectura cero con timestamp = getter OK; ZERO_KEPT restaura pulses.
+        data = {
+            "value": 0,
+            "date_time": now.strftime("%Y-%m-%dT%H:%M:%S"),
+            "status": "ok",
+        }
         variable = {"pulses_factor": 1000, "str_variable": "TOTAL"}
         created = {"date_time_medition": now.strftime("%Y-%m-%dT%H:%M:%S")}
 
