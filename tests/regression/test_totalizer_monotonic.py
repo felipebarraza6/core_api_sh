@@ -40,11 +40,10 @@ class TotalizerMonotonicFailureTests(TestCase):
             project=self.project,
             frecuency="60",
         )
-        self.profile = ProfileDataConfigCatchment.objects.create(
-            point_catchment=self.point,
-            addition=0,
-            is_telemetry=True,
-        )
+        self.profile = ProfileDataConfigCatchment.objects.get(point_catchment=self.point)
+        self.profile.addition = 0
+        self.profile.is_telemetry = True
+        self.profile.save()
         self.point_dict = {
             "id": self.point.id,
             "profile_data_config": {

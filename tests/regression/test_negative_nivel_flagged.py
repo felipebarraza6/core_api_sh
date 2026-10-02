@@ -39,9 +39,10 @@ class NegativeNivelFlaggedTests(TestCase):
             owner_user=self.user,
             project=self.project,
         )
-        ProfileDataConfigCatchment.objects.create(
-            point_catchment=self.point, is_telemetry=True, d3=40
-        )
+        profile = ProfileDataConfigCatchment.objects.get(point_catchment=self.point)
+        profile.is_telemetry = True
+        profile.d3 = 40
+        profile.save()
         # Histórico alto que ANTES se usaba como reemplazo
         InteractionDetail.objects.create(
             catchment_point=self.point,

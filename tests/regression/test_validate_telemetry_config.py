@@ -46,12 +46,11 @@ class ValidateTelemetryConfigTests(TestCase):
         p14 = self._point("P100 Unipapel")
         p27 = self._point("Arauco Los Cuervos")
         shared = "thethings-shared-token-abcdef123456"
-        ProfileDataConfigCatchment.objects.create(
-            point_catchment=p14, is_telemetry=True, token_service=shared
-        )
-        ProfileDataConfigCatchment.objects.create(
-            point_catchment=p27, is_telemetry=True, token_service=shared
-        )
+        for point in (p14, p27):
+            profile = ProfileDataConfigCatchment.objects.get(point_catchment=point)
+            profile.is_telemetry = True
+            profile.token_service = shared
+            profile.save()
 
         report = collect_config_issues()
         self.assertTrue(report["summary"]["has_issues"])
@@ -67,9 +66,10 @@ class ValidateTelemetryConfigTests(TestCase):
     def test_detects_suspicious_nivel_variable_name(self):
         """Como Monte Águila #26: NIVEL mapeado a 'Nivel Freático'."""
         p26 = self._point("Monte Aguila")
-        ProfileDataConfigCatchment.objects.create(
-            point_catchment=p26, is_telemetry=True, token_service="unique-token-26"
-        )
+        profile = ProfileDataConfigCatchment.objects.get(point_catchment=p26)
+        profile.is_telemetry = True
+        profile.token_service = "unique-token-26"
+        profile.save()
         scheme = SchemesCatchment.objects.create(
             name="Scheme MA", description="test"
         )
@@ -93,9 +93,10 @@ class ValidateTelemetryConfigTests(TestCase):
     def test_command_is_readonly_json(self):
         """El comando corre en modo --json sin modificar BD."""
         p = self._point("Solo")
-        ProfileDataConfigCatchment.objects.create(
-            point_catchment=p, is_telemetry=True, token_service="solo-token"
-        )
+        profile = ProfileDataConfigCatchment.objects.get(point_catchment=p)
+        profile.is_telemetry = True
+        profile.token_service = "solo-token"
+        profile.save()
         before = ProfileDataConfigCatchment.objects.count()
         out = StringIO()
         call_command("validate_telemetry_config", "--json", stdout=out)

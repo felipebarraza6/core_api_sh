@@ -348,7 +348,11 @@ def process_nivel_variable(
         if data.get("date_time"):
             created_register["date_time_last_logger"] = data["date_time"]
         log_variable_processing(
-            point_catchment["id"], variable.get("str_variable"), "NIVEL", False
+            point_catchment["id"],
+            variable.get("str_variable"),
+            "NIVEL",
+            False,
+            error_msg=f"nivel negativo flagged ({raw_neg})",
         )
         return created_register
 

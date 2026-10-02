@@ -35,18 +35,20 @@ class DgaSafeSendTests(TestCase):
         self.point = CatchmentPoint.objects.create(
             title="Point Safe", owner_user=self.user, project=self.project
         )
-        self.profile = ProfileDataConfigCatchment.objects.create(
-            point_catchment=self.point, is_telemetry=True, addition=100, d6=5000
-        )
-        self.dga_config = DgaDataConfigCatchment.objects.create(
-            point_catchment=self.point,
-            standard="MAYOR",
-            send_dga=True,
-            code_dga="SAFE-001",
-            rut_report_dga="12345678-9",
-            password_dga_software="testpass",
-            type_dga="SUBTERRANEO",
-        )
+        # El signal create_related_profiles ya crea Profile + Dga configs
+        self.profile = ProfileDataConfigCatchment.objects.get(point_catchment=self.point)
+        self.profile.is_telemetry = True
+        self.profile.addition = 100
+        self.profile.d6 = 5000
+        self.profile.save()
+        self.dga_config = DgaDataConfigCatchment.objects.get(point_catchment=self.point)
+        self.dga_config.standard = "MAYOR"
+        self.dga_config.send_dga = True
+        self.dga_config.code_dga = "SAFE-001"
+        self.dga_config.rut_report_dga = "12345678-9"
+        self.dga_config.password_dga_software = "testpass"
+        self.dga_config.type_dga = "SUBTERRANEO"
+        self.dga_config.save()
 
     def test_validate_register_rejects_is_error(self):
         """_validate_register debe rechazar registros con is_error=True."""
