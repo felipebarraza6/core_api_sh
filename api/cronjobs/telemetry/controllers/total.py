@@ -102,17 +102,20 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
         # por punto (acquire_point_lock), por lo que dos procesos no pueden
         # procesar el mismo punto simultáneamente. Además, la actualización del
         # offset (addition) en caso de reset SÍ usa select_for_update().
+        # ✅ FIX: excluir is_error=True para no usar baseline envenenado
+        # (p.ej. pulses=0 inventados por fallo de getter → saltos falsos).
         last_interaction = (
             InteractionDetail.objects.filter(catchment_point_id=point_catchment["id"])
             .exclude(pulses__isnull=True)
             .exclude(total__isnull=True)
             .exclude(total="")
+            .exclude(is_error=True)
             .order_by("-date_time_medition")
             .first()
         )
 
-        # ✅ CASO CRÍTICO: Pulsos negativos = Error de ingesta
-        # Mantener último total válido en lugar de guardar basura
+        # ✅ Códigos de estado del logger (ej. -2 en TDATA): NO son lecturas.
+        # Mantener último total válido; severidad WARNING (no CRITICAL).
         if current_pulses < 0:
             fallback_val = 0
             if last_interaction and last_interaction.total:
@@ -131,24 +134,31 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                 date_time_medition=current_dt,
             )
 
+            code_int = int(current_pulses) if current_pulses == int(current_pulses) else current_pulses
             logger.warning(
-                f"🚨 ERROR DE INGESTA: Pulsos negativos ({current_pulses}) en Punto {point_catchment['id']}. "
-                f"Manteniendo último total válido."
+                f"⚠️  Código de estado del logger ({code_int}) en Punto {point_catchment['id']}. "
+                f"No es una lectura. Manteniendo último total válido."
             )
             emit_system_event(
                 event_type="MEASUREMENT_ERROR",
                 point_id=point_catchment["id"],
-                title="Pulsos negativos detectados",
-                message=f"Pulsos negativos ({current_pulses}) detectados. Manteniendo último total válido.",
-                severity="CRITICAL",
+                title=f"Lectura inválida del logger (código {code_int})",
+                message=(
+                    f"El logger envió el código de estado {code_int} (no es una medición). "
+                    f"Se mantiene el último total válido ({fallback_val})."
+                ),
+                severity="WARNING",
+                condition_key=f"device_status_code:{point_catchment['id']}",
+                dedupe_until_resolved=True,
                 extra_data={
-                    "decision": "MANTENER",
-                    "reason": "Pulsos negativos son físicamente imposibles; se preserva el último total válido para no corromper la serie histórica.",
+                    "decision": "IGNORAR_CODIGO",
+                    "reason": "Valores negativos como -2 son códigos de estado del equipo, no lecturas de pulsos. No se usan como valor ni como baseline.",
                     "actual_value": current_pulses,
+                    "device_status_code": code_int,
                     "expected_range": [0, None],
                     "kept_total": fallback_val,
                     "last_total": float(last_interaction.total) if last_interaction and last_interaction.total else None,
-                    "logic": "kept_last_valid",
+                    "logic": "device_status_code",
                     "counter_reset_log_id": cr_log_id,
                     "source": "api.cronjobs.telemetry.controllers.total:total_m3",
                 },
@@ -157,8 +167,9 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
             if return_full_details:
                 return fallback_val, {
                     "raw_pulses": current_pulses,
-                    "status": "ERROR_NEGATIVE_PULSES",
-                    "logic": "kept_last_valid"
+                    "status": "DEVICE_STATUS_CODE",
+                    "logic": "ignored_status_code",
+                    "kept_pulses": float(last_interaction.pulses) if last_interaction and last_interaction.pulses is not None else None,
                 }
             return fallback_val
 
@@ -348,12 +359,16 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                         f"Tratando como error de ingesta / sensor desconectado. "
                         f"Manteniendo total anterior {last_total_safe}."
                     )
+                    # Una sola alerta abierta por punto/condición hasta que se resuelva
+                    # (pulsos vuelven a >0). Evita el spam de 142/148 duplicados.
                     emit_system_event(
                         event_type="MEASUREMENT_ERROR",
                         point_id=point_catchment["id"],
                         title="Pulsos cero con histórico previo",
                         message=f"Pulsos=0 detectado con histórico previo ({last_pulses}). Manteniendo total anterior {last_total_safe}.",
                         severity="WARNING",
+                        condition_key=f"pulses_zero:{point_catchment['id']}",
+                        dedupe_until_resolved=True,
                         extra_data={
                             "decision": "MANTENER",
                             "reason": "Un valor cero en un totalizador con histórico previo es casi siempre una falla de comunicación o sensor desconectado, no un consumo real nulo. Se preserva la monotonicidad manteniendo el último total válido.",
@@ -546,6 +561,12 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
             status_flag = "CLAMPED_ZERO"
 
         final_int = int(round(final_total))
+
+        # Condición "pulsos cero" / código de estado resuelta al recibir valor válido
+        if current_pulses > 0:
+            from api.cronjobs.telemetry.utils.audit import resolve_system_events
+            resolve_system_events(point_catchment["id"], f"pulses_zero:{point_catchment['id']}")
+            resolve_system_events(point_catchment["id"], f"device_status_code:{point_catchment['id']}")
 
         if return_full_details:
              metadata = {

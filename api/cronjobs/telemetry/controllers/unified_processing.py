@@ -26,29 +26,58 @@ chile_tz = timezone.get_current_timezone()
 
 def get_data_with_retry(getter_func, *args, max_retries=3, backoff_factor=2):
     """
-    Retry inteligente con backoff exponencial para obtener datos de APIs
+    Retry inteligente con backoff exponencial para obtener datos de APIs.
 
-    Args:
-        getter_func: Función getter a ejecutar
-        *args: Argumentos para la función
-        max_retries: Número máximo de intentos
-        backoff_factor: Factor de espera exponencial
+    Distingue:
+    - ok (date_time presente): éxito, retorna de inmediato
+    - no_data: proveedor respondió vacío → no reintentar
+    - request_failed: HTTP/timeout → reintentar, luego devolver el fallo
+      (NUNCA convertir a value=0)
 
     Returns:
-        Dict con datos o None si falla
+        Dict con status ok/no_data/request_failed, o None solo si el getter
+        lanzó excepciones no capturadas en todos los intentos.
     """
+    from api.cronjobs.telemetry.utils.getter_result import (
+        STATUS_NO_DATA,
+        STATUS_OK,
+        STATUS_REQUEST_FAILED,
+        is_getter_success,
+        request_failed_result,
+    )
+
+    last_result = None
     for attempt in range(max_retries):
         try:
             data = getter_func(*args)
-            # Éxito: valor presente Y timestamp válido (date_time=None indica fallo de getter)
-            if data and data.get("value") is not None and data.get("date_time") is not None:
-                return data
+            if not data:
+                last_result = request_failed_result(error="getter retornó None")
+            else:
+                status = data.get("status")
+                if is_getter_success(data):
+                    normalized = dict(data)
+                    normalized.setdefault("status", STATUS_OK)
+                    return normalized
+                if status == STATUS_NO_DATA:
+                    return data
+                # request_failed u legacy sin timestamp
+                last_result = data if status == STATUS_REQUEST_FAILED else request_failed_result(
+                    error=data.get("error") or "sin timestamp",
+                    http_status=data.get("http_status"),
+                )
+
+            if attempt < max_retries - 1 and (
+                last_result is None or last_result.get("status") == STATUS_REQUEST_FAILED
+            ):
+                time.sleep(backoff_factor ** attempt)
+                continue
+            return last_result
         except Exception as e:
             if attempt == max_retries - 1:
                 telemetry_logger.error(f"Error después de {max_retries} intentos: {e}", exc_info=True)
-                return None
-            time.sleep(backoff_factor**attempt)
-    return None
+                return request_failed_result(error=e)
+            time.sleep(backoff_factor ** attempt)
+    return last_result
 
 
 def log_variable_processing(
@@ -157,16 +186,44 @@ def process_totalizado_variable(
         Tuple con (date_time_last_logger_total, created_register actualizado)
     """
     from .total import total_day, total_hour, total_m3
+    from api.cronjobs.telemetry.utils.getter_result import is_getter_success
+
+    # Fallo de getter: nunca inventar pulses=0 ni tratarlo como lectura.
+    # El caller (_process_point) normalmente no llega aquí; defensa en profundidad.
+    if not is_getter_success(data):
+        telemetry_logger.warning(
+            f"Punto {point_catchment['id']} - TOTALIZADO: getter falló "
+            f"(status={data.get('status')}). No se inventa value=0."
+        )
+        created_register["is_error"] = True
+        return None, created_register
 
     # 1. VALIDAR Y CONVERTIR VALOR DE PULSOS
     try:
-        value = int(float(data.get("value", 0)))
+        value_float = float(data.get("value", 0))
     except (ValueError, TypeError) as e:
         telemetry_logger.warning(f"Error convirtiendo valor {data.get('value')}: {e}")
-        value = 0
+        value_float = 0.0
 
-    # 2. ASIGNAR PULSOS AL REGISTRO
-    created_register["pulses"] = value
+    # Códigos de estado del logger (negativos): no se guardan como pulses.
+    if value_float < 0:
+        last_good = (
+            InteractionDetail.objects.filter(catchment_point_id=point_catchment["id"])
+            .exclude(is_error=True)
+            .exclude(pulses__isnull=True)
+            .order_by("-date_time_medition")
+            .first()
+        )
+        # pulses es IntegerField non-null: preservar último válido, nunca el código.
+        created_register["pulses"] = last_good.pulses if last_good else 0
+        created_register["is_error"] = True
+        value = value_float  # se pasa a total_m3 para emitir WARNING y mantener total
+    else:
+        try:
+            value = int(value_float)
+        except (ValueError, TypeError):
+            value = 0
+        created_register["pulses"] = value
 
     # 3. CALCULAR TOTAL USANDO FÓRMULA UNIFICADA: (pulsos × factor) ÷ 1000
     pulses_factor = variable.get("pulses_factor", 1000)
@@ -209,6 +266,12 @@ def process_totalizado_variable(
 
     created_register["total"] = total_calculado
 
+    # Si fue código de estado, preferir kept_pulses del metadata
+    if total_meta and total_meta.get("status") == "DEVICE_STATUS_CODE":
+        kept = total_meta.get("kept_pulses")
+        if kept is not None:
+            created_register["pulses"] = int(kept) if kept == int(kept) else kept
+
     # ✅ FIX: El anti-salto ya NO bloquea el total (solo loguea warning).
     # Este bloqueo causó efecto cascada catastrófico en producción.
     # Ahora solo se registra el evento y se acepta el valor real del sensor.
@@ -232,10 +295,8 @@ def process_totalizado_variable(
         created_register["date_time_last_logger"] = data["date_time"]
         date_time_last_logger_total = data["date_time"]
     else:
-        # Fallback: Usar fecha de medición si el logger no envía fecha
-        # Esto asegura que audits y history tengan fecha válida
-        created_register["date_time_last_logger"] = created_register["date_time_medition"]
-        date_time_last_logger_total = created_register["date_time_last_logger"]
+        # Sin timestamp del logger: NO inventar la hora de medición (conexión falsa).
+        date_time_last_logger_total = created_register.get("date_time_last_logger")
 
     # 7. CALCULAR DÍAS SIN CONEXIÓN
     # CORRECCIÓN: Pasar point_catchment para poder buscar historial si falta info
@@ -245,7 +306,7 @@ def process_totalizado_variable(
     telemetry_logger.info(
         f"Punto {point_catchment['id']} - TOTALIZADO "
         f"'{variable.get('str_variable')}' procesado: "
-        f"pulsos={value}, factor={pulses_factor}, "
+        f"pulsos={created_register.get('pulses')}, factor={pulses_factor}, "
         f"total={total_calculado}, diff_hora={total_diff}, "
         f"diff_dia={total_today_diff}"
     )
