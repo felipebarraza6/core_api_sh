@@ -3,6 +3,8 @@ import logging
 import time
 import requests
 
+from api.cronjobs.telemetry.utils.connection import utc_iso_to_chile_str
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,7 +15,11 @@ def _provider_val(provider, key, default=None):
 
 
 def get_data_tago(provider, token_service, str_variable):
-    """Obtener datos de Tago.io (último valor)."""
+    """Obtener datos de Tago.io (último valor).
+
+    Tago entrega ``time`` en UTC (...Z). Se convierte a hora de Chile
+    (mismo criterio que TheThings en fix/telemetria-dias-sin-conexion).
+    """
 
     token = token_service
     base_url = _provider_val(provider, 'base_url') or "https://api.tago.io"
@@ -27,9 +33,8 @@ def get_data_tago(provider, token_service, str_variable):
         data = response.json()
         if data and data['result'] and len(data['result']) > 0:
             item = data['result'][0]
-            ts = datetime.strptime(
-                item.get('time'), "%Y-%m-%dT%H:%M:%S.%fZ")
-            formatted_ts = ts.strftime("%Y-%m-%dT%H:%M:%S")
+            # UTC → Chile (antes se guardaba la cifra UTC como hora local)
+            formatted_ts = utc_iso_to_chile_str(item.get('time'))
             value = item.get("value", 0)
             if isinstance(value, int) and value < 0:
                 value = 0
@@ -57,6 +62,7 @@ def get_data_tago_history(provider, token_service, str_variable, start_dt, end_d
 
     Returns:
         Lista de dicts ordenada cronológicamente.
+        ``date_time`` queda en hora de Chile; ``ts_ms`` es epoch UTC absoluto.
     """
     token = token_service
     base_url = _provider_val(provider, 'base_url') or "https://api.tago.io"
@@ -83,8 +89,10 @@ def get_data_tago_history(provider, token_service, str_variable, start_dt, end_d
 
             results = []
             for item in data['result']:
-                ts = datetime.strptime(item.get('time'), "%Y-%m-%dT%H:%M:%S.%fZ")
-                formatted_ts = ts.strftime("%Y-%m-%dT%H:%M:%S")
+                raw_time = item.get('time')
+                ts = datetime.strptime(raw_time, "%Y-%m-%dT%H:%M:%S.%fZ")
+                # date_time en hora de Chile; ts_ms sigue siendo epoch absoluto
+                formatted_ts = utc_iso_to_chile_str(raw_time) or ts.strftime("%Y-%m-%dT%H:%M:%S")
                 results.append({
                     "ts_ms": int(ts.timestamp() * 1000),
                     "value": item.get("value", 0),
