@@ -1,6 +1,13 @@
 import logging
 import requests
+
 from api.cronjobs.telemetry.utils.connection import utc_iso_to_chile_str
+from api.cronjobs.telemetry.utils.getter_result import (
+    http_status_from_exc,
+    no_data_result,
+    ok_result,
+    request_failed_result,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +36,8 @@ def get_data_thethings(provider, token_service, str_variable):
             # Antes se guardaba la hora UTC como si fuera local (3-4 h adelantada).
             formatted_ts = utc_iso_to_chile_str(item.get("datetime"))
             value = item.get("value", 0)
-            # Valores procesados sin log de debug
-            return {"value": value, "date_time": formatted_ts}
-        else:
-            return {"value": 0, "date_time": None}
+            return ok_result(value, formatted_ts)
+        return no_data_result()
     except requests.RequestException as e:
         logger.error(f"Error al obtener datos: {e}")
-        return {"value": 0, "date_time": None}
+        return request_failed_result(error=e, http_status=http_status_from_exc(e))

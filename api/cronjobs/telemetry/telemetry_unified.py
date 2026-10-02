@@ -222,71 +222,127 @@ def _process_point(
     )
     variable_details: list = []
 
+    from api.cronjobs.telemetry.utils.getter_result import (
+        STATUS_NO_DATA,
+        STATUS_REQUEST_FAILED,
+        is_getter_success,
+        request_failed_result,
+    )
+    from api.cronjobs.telemetry.utils.audit import emit_system_event, resolve_system_events
+
     for variable in variables:
         data = None
 
-        if variable.get("type_variable") != "CAUDAL_PROMEDIO":
-            token = variable.get("token_service") or point_token
-            provider = variable.get("provider")
+        # CAUDAL_PROMEDIO se deriva del totalizado; no consulta al proveedor.
+        if variable.get("type_variable") == "CAUDAL_PROMEDIO":
+            date_time_last_logger_total, created_register = process_variable_safely(
+                variable=variable,
+                data={"value": None, "date_time": None, "status": "ok"},
+                point_catchment=point_catchment,
+                created_register=created_register,
+                date_time_last_logger_total=date_time_last_logger_total,
+                medition_str=medition_str,
+            )
+            variable_details.append({
+                "str_variable": variable.get("str_variable"),
+                "type_variable": variable.get("type_variable"),
+                "value": created_register.get("flow"),
+                "success": True,
+                "status": "ok",
+            })
+            continue
 
-            data = get_data_with_retry(
-                get_data_universal,
-                provider,
-                token,
-                variable.get("str_variable"),
+        token = variable.get("token_service") or point_token
+        provider = variable.get("provider")
+
+        data = get_data_with_retry(
+            get_data_universal,
+            provider,
+            token,
+            variable.get("str_variable"),
+        )
+
+        # Fallo de getter: NUNCA inventar value=0.
+        if data is None:
+            data = request_failed_result(error="getter retornó None tras reintentos")
+
+        getter_ok = is_getter_success(data)
+        status = data.get("status") or (
+            STATUS_REQUEST_FAILED if not getter_ok else "ok"
+        )
+
+        if not getter_ok:
+            # Distinguir "proveedor sin datos" vs "request fallido"
+            is_no_data = status == STATUS_NO_DATA
+            title = (
+                "Proveedor sin datos"
+                if is_no_data
+                else "Proveedor sin respuesta"
+            )
+            reason = (
+                "El proveedor respondió OK pero no tiene lecturas para esta variable."
+                if is_no_data
+                else "Fallo HTTP/timeout/red al consultar al proveedor. No es una medición cero."
             )
 
-        # Detectar fallo de getter: si date_time es None y value es 0,
-        # es casi seguro un fallo de API/sensor, no una medición real.
-        # Para TOTALIZADO con historial previo, marcar como error de ingesta.
-        if data is None:
-            if variable.get("type_variable") == "TOTALIZADO":
-                data = {"value": 0, "date_time": None}
-            else:
-                data = {"value": 0.00, "date_time": None}
-
-        if not data.get("value") and data.get("value") != 0:
-            data["value"] = 0
-
-        # Heurística de detección de fallo de getter:
-        # date_time=None indica que el getter no pudo contactar al sensor/API.
-        # value=0 en este contexto NO es una medición real.
-        if data.get("date_time") is None and data.get("value") == 0:
-            # Solo marcar is_error a nivel de registro si falla TOTALIZADO,
-            # que es la variable crítica. Si falla caudal o nivel, el registro
-            # sigue siendo válido porque el totalizado llegó bien.
             if variable.get("type_variable") == "TOTALIZADO":
                 telemetry_logger.warning(
                     f"[UNIFIED] Punto {point_id} - {variable.get('str_variable')}: "
-                    f"Getter retornó value=0 sin timestamp. Probable fallo de ingesta. "
-                    f"Marcando is_error=True."
+                    f"{title} (status={status}). Marcando is_error=True; no se inventa 0."
                 )
-                from api.cronjobs.telemetry.utils.audit import emit_system_event
                 emit_system_event(
                     event_type="API_ERROR",
                     point_id=point_id,
-                    title="Getter retornó valor sin timestamp",
-                    message=f"Variable {variable.get('str_variable')}: getter retornó value=0 sin timestamp. Probable fallo de ingesta.",
+                    title=title,
+                    message=(
+                        f"Variable {variable.get('str_variable')}: {reason} "
+                        f"error={data.get('error')}; http_status={data.get('http_status')}."
+                    ),
                     severity="CRITICAL",
+                    condition_key=f"getter_fail:{point_id}:{variable.get('str_variable')}",
+                    dedupe_until_resolved=True,
                     extra_data={
                         "decision": "MARCAR_ERROR",
-                        "reason": "El getter de la API de telemetría no pudo obtener un timestamp válido junto con el valor. Para variables TOTALIZADO esto indica una falla de comunicación con el sensor o la plataforma. Se marca el registro como error para no usarlo como baseline.",
-                        "actual_value": 0,
-                        "expected_range": [1, None],
-                        "variable": variable.get('str_variable'),
-                        "value": 0,
+                        "reason": reason,
+                        "status": status,
+                        "variable": variable.get("str_variable"),
+                        "value": None,
                         "date_time": None,
+                        "error": data.get("error"),
+                        "http_status": data.get("http_status"),
                         "is_error": True,
                         "source": "api.cronjobs.telemetry.telemetry_unified:_process_point",
                     },
                 )
                 created_register["is_error"] = True
+                _apply_last_valid_totalizado(point_id, created_register)
             else:
                 telemetry_logger.warning(
                     f"[UNIFIED] Punto {point_id} - {variable.get('str_variable')}: "
-                    f"Getter retornó value=0 sin timestamp. Variable secundaria fallida; "
-                    f"registro sigue válido."
+                    f"{title}. Variable secundaria; no se inventa 0."
                 )
+
+            var_id = variable.get("id")
+            if var_id is not None:
+                if "variable_values" not in created_register:
+                    created_register["variable_values"] = {}
+                created_register["variable_values"][str(var_id)] = None
+
+            variable_details.append({
+                "str_variable": variable.get("str_variable"),
+                "type_variable": variable.get("type_variable"),
+                "value": None,
+                "success": False,
+                "status": status,
+                "error": data.get("error"),
+                "http_status": data.get("http_status"),
+            })
+            continue  # No procesar como lectura
+
+        # Getter OK: resolver alerta abierta de fallo de getter para esta variable
+        resolve_system_events(
+            point_id, f"getter_fail:{point_id}:{variable.get('str_variable')}"
+        )
 
         # Procesar variable usando unified_processing (ahora configurable)
         # Pasar medition_str para garantizar coherencia de zonas horarias
@@ -314,14 +370,14 @@ def _process_point(
                 created_register["variable_values"] = {}
             created_register["variable_values"][str(var_id)] = data.get("value")
 
-        # Detalle para variable_details (compatibilidad con legacy)
-        # ✅ FIX: success refleja si el getter realmente funcionó (date_time no es None)
-        getter_succeeded = data.get("date_time") is not None
+        # Detalle para variable_details (compatibilidad con legacy).
+        # Estamos en el camino success (is_getter_success ya filtró fallos).
         variable_details.append({
             "str_variable": variable.get("str_variable"),
             "type_variable": variable.get("type_variable"),
             "value": data.get("value"),
-            "success": getter_succeeded,
+            "success": True,
+            "status": data.get("status", "ok"),
             "date_time": data.get("date_time"),
         })
 
@@ -390,6 +446,45 @@ def _process_point(
         return
 
     _save_to_db(point_id, medition_str, created_register, use_transaction)
+
+
+def _apply_last_valid_totalizado(point_id: int, created_register: Dict[str, Any]) -> None:
+    """
+    Ante fallo de getter del TOTALIZADO: conservar último total/pulsos válidos.
+    Nunca escribe pulses=0 inventado (causa de saltos falsos tipo Venecia #25).
+
+    Nota: InteractionDetail.pulses es IntegerField(default=0) no-nullable;
+    por eso siempre preservamos el último valor válido cuando existe historial.
+    """
+    last_valid = (
+        InteractionDetail.objects.filter(catchment_point_id=point_id)
+        .exclude(is_error=True)
+        .exclude(total__isnull=True)
+        .exclude(total="")
+        .order_by("-date_time_medition")
+        .first()
+    )
+    if last_valid:
+        created_register["pulses"] = last_valid.pulses
+        created_register["total"] = last_valid.total
+        created_register["total_diff"] = 0
+        created_register["total_today_diff"] = last_valid.total_today_diff
+        if last_valid.date_time_last_logger:
+            created_register["date_time_last_logger"] = (
+                last_valid.date_time_last_logger.strftime("%Y-%m-%dT%H:%M:%S")
+            )
+            calculate_days_not_connection(
+                created_register, timezone.get_current_timezone(), {"id": point_id}
+            )
+        else:
+            created_register["date_time_last_logger"] = None
+    else:
+        # Sin historial: total nulo; pulses queda fuera (default DB=0 solo en create).
+        created_register["total"] = None
+        created_register["total_diff"] = 0
+        created_register["total_today_diff"] = 0
+        created_register["date_time_last_logger"] = None
+        created_register.pop("pulses", None)
 
 
 def _replicate_last_record(point_id: int, created_register: Dict[str, Any], now: datetime):
