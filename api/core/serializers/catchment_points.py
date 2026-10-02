@@ -288,9 +288,14 @@ class FileCatchmentSerializer(serializers.ModelSerializer):
 
 
 class ProfileDataConfigCatchmentSerializer(serializers.ModelSerializer):
+    """API pública: token_service es write-only (no se expone en GET)."""
+
     class Meta:
         model = ProfileDataConfigCatchment
         fields = '__all__'
+        extra_kwargs = {
+            'token_service': {'write_only': True},
+        }
 
 
 class DgaCronSerializer(serializers.ModelSerializer):
@@ -300,7 +305,9 @@ class DgaCronSerializer(serializers.ModelSerializer):
                   'total_granted_dga', 'shac', 'date_start_compliance', 'date_created_code',)
 
 
-class TelemetryProviderSerializer(serializers.ModelSerializer):
+class TelemetryProviderInternalSerializer(serializers.ModelSerializer):
+    """Incluye credenciales — solo uso interno (cronjobs / telemetría unificada)."""
+
     class Meta:
         model = TelemetryProvider
         fields = (
@@ -310,18 +317,59 @@ class TelemetryProviderSerializer(serializers.ModelSerializer):
         )
 
 
+class TelemetryProviderSerializer(serializers.ModelSerializer):
+    """API pública: no expone auth_password ni auth_token en respuestas."""
+    has_auth_password = serializers.SerializerMethodField()
+    has_auth_token = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TelemetryProvider
+        fields = (
+            'id', 'name', 'handler_name', 'protocol', 'base_url', 'endpoint_template',
+            'auth_type', 'auth_username', 'auth_password', 'auth_token', 'auth_header_name',
+            'has_auth_password', 'has_auth_token',
+            'parser_config', 'timeout_seconds', 'retry_attempts', 'is_active',
+        )
+        extra_kwargs = {
+            'auth_password': {'write_only': True},
+            'auth_token': {'write_only': True},
+        }
+
+    def get_has_auth_password(self, obj):
+        return bool(obj.auth_password)
+
+    def get_has_auth_token(self, obj):
+        return bool(obj.auth_token)
+
+
 class ComplianceProviderSerializer(serializers.ModelSerializer):
+    """API pública: no expone auth_password ni auth_token en respuestas."""
+    has_auth_password = serializers.SerializerMethodField()
+    has_auth_token = serializers.SerializerMethodField()
+
     class Meta:
         model = ComplianceProvider
         fields = (
             'id', 'code', 'name', 'protocol', 'base_url', 'auth_url',
             'auth_type', 'auth_username', 'auth_password', 'auth_token', 'auth_header_name',
+            'has_auth_password', 'has_auth_token',
             'protocol_config', 'timeout_seconds', 'retry_attempts', 'is_active',
         )
+        extra_kwargs = {
+            'auth_password': {'write_only': True},
+            'auth_token': {'write_only': True},
+        }
+
+    def get_has_auth_password(self, obj):
+        return bool(obj.auth_password)
+
+    def get_has_auth_token(self, obj):
+        return bool(obj.auth_token)
 
 
 class VariableCronSerializer(serializers.ModelSerializer):
-    provider = TelemetryProviderSerializer(read_only=True)
+    """Serializer interno de cron: SÍ incluye token_service y credenciales del provider."""
+    provider = TelemetryProviderInternalSerializer(read_only=True)
 
     class Meta:
         model = Variable
@@ -377,9 +425,14 @@ class ProfileDataConfigCatchmentRetrieveCronSerializer(serializers.ModelSerializ
 
 
 class DgaDataConfigCatchmentSerializer(serializers.ModelSerializer):
+    """API pública: password_dga_software es write-only."""
+
     class Meta:
         model = DgaDataConfigCatchment
         fields = '__all__'
+        extra_kwargs = {
+            'password_dga_software': {'write_only': True},
+        }
 
 
 class SchemesCatchmentSerializer(serializers.ModelSerializer):
@@ -389,9 +442,14 @@ class SchemesCatchmentSerializer(serializers.ModelSerializer):
 
 
 class VariableSerializer(serializers.ModelSerializer):
+    """API pública: token_service es write-only (no se expone en GET)."""
+
     class Meta:
         model = Variable
         fields = '__all__'
+        extra_kwargs = {
+            'token_service': {'write_only': True},
+        }
 
 
 class RegisterPersonsSerializer(serializers.ModelSerializer):
@@ -446,14 +504,20 @@ class VariableConfigSerializer(serializers.ModelSerializer):
     """
     Serializer para mostrar la configuración de variables en config_data.
     Incluye información de escala, factores de conversión, etc.
+    No expone token_service en claro; solo indica si hay token configurado.
     """
+    has_token_service = serializers.SerializerMethodField()
+
     class Meta:
         model = Variable
         fields = (
             'id', 'str_variable', 'label', 'type_variable', 'service',
             'pulses_factor', 'convert_to_lt', 'calculate_nivel',
-            'token_service'
+            'has_token_service',
         )
+
+    def get_has_token_service(self, obj):
+        return bool(obj.token_service)
 
 
 class DataConfigUserSerializer(serializers.ModelSerializer):
