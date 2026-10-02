@@ -26,7 +26,7 @@ class RegisterPersonSerializers(serializers.ModelSerializer):
 class UserInfoModelSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('__all__')
+        exclude = ('password', 'txt_password')
 
 
 class UserProfile(serializers.ModelSerializer):
@@ -216,10 +216,11 @@ class CatchmentPointSerializer(serializers.ModelSerializer):
 
 
 class UserModelSerializer(serializers.ModelSerializer):
+    """No expone password ni txt_password (legacy en claro)."""
 
     class Meta:
         model = User
-        fields = '__all__'
+        exclude = ('password', 'txt_password')
 
 
 class UserLoginSerializer(serializers.Serializer):
