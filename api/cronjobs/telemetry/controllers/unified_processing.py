@@ -266,11 +266,27 @@ def process_totalizado_variable(
 
     created_register["total"] = total_calculado
 
-    # Si fue código de estado, preferir kept_pulses del metadata
-    if total_meta and total_meta.get("status") == "DEVICE_STATUS_CODE":
+    # Si total_m3 preservó el último total válido (fallo/cero/ruido/código),
+    # restaurar pulses al último válido. Guardar pulses=0 envenena el baseline.
+    _KEEP_PULSE_STATUSES = {
+        "ZERO_KEPT",
+        "DEVICE_STATUS_CODE",  # lectores: códigos negativos del logger
+        "ERROR_NEGATIVE_PULSES",  # alias legacy dga (si aparece)
+        "NOISE_DROP",
+        "PARTIAL_WITHOUT_DISCONNECT",
+        "MONOTONIC_PRESERVED",
+    }
+    if total_meta and total_meta.get("status") in _KEEP_PULSE_STATUSES:
         kept = total_meta.get("kept_pulses")
         if kept is not None:
-            created_register["pulses"] = int(kept) if kept == int(kept) else kept
+            try:
+                created_register["pulses"] = int(round(float(kept)))
+            except (TypeError, ValueError):
+                pass
+            telemetry_logger.info(
+                f"Punto {point_catchment['id']} - pulses restaurados a {created_register['pulses']} "
+                f"(status={total_meta.get('status')})"
+            )
 
     # ✅ FIX: El anti-salto ya NO bloquea el total (solo loguea warning).
     # Este bloqueo causó efecto cascada catastrófico en producción.
@@ -335,39 +351,66 @@ def process_nivel_variable(
     """
     from .nivel import nivel_mt, water_table
 
-    # Manejar nivel negativo
+    # Manejar nivel negativo / inválido
+    # DECISIÓN (2026-10-02, auditoría telemetría): un nivel negativo NO se
+    # reemplaza por el máximo histórico. Eso inventaba valores (p.ej. 94 m en
+    # #38) y generaba water_table = d3 − histórico. En su lugar se marca como
+    # inválido, se guarda 0.00 como centinela (columnas NOT NULL) y NO se
+    # calcula nivel freático a partir de un nivel inventado.
+    # Ver docs/TOTALIZER_VIEWS.md § nivel negativo.
     try:
         nivel_value = float(data["value"])
     except (ValueError, TypeError):
         nivel_value = 0
 
-    if nivel_value < 0:
-        # Buscar nivel más alto registrado
-        nivel_mas_alto = (
-            InteractionDetail.objects.filter(catchment_point_id=point_catchment["id"])
-            .exclude(nivel__isnull=True)
-            .order_by("-nivel")
-            .first()
-        )
+    nivel_invalido = nivel_value < 0
 
-        if nivel_mas_alto:
-            nivel_value = nivel_mas_alto.nivel
-            telemetry_logger.info(f"Nivel negativo corregido usando valor más alto: {nivel_value}")
-        else:
-            nivel_value = 0
-
-        # Guardar advertencia en variable_values para que quede en el historial
-        # sin afectar is_error (reservado para errores de DGA/procesamiento)
+    if nivel_invalido:
+        raw_neg = data.get("value")
         telemetry_logger.warning(
-            f"[NIVEL] Punto {point_catchment['id']} - Nivel negativo ({data.get('value')}) "
-            f"corregido a {nivel_value}."
+            f"[NIVEL] Punto {point_catchment['id']} - Nivel negativo ({raw_neg}) "
+            f"marcado como inválido (no se inventa máximo histórico)."
         )
-        # Agregar flag en variable_values para trazabilidad histórica
+        emit_system_event(
+            event_type="MEASUREMENT_ERROR",
+            point_id=point_catchment["id"],
+            title="Nivel negativo detectado",
+            message=(
+                f"Nivel negativo ({raw_neg}) detectado. Marcado como inválido; "
+                f"no se reemplaza por máximo histórico ni se calcula freático."
+            ),
+            severity="WARNING",
+            extra_data={
+                "decision": "FLAG_INVALID",
+                "reason": (
+                    "Un nivel negativo no es una medición física válida. "
+                    "Anteriormente se reemplazaba por el máximo histórico, "
+                    "inventando lecturas enviadas a DGA. Ahora se flaggea."
+                ),
+                "actual_value": raw_neg,
+                "expected_range": [0, None],
+                "corrected_to": "00.00",
+                "water_table_policy": "no_calcular_sin_nivel_valido",
+                "source": "api.cronjobs.telemetry.controllers.unified_processing:process_nivel_variable",
+            },
+        )
         if "variable_values" not in created_register:
             created_register["variable_values"] = {}
-        created_register["variable_values"]["_nivel_error"] = (
-            f"negativo_corregido:{data.get('value')}->{nivel_value}"
+        created_register["variable_values"]["_nivel_invalid"] = (
+            f"negativo_flagged:{raw_neg}"
         )
+        created_register["nivel"] = "00.00"
+        created_register["water_table"] = "00.00"
+        if data.get("date_time"):
+            created_register["date_time_last_logger"] = data["date_time"]
+        log_variable_processing(
+            point_catchment["id"],
+            variable.get("str_variable"),
+            "NIVEL",
+            False,
+            error_msg=f"nivel negativo flagged ({raw_neg})",
+        )
+        return created_register
 
     # Aplicar offset configurable del profile (reemplaza hardcodeo punto 149)
     nivel_offset = float(point_catchment.get("profile_data_config", {}).get("nivel_offset", 0) or 0)

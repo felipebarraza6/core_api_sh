@@ -196,3 +196,5 @@ backups/
 tmp/
 tmp_*.py
 backup_cluster_*
+dump.rdb
+media/

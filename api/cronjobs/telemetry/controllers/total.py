@@ -97,13 +97,11 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
         except (ValueError, TypeError):
             current_pulses = 0.0
 
-        # Buscar último registro válido (siempre lo necesitamos para fallback)
-        # ✅ MITIGADO: El runner unificado (telemetry_unified.py) usa lock Redis
-        # por punto (acquire_point_lock), por lo que dos procesos no pueden
-        # procesar el mismo punto simultáneamente. Además, la actualización del
-        # offset (addition) en caso de reset SÍ usa select_for_update().
-        # ✅ FIX: excluir is_error=True para no usar baseline envenenado
-        # (p.ej. pulses=0 inventados por fallo de getter → saltos falsos).
+        # Buscar último registro válido (siempre lo necesitamos para fallback).
+        # ✅ MITIGADO: El runner unificado usa lock Redis por punto
+        # (acquire_point_lock); el offset (addition) en reset usa select_for_update().
+        # Excluir is_error=True: un fallo previo con pulses=0 no debe envenenar
+        # la base del ciclo siguiente (lectores + dga: saltos falsos / total→0).
         last_interaction = (
             InteractionDetail.objects.filter(catchment_point_id=point_catchment["id"])
             .exclude(pulses__isnull=True)
@@ -385,6 +383,7 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                     if return_full_details:
                         return last_total_safe, {
                             "raw_pulses": current_pulses,
+                            "kept_pulses": last_pulses,
                             "status": "ZERO_KEPT",
                             "logic": "kept_last_valid"
                         }
@@ -428,6 +427,7 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                         if return_full_details:
                             return last_total_safe, {
                                 "raw_pulses": current_pulses,
+                                "kept_pulses": last_pulses,
                                 "status": "NOISE_DROP",
                                 "logic": "kept_last_valid"
                             }
@@ -461,6 +461,7 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                         if return_full_details:
                             return last_total_safe, {
                                 "raw_pulses": current_pulses,
+                                "kept_pulses": last_pulses,
                                 "status": "PARTIAL_WITHOUT_DISCONNECT",
                                 "logic": "kept_last_valid"
                             }
@@ -562,6 +563,22 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
 
         final_int = int(round(final_total))
 
+        # Red de seguridad (dga): pulsos=0 NUNCA debe producir un total menor
+        # que el último válido (cubre baseline histórico ya envenenado).
+        if current_pulses == 0 and last_interaction and last_interaction.total not in (None, ""):
+            try:
+                last_valid_total = int(round(float(last_interaction.total)))
+            except (TypeError, ValueError):
+                last_valid_total = None
+            if last_valid_total is not None and final_int < last_valid_total:
+                logger.warning(
+                    f"⚠️  Punto {point_catchment['id']}: total calculado {final_int} < "
+                    f"último válido {last_valid_total} con pulsos=0. "
+                    f"Preservando monotonicidad."
+                )
+                final_int = last_valid_total
+                status_flag = "MONOTONIC_PRESERVED"
+
         # Condición "pulsos cero" / código de estado resuelta al recibir valor válido
         if current_pulses > 0:
             from api.cronjobs.telemetry.utils.audit import resolve_system_events
@@ -573,8 +590,10 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                  "raw_pulses": current_pulses,
                  "offset": offset,
                  "raw_m3": current_raw_m3,
-                 "status": status_flag
+                 "status": status_flag,
              }
+             if status_flag == "MONOTONIC_PRESERVED" and last_interaction and last_interaction.pulses is not None:
+                 metadata["kept_pulses"] = float(last_interaction.pulses)
              return final_int, metadata
 
         return final_int
