@@ -128,9 +128,13 @@ def run():
                 dga_last_retry_at__gt=ahora - timedelta(minutes=minutes),
             )
 
+        # Seguridad DGA: nunca enviar registros marcados como error de ingesta
+        # (is_error=True). Durante la ola TheThings 28-29 Sep 2026 se aceptaron
+        # 264 lecturas inventadas (total 0) porque este filtro no existía.
         base_qs = InteractionDetail.objects.filter(
             send_dga=True,
-            catchment_point_id__in=puntos_con_dga_activo
+            catchment_point_id__in=puntos_con_dga_activo,
+            is_error=False,
         ).exclude(catchment_point=1).exclude(backoff_conditions)
 
         # GRUPO A — Prioridad máxima: registros de últimas 24h
@@ -218,6 +222,13 @@ def _validate_register(register: InteractionDetail) -> bool:
         bool: True si el registro es válido
     """
     try:
+        # Defensa en profundidad: no enviar registros con error de ingesta
+        if getattr(register, "is_error", False):
+            dga_logger.warning(
+                f"Registro {register.id} tiene is_error=True; no se envía a DGA"
+            )
+            return False
+
         # Validar que tenga fecha de medición
         if not register.date_time_medition:
             dga_logger.error(f"Error: Fecha de medición no disponible para registro {register.id}")
@@ -321,37 +332,29 @@ def _prepare_response_data(
                 else:
                     dga_logger.debug(f"Punto sin CAUDAL_PROMEDIO, usando valor guardado: {flow_value}")
 
-        # ✅ CORRECCIÓN NORMATIVA DGA: Enviar total SIN offset (solo escala)
-        # DGA requiere: (pulsos * pulses_factor) / 1000
-        # NO debe incluir el offset/addition del perfil
-        total_para_dga = register.total or "0"
-
+        # Totalizador DGA: fuente de verdad compartida (stored - addition).
+        # Ver docs/TOTALIZER_VIEWS.md — no inventar fórmulas aquí.
         try:
-            # Obtener el offset actual del perfil
             from api.core.models import ProfileDataConfigCatchment
+            from api.core.utils.totalizer import resolve_totalizer_views
+
             profile = ProfileDataConfigCatchment.objects.filter(
                 point_catchment_id=register.catchment_point.id
             ).first()
-
-            offset = 0
-            if profile and profile.addition:
-                offset = profile.addition
-
-            # Si hay offset, restarlo del total guardado para obtener el valor RAW
-            if offset > 0 and register.total:
-                total_con_offset = float(register.total)
-                total_sin_offset = total_con_offset - float(offset)
-                total_para_dga = str(int(total_sin_offset))
+            views = resolve_totalizer_views(
+                stored_total=register.total,
+                addition=getattr(profile, "addition", 0) if profile else 0,
+                d6=getattr(profile, "d6", 0) if profile else 0,
+            )
+            total_para_dga = str(views["dga"])
+            if views["addition"] > 0:
                 dga_logger.info(
-                    f"Total corregido para DGA (punto {register.catchment_point.id}): "
-                    f"{total_con_offset} - {offset} = {total_para_dga}"
+                    f"Total DGA (punto {register.catchment_point.id}): "
+                    f"stored={views['stored']} - addition={views['addition']} "
+                    f"= {total_para_dga}"
                 )
-            else:
-                # Sin offset, usar el total directamente
-                total_para_dga = register.total or "0"
-
         except Exception as e:
-            dga_logger.warning(f"Error calculando total sin offset: {e}, usando total directo")
+            dga_logger.warning(f"Error calculando total DGA: {e}, usando total directo")
             total_para_dga = register.total or "0"
 
         response_data = {

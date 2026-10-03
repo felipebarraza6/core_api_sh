@@ -26,29 +26,58 @@ chile_tz = timezone.get_current_timezone()
 
 def get_data_with_retry(getter_func, *args, max_retries=3, backoff_factor=2):
     """
-    Retry inteligente con backoff exponencial para obtener datos de APIs
+    Retry inteligente con backoff exponencial para obtener datos de APIs.
 
-    Args:
-        getter_func: Función getter a ejecutar
-        *args: Argumentos para la función
-        max_retries: Número máximo de intentos
-        backoff_factor: Factor de espera exponencial
+    Distingue:
+    - ok (date_time presente): éxito, retorna de inmediato
+    - no_data: proveedor respondió vacío → no reintentar
+    - request_failed: HTTP/timeout → reintentar, luego devolver el fallo
+      (NUNCA convertir a value=0)
 
     Returns:
-        Dict con datos o None si falla
+        Dict con status ok/no_data/request_failed, o None solo si el getter
+        lanzó excepciones no capturadas en todos los intentos.
     """
+    from api.cronjobs.telemetry.utils.getter_result import (
+        STATUS_NO_DATA,
+        STATUS_OK,
+        STATUS_REQUEST_FAILED,
+        is_getter_success,
+        request_failed_result,
+    )
+
+    last_result = None
     for attempt in range(max_retries):
         try:
             data = getter_func(*args)
-            # Éxito: valor presente Y timestamp válido (date_time=None indica fallo de getter)
-            if data and data.get("value") is not None and data.get("date_time") is not None:
-                return data
+            if not data:
+                last_result = request_failed_result(error="getter retornó None")
+            else:
+                status = data.get("status")
+                if is_getter_success(data):
+                    normalized = dict(data)
+                    normalized.setdefault("status", STATUS_OK)
+                    return normalized
+                if status == STATUS_NO_DATA:
+                    return data
+                # request_failed u legacy sin timestamp
+                last_result = data if status == STATUS_REQUEST_FAILED else request_failed_result(
+                    error=data.get("error") or "sin timestamp",
+                    http_status=data.get("http_status"),
+                )
+
+            if attempt < max_retries - 1 and (
+                last_result is None or last_result.get("status") == STATUS_REQUEST_FAILED
+            ):
+                time.sleep(backoff_factor ** attempt)
+                continue
+            return last_result
         except Exception as e:
             if attempt == max_retries - 1:
                 telemetry_logger.error(f"Error después de {max_retries} intentos: {e}", exc_info=True)
-                return None
-            time.sleep(backoff_factor**attempt)
-    return None
+                return request_failed_result(error=e)
+            time.sleep(backoff_factor ** attempt)
+    return last_result
 
 
 def log_variable_processing(
@@ -157,16 +186,44 @@ def process_totalizado_variable(
         Tuple con (date_time_last_logger_total, created_register actualizado)
     """
     from .total import total_day, total_hour, total_m3
+    from api.cronjobs.telemetry.utils.getter_result import is_getter_success
+
+    # Fallo de getter: nunca inventar pulses=0 ni tratarlo como lectura.
+    # El caller (_process_point) normalmente no llega aquí; defensa en profundidad.
+    if not is_getter_success(data):
+        telemetry_logger.warning(
+            f"Punto {point_catchment['id']} - TOTALIZADO: getter falló "
+            f"(status={data.get('status')}). No se inventa value=0."
+        )
+        created_register["is_error"] = True
+        return None, created_register
 
     # 1. VALIDAR Y CONVERTIR VALOR DE PULSOS
     try:
-        value = int(float(data.get("value", 0)))
+        value_float = float(data.get("value", 0))
     except (ValueError, TypeError) as e:
         telemetry_logger.warning(f"Error convirtiendo valor {data.get('value')}: {e}")
-        value = 0
+        value_float = 0.0
 
-    # 2. ASIGNAR PULSOS AL REGISTRO
-    created_register["pulses"] = value
+    # Códigos de estado del logger (negativos): no se guardan como pulses.
+    if value_float < 0:
+        last_good = (
+            InteractionDetail.objects.filter(catchment_point_id=point_catchment["id"])
+            .exclude(is_error=True)
+            .exclude(pulses__isnull=True)
+            .order_by("-date_time_medition")
+            .first()
+        )
+        # pulses es IntegerField non-null: preservar último válido, nunca el código.
+        created_register["pulses"] = last_good.pulses if last_good else 0
+        created_register["is_error"] = True
+        value = value_float  # se pasa a total_m3 para emitir WARNING y mantener total
+    else:
+        try:
+            value = int(value_float)
+        except (ValueError, TypeError):
+            value = 0
+        created_register["pulses"] = value
 
     # 3. CALCULAR TOTAL USANDO FÓRMULA UNIFICADA: (pulsos × factor) ÷ 1000
     pulses_factor = variable.get("pulses_factor", 1000)
@@ -209,6 +266,28 @@ def process_totalizado_variable(
 
     created_register["total"] = total_calculado
 
+    # Si total_m3 preservó el último total válido (fallo/cero/ruido/código),
+    # restaurar pulses al último válido. Guardar pulses=0 envenena el baseline.
+    _KEEP_PULSE_STATUSES = {
+        "ZERO_KEPT",
+        "DEVICE_STATUS_CODE",  # lectores: códigos negativos del logger
+        "ERROR_NEGATIVE_PULSES",  # alias legacy dga (si aparece)
+        "NOISE_DROP",
+        "PARTIAL_WITHOUT_DISCONNECT",
+        "MONOTONIC_PRESERVED",
+    }
+    if total_meta and total_meta.get("status") in _KEEP_PULSE_STATUSES:
+        kept = total_meta.get("kept_pulses")
+        if kept is not None:
+            try:
+                created_register["pulses"] = int(round(float(kept)))
+            except (TypeError, ValueError):
+                pass
+            telemetry_logger.info(
+                f"Punto {point_catchment['id']} - pulses restaurados a {created_register['pulses']} "
+                f"(status={total_meta.get('status')})"
+            )
+
     # ✅ FIX: El anti-salto ya NO bloquea el total (solo loguea warning).
     # Este bloqueo causó efecto cascada catastrófico en producción.
     # Ahora solo se registra el evento y se acepta el valor real del sensor.
@@ -228,24 +307,23 @@ def process_totalizado_variable(
     created_register["total_today_diff"] = total_today_diff
 
     # 6. ASIGNAR TIMESTAMP DEL ÚLTIMO LOGGER
+    # FIX 30-09-2026: si el logger no envía fecha NO se usa la hora de la medición.
+    # Ese fallback hacía que un punto sin datos apareciera con 0 días sin conexión.
+    # La fecha final del logger y los días sin conexión se calculan una sola vez en
+    # _process_point, con la variable más fresca (ver utils/connection.py).
     if data.get("date_time"):
         created_register["date_time_last_logger"] = data["date_time"]
         date_time_last_logger_total = data["date_time"]
     else:
-        # Fallback: Usar fecha de medición si el logger no envía fecha
-        # Esto asegura que audits y history tengan fecha válida
-        created_register["date_time_last_logger"] = created_register["date_time_medition"]
-        date_time_last_logger_total = created_register["date_time_last_logger"]
-
-    # 7. CALCULAR DÍAS SIN CONEXIÓN
-    # CORRECCIÓN: Pasar point_catchment para poder buscar historial si falta info
-    created_register = calculate_days_not_connection(created_register, chile_tz, point_catchment)
+        # Sin timestamp: no inventar hora de medición. Días/conexión se calculan
+        # una sola vez en _process_point con la variable más fresca.
+        date_time_last_logger_total = None
 
     # 8. LOGGING DE ÉXITO
     telemetry_logger.info(
         f"Punto {point_catchment['id']} - TOTALIZADO "
         f"'{variable.get('str_variable')}' procesado: "
-        f"pulsos={value}, factor={pulses_factor}, "
+        f"pulsos={created_register.get('pulses')}, factor={pulses_factor}, "
         f"total={total_calculado}, diff_hora={total_diff}, "
         f"diff_dia={total_today_diff}"
     )
@@ -273,39 +351,66 @@ def process_nivel_variable(
     """
     from .nivel import nivel_mt, water_table
 
-    # Manejar nivel negativo
+    # Manejar nivel negativo / inválido
+    # DECISIÓN (2026-10-02, auditoría telemetría): un nivel negativo NO se
+    # reemplaza por el máximo histórico. Eso inventaba valores (p.ej. 94 m en
+    # #38) y generaba water_table = d3 − histórico. En su lugar se marca como
+    # inválido, se guarda 0.00 como centinela (columnas NOT NULL) y NO se
+    # calcula nivel freático a partir de un nivel inventado.
+    # Ver docs/TOTALIZER_VIEWS.md § nivel negativo.
     try:
         nivel_value = float(data["value"])
     except (ValueError, TypeError):
         nivel_value = 0
 
-    if nivel_value < 0:
-        # Buscar nivel más alto registrado
-        nivel_mas_alto = (
-            InteractionDetail.objects.filter(catchment_point_id=point_catchment["id"])
-            .exclude(nivel__isnull=True)
-            .order_by("-nivel")
-            .first()
-        )
+    nivel_invalido = nivel_value < 0
 
-        if nivel_mas_alto:
-            nivel_value = nivel_mas_alto.nivel
-            telemetry_logger.info(f"Nivel negativo corregido usando valor más alto: {nivel_value}")
-        else:
-            nivel_value = 0
-
-        # Guardar advertencia en variable_values para que quede en el historial
-        # sin afectar is_error (reservado para errores de DGA/procesamiento)
+    if nivel_invalido:
+        raw_neg = data.get("value")
         telemetry_logger.warning(
-            f"[NIVEL] Punto {point_catchment['id']} - Nivel negativo ({data.get('value')}) "
-            f"corregido a {nivel_value}."
+            f"[NIVEL] Punto {point_catchment['id']} - Nivel negativo ({raw_neg}) "
+            f"marcado como inválido (no se inventa máximo histórico)."
         )
-        # Agregar flag en variable_values para trazabilidad histórica
+        emit_system_event(
+            event_type="MEASUREMENT_ERROR",
+            point_id=point_catchment["id"],
+            title="Nivel negativo detectado",
+            message=(
+                f"Nivel negativo ({raw_neg}) detectado. Marcado como inválido; "
+                f"no se reemplaza por máximo histórico ni se calcula freático."
+            ),
+            severity="WARNING",
+            extra_data={
+                "decision": "FLAG_INVALID",
+                "reason": (
+                    "Un nivel negativo no es una medición física válida. "
+                    "Anteriormente se reemplazaba por el máximo histórico, "
+                    "inventando lecturas enviadas a DGA. Ahora se flaggea."
+                ),
+                "actual_value": raw_neg,
+                "expected_range": [0, None],
+                "corrected_to": "00.00",
+                "water_table_policy": "no_calcular_sin_nivel_valido",
+                "source": "api.cronjobs.telemetry.controllers.unified_processing:process_nivel_variable",
+            },
+        )
         if "variable_values" not in created_register:
             created_register["variable_values"] = {}
-        created_register["variable_values"]["_nivel_error"] = (
-            f"negativo_corregido:{data.get('value')}->{nivel_value}"
+        created_register["variable_values"]["_nivel_invalid"] = (
+            f"negativo_flagged:{raw_neg}"
         )
+        created_register["nivel"] = "00.00"
+        created_register["water_table"] = "00.00"
+        if data.get("date_time"):
+            created_register["date_time_last_logger"] = data["date_time"]
+        log_variable_processing(
+            point_catchment["id"],
+            variable.get("str_variable"),
+            "NIVEL",
+            False,
+            error_msg=f"nivel negativo flagged ({raw_neg})",
+        )
+        return created_register
 
     # Aplicar offset configurable del profile (reemplaza hardcodeo punto 149)
     nivel_offset = float(point_catchment.get("profile_data_config", {}).get("nivel_offset", 0) or 0)
@@ -607,58 +712,16 @@ def calculate_days_not_connection(
     created_register: Dict[str, Any], chile_tz: Any, point_catchment: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
-    Calcular días sin conexión.
-    Si no hay date_time_last_logger, busca el último registro válido en BD.
-    
-    Args:
-        created_register: Registro en construcción
-        chile_tz: Zona horaria
-        point_catchment: Info del punto para búsquedas históricas
+    Calcular días sin conexión a partir de created_register["date_time_last_logger"].
+
+    FIX 30-09-2026: se mantiene por compatibilidad. El runner unificado calcula los
+    días en _process_point con la fecha más fresca entre TODAS las variables; esta
+    función ya no inventa fechas ni usa la hora de la medición como fallback.
     """
-    current_dt = datetime.now(chile_tz)
-    
-    if created_register.get("date_time_last_logger"):
-        # CASO 1: Tenemos timestamp del logger
-        date_time_medition_str = current_dt.strftime("%Y-%m-%dT%H:%M:00")
-        date_time_last_logger_str = created_register["date_time_last_logger"]
+    from api.cronjobs.telemetry.utils.connection import days_since, parse_logger_ts
 
-        try:
-            dt_med = datetime.strptime(date_time_medition_str, "%Y-%m-%dT%H:%M:00")
-            dt_log = datetime.strptime(date_time_last_logger_str, "%Y-%m-%dT%H:%M:%S")
-            
-            days = (dt_med - dt_log).days
-            created_register["days_not_conection"] = max(0, days)
-            
-        except Exception as e:
-            telemetry_logger.error(f"Error calculando días con timestamp: {e}")
-            created_register["days_not_conection"] = 0
-            
-    elif point_catchment and point_catchment.get('id'):
-        # CASO 2: No hay timestamp (ej. sensor enviando 0s), buscar último dato válido en BD
-        try:
-            # Buscar último registro que NO tenga total=0 o que tenga un logger stamp válido
-            ultimo_valido = InteractionDetail.objects.filter(
-                catchment_point_id=point_catchment['id']
-            ).exclude(date_time_last_logger__isnull=True).order_by('-created').first()
-            
-            if ultimo_valido and ultimo_valido.created:
-                # Calcular días desde ese último registro válido
-                days = (current_dt - ultimo_valido.created.astimezone(chile_tz)).days
-                created_register["days_not_conection"] = max(0, days)
-                
-                # Opcional: Si el último válido fue hace mucho, inyectar el timestamp antiguo
-                # para que se vea en el frontend
-                if days > 1 and ultimo_valido.date_time_last_logger:
-                     created_register["date_time_last_logger"] = str(ultimo_valido.date_time_last_logger)
-            else:
-                created_register["days_not_conection"] = 0
-                
-        except Exception as e:
-            telemetry_logger.error(f"Error fallback días sin conexión: {e}")
-            created_register["days_not_conection"] = 0
-    else:
-        created_register["days_not_conection"] = 0
-
+    logger_dt = parse_logger_ts(created_register.get("date_time_last_logger"))
+    created_register["days_not_conection"] = days_since(logger_dt, datetime.now(chile_tz))
     return created_register
 
 

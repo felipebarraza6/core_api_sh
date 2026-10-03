@@ -181,8 +181,8 @@ class GenericGetterTests(TestCase):
         self.assertIsNotNone(result["date_time"])
 
     @patch("api.cronjobs.telemetry.getters.generic.requests.get")
-    def test_generic_returns_zero_on_missing_value(self, mock_get):
-        """Si el campo value no existe, debe retornar value=0."""
+    def test_generic_returns_no_data_on_missing_value(self, mock_get):
+        """Si el campo value no existe, debe retornar status=no_data (sin inventar 0)."""
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = {"other": "field"}
@@ -200,5 +200,6 @@ class GenericGetterTests(TestCase):
 
         result = get_data_generic(provider, "TOK", "var")
 
-        self.assertEqual(result["value"], 0)
+        self.assertIsNone(result["value"])
         self.assertIsNone(result["date_time"])
+        self.assertEqual(result["status"], "no_data")

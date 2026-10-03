@@ -12,7 +12,7 @@ registros futuros contaminen el cálculo de totales durante backfill.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from django.db.models import QuerySet
 
@@ -94,16 +94,28 @@ def _get_pre_range_base(
         return None, None
 
 
+def _should_persist(reg: InteractionDetail, only_ids: Optional[Set] = None) -> bool:
+    """Si only_ids está definido, solo persistir esos IDs."""
+    if only_ids is None:
+        return True
+    return reg.id in only_ids
+
+
 def recalc_totals_cascade(
     point: CatchmentPoint,
     start_dt: datetime,
     end_dt: datetime,
     pulses_factor: Optional[int] = None,
+    only_ids: Optional[Set] = None,
 ) -> int:
     """
     Recalcula totales en cascada para registros del rango.
     Usa el registro inmediatamente anterior al rango como base.
     NO genera CounterResetLog ni notificaciones (para no spammear en backfill).
+    NO modifica send_dga ni n_voucher.
+
+    Si only_ids se pasa, recorre todo el rango para mantener la base
+    monotónica pero solo GUARDA en esos IDs (no toca filas omitidas/DGA).
 
     Retorna cantidad de registros actualizados.
     """
@@ -127,9 +139,11 @@ def recalc_totals_cascade(
         if current_pulses is None:
             continue
 
+        persist = _should_persist(reg, only_ids)
+
         # Si pulses=0 pero tenemos base, propagar último total (monotonicidad)
         if current_pulses == 0 and last_total is not None:
-            if reg.total != str(int(last_total)):
+            if persist and reg.total != str(int(last_total)):
                 reg.total = str(int(last_total))
                 reg.total_diff = 0
                 reg.save(update_fields=["total", "total_diff"])
@@ -156,6 +170,9 @@ def recalc_totals_cascade(
         last_total = new_total
         new_total_rounded = int(round(new_total))
 
+        if not persist:
+            continue
+
         # Solo actualizar si cambió significativamente
         try:
             old_total = float(reg.total) if reg.total not in (None, "", "None") else 0.0
@@ -175,10 +192,12 @@ def process_flow_for_range(
     start_dt: datetime,
     end_dt: datetime,
     var_config: Optional[Variable] = None,
+    only_ids: Optional[Set] = None,
 ) -> int:
     """
     Aplica instantaneous_flow() a los registros del rango que tengan CAUDAL.
     Retorna cantidad de registros actualizados.
+    No modifica send_dga.
     """
     if var_config is None:
         vars_map = _get_point_variables(point)
@@ -192,6 +211,8 @@ def process_flow_for_range(
     scale_divisor = var_config.calculate_nivel
 
     for reg in records:
+        if not _should_persist(reg, only_ids):
+            continue
         raw_flow = reg.flow
         if raw_flow is None:
             continue
@@ -211,11 +232,13 @@ def process_nivel_for_range(
     end_dt: datetime,
     var_config: Optional[Variable] = None,
     profile: Optional[ProfileDataConfigCatchment] = None,
+    only_ids: Optional[Set] = None,
 ) -> int:
     """
     Aplica nivel_mt() + water_table() a registros del rango.
     Usa nivel_offset del profile y d3 del profile.
     Retorna cantidad de registros actualizados.
+    No modifica send_dga.
     """
     if var_config is None:
         vars_map = _get_point_variables(point)
@@ -235,6 +258,8 @@ def process_nivel_for_range(
     calculate_nivel = var_config.calculate_nivel
 
     for reg in records:
+        if not _should_persist(reg, only_ids):
+            continue
         raw_nivel = reg.nivel
         if raw_nivel is None:
             continue
@@ -274,11 +299,13 @@ def process_average_flow_for_range(
     start_dt: datetime,
     end_dt: datetime,
     var_config: Optional[Variable] = None,
+    only_ids: Optional[Set] = None,
 ) -> int:
     """
     Aplica average_flow() a registros del rango que tengan CAUDAL_PROMEDIO configurado
     y store_average_flow=True.
     Retorna cantidad de registros actualizados.
+    No modifica send_dga.
     """
     if var_config is None:
         vars_map = _get_point_variables(point)
@@ -293,6 +320,8 @@ def process_average_flow_for_range(
     point_dict = {"id": point.id}
 
     for reg in records:
+        if not _should_persist(reg, only_ids):
+            continue
         total_val = reg.total
         if total_val is None:
             continue
@@ -319,9 +348,12 @@ def recalc_diffs_for_range(
     point: CatchmentPoint,
     start_dt: datetime,
     end_dt: datetime,
+    only_ids: Optional[Set] = None,
 ) -> Tuple[int, int]:
     """
     Recalcula total_diff y total_today_diff para registros del rango.
+    Si only_ids se pasa, solo persiste diffs en esas mediciones.
+    No modifica send_dga.
     """
     point_id = point.id
     records = list(
@@ -352,12 +384,14 @@ def recalc_diffs_for_range(
 
     for r in records:
         rid = r["id"]
+        medition = r["date_time_medition"]
+        persist = only_ids is None or rid in only_ids
         try:
             curr_total = float(r["total"]) if r["total"] not in (None, "", "None") else 0.0
         except (ValueError, TypeError):
             curr_total = 0.0
 
-        day = r["date_time_medition"].date()
+        day = medition.date()
         if current_day != day:
             current_day = day
             first_total_of_day[day] = curr_total
@@ -365,7 +399,7 @@ def recalc_diffs_for_range(
         # total_diff
         new_diff = max(0, round_total(curr_total) - round_total(prev_total))
         old_diff = r["total_diff"] or 0
-        if new_diff != old_diff:
+        if persist and new_diff != old_diff:
             InteractionDetail.objects.filter(id=rid).update(total_diff=new_diff)
             diff_updates += 1
 
@@ -373,7 +407,7 @@ def recalc_diffs_for_range(
         first_total = first_total_of_day.get(day, 0.0)
         new_today_diff = max(0, round_total(curr_total) - round_total(first_total))
         old_today_diff = r["total_today_diff"] or 0
-        if new_today_diff != old_today_diff:
+        if persist and new_today_diff != old_today_diff:
             InteractionDetail.objects.filter(id=rid).update(total_today_diff=new_today_diff)
             today_diff_updates += 1
 
@@ -386,6 +420,7 @@ def process_backfill_range(
     point: CatchmentPoint,
     start_dt: datetime,
     end_dt: datetime,
+    only_ids: Optional[Set] = None,
 ) -> Dict[str, Any]:
     """
     Orquesta el procesamiento completo de un rango de backfill.
@@ -397,6 +432,11 @@ def process_backfill_range(
     4. Procesar caudal promedio (si aplica)
     5. Recalcular diffs (total_diff, total_today_diff)
 
+    ``only_ids``: si se pasa, solo persiste cambios en esas mediciones
+    (útil para backfill seguro que no debe tocar filas con voucher DGA).
+
+    Nunca modifica ``send_dga`` ni ``n_voucher``; no encola envío a DGA.
+
     Retorna dict con contadores de actualizaciones.
     """
 
@@ -404,25 +444,29 @@ def process_backfill_range(
     profile = _get_point_profile(point)
 
     # Fase 1: Totales en cascada
-    totals_updated = recalc_totals_cascade(point, start_dt, end_dt)
+    totals_updated = recalc_totals_cascade(
+        point, start_dt, end_dt, only_ids=only_ids
+    )
 
     # Fase 2: Caudal instantáneo
     flow_updated = process_flow_for_range(
-        point, start_dt, end_dt, vars_map.get("CAUDAL")
+        point, start_dt, end_dt, vars_map.get("CAUDAL"), only_ids=only_ids
     )
 
     # Fase 3: Nivel + water_table
     nivel_updated = process_nivel_for_range(
-        point, start_dt, end_dt, vars_map.get("NIVEL"), profile
+        point, start_dt, end_dt, vars_map.get("NIVEL"), profile, only_ids=only_ids
     )
 
     # Fase 4: Caudal promedio
     avg_flow_updated = process_average_flow_for_range(
-        point, start_dt, end_dt, vars_map.get("CAUDAL_PROMEDIO")
+        point, start_dt, end_dt, vars_map.get("CAUDAL_PROMEDIO"), only_ids=only_ids
     )
 
     # Fase 5: Recalcular diffs
-    diff_upd, today_upd = recalc_diffs_for_range(point, start_dt, end_dt)
+    diff_upd, today_upd = recalc_diffs_for_range(
+        point, start_dt, end_dt, only_ids=only_ids
+    )
 
     return {
         "totals_updated": totals_updated,

@@ -110,13 +110,27 @@ def get_token(provider=None):
 
 def get_data_tdata(provider, token_service, str_variable):
     """Obtener datos de TDATA (último valor)."""
-    token_auth = get_token(provider)
+    from api.cronjobs.telemetry.utils.getter_result import (
+        http_status_from_exc,
+        no_data_result,
+        ok_result,
+        request_failed_result,
+    )
+
+    try:
+        token_auth = get_token(provider)
+    except Exception as e:
+        logger.error(f"No se pudo obtener el token de autenticación: {e}")
+        return request_failed_result(error=e)
+
     if not token_auth:
         logger.error("No se pudo obtener el token de autenticación.")
-        return {"date_time": None, "value": 0}
+        return request_failed_result(error="token_auth vacío")
 
     token = token_service
     base_url = getattr(provider, 'base_url', None) or "https://api.twindimension.com/tdata/v1"
+    if isinstance(provider, dict):
+        base_url = provider.get('base_url') or base_url
     url = f"{base_url.rstrip('/')}/telemetry/DEVICE/{token}/values/timeseries?keys={str_variable}"
     headers = {
         'Authorization': f"Bearer {token_auth}"
@@ -132,12 +146,11 @@ def get_data_tdata(provider, token_service, str_variable):
             ts = datetime.fromtimestamp(item["ts"] / 1000)
             formatted_ts = ts.strftime("%Y-%m-%dT%H:%M:%S")
             value = item.get("value", 0)
-            return {"date_time": formatted_ts, "value": value}
-        else:
-            return {"date_time": None, "value": 0}
+            return ok_result(value, formatted_ts)
+        return no_data_result()
     except requests.RequestException as e:
         logger.error(f"Error al obtener datos: {e}")
-        return {"date_time": None, "value": 0}
+        return request_failed_result(error=e, http_status=http_status_from_exc(e))
 
 
 def get_data_tdata_history(provider, token_service, str_variable, start_dt, end_dt, limit=10000):

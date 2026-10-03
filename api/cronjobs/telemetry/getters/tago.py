@@ -3,6 +3,14 @@ import logging
 import time
 import requests
 
+from api.cronjobs.telemetry.utils.connection import utc_iso_to_chile_str
+from api.cronjobs.telemetry.utils.getter_result import (
+    http_status_from_exc,
+    no_data_result,
+    ok_result,
+    request_failed_result,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,7 +21,11 @@ def _provider_val(provider, key, default=None):
 
 
 def get_data_tago(provider, token_service, str_variable):
-    """Obtener datos de Tago.io (último valor)."""
+    """Obtener datos de Tago.io (último valor).
+
+    Tago entrega ``time`` en UTC (...Z). Se convierte a hora de Chile
+    (mismo criterio que TheThings en fix/telemetria-dias-sin-conexion).
+    """
 
     token = token_service
     base_url = _provider_val(provider, 'base_url') or "https://api.tago.io"
@@ -27,20 +39,18 @@ def get_data_tago(provider, token_service, str_variable):
         data = response.json()
         if data and data['result'] and len(data['result']) > 0:
             item = data['result'][0]
-            ts = datetime.strptime(
-                item.get('time'), "%Y-%m-%dT%H:%M:%S.%fZ")
-            formatted_ts = ts.strftime("%Y-%m-%dT%H:%M:%S")
+            # Tago entrega la fecha en UTC ("...Z"): convertir a hora de Chile.
+            formatted_ts = utc_iso_to_chile_str(item.get('time'))
             value = item.get("value", 0)
-            if isinstance(value, int) and value < 0:
-                value = 0
-            elif isinstance(value, float):
+            # Códigos de estado del logger (negativos) se preservan para clasificación
+            # aguas abajo; no se convierten a 0 (eso inventaba lecturas falsas).
+            if isinstance(value, float):
                 value = round(value, 2)
-            return {"date_time": formatted_ts, "value": value}
-        else:
-            return {"date_time": None, "value": 0}
+            return ok_result(value, formatted_ts)
+        return no_data_result()
     except requests.RequestException as e:
         logger.error(f"Error al obtener datos: {e}")
-        return {"date_time": None, "value": 0}
+        return request_failed_result(error=e, http_status=http_status_from_exc(e))
 
 
 def get_data_tago_history(provider, token_service, str_variable, start_dt, end_dt, limit=None):
@@ -57,6 +67,7 @@ def get_data_tago_history(provider, token_service, str_variable, start_dt, end_d
 
     Returns:
         Lista de dicts ordenada cronológicamente.
+        ``date_time`` queda en hora de Chile; ``ts_ms`` es epoch UTC absoluto.
     """
     token = token_service
     base_url = _provider_val(provider, 'base_url') or "https://api.tago.io"
@@ -83,10 +94,18 @@ def get_data_tago_history(provider, token_service, str_variable, start_dt, end_d
 
             results = []
             for item in data['result']:
-                ts = datetime.strptime(item.get('time'), "%Y-%m-%dT%H:%M:%S.%fZ")
-                formatted_ts = ts.strftime("%Y-%m-%dT%H:%M:%S")
+                raw_time = item.get('time')
+                formatted_ts = utc_iso_to_chile_str(raw_time)
+                # ts_ms se mantiene en UTC epoch para ordenamiento estable
+                try:
+                    ts_utc = datetime.strptime(raw_time, "%Y-%m-%dT%H:%M:%S.%fZ")
+                except (TypeError, ValueError):
+                    try:
+                        ts_utc = datetime.fromisoformat(str(raw_time).replace("Z", "+00:00")).replace(tzinfo=None)
+                    except (TypeError, ValueError):
+                        continue
                 results.append({
-                    "ts_ms": int(ts.timestamp() * 1000),
+                    "ts_ms": int(ts_utc.timestamp() * 1000),
                     "value": item.get("value", 0),
                     "date_time": formatted_ts,
                 })
