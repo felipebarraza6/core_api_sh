@@ -44,6 +44,32 @@ class User(ModelApi, AbstractUser):
         help_text='Si está activo, el usuario recibe correos del subsistema de tickets (menciones, SLA, etc.).'
     )
 
+    # ── Preferencias de notificación push (in-app + navegador/app móvil) ─────
+    # `notify_push` es el interruptor general. Los tres flags de abajo son
+    # filtros por tipo de evento; sólo tienen efecto si `notify_push` es True.
+    # El permiso real lo otorga el navegador/ sistema operativo: aunque estos
+    # flags estén en True, si el usuario no dio permiso no llega nada.
+    notify_push = models.BooleanField(
+        default=True,
+        verbose_name='Recibir notificaciones push',
+        help_text='Interruptor general de notificaciones push (navegador / app móvil).',
+    )
+    push_tickets = models.BooleanField(
+        default=True,
+        verbose_name='Push de tickets',
+        help_text='Notificar respuestas, cambios de estado y menciones en tickets.',
+    )
+    push_alerts = models.BooleanField(
+        default=True,
+        verbose_name='Push de alertas',
+        help_text='Notificar alertas de telemetría de los puntos propios / visibles.',
+    )
+    push_announcements = models.BooleanField(
+        default=True,
+        verbose_name='Push de avisos',
+        help_text='Notificar avisos y anuncios generales del sistema.',
+    )
+
     profile_image = models.ImageField(
         upload_to='profile_images/',
         null=True,

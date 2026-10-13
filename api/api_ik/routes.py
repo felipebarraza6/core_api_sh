@@ -50,6 +50,13 @@ from .views_tickets import (
     SLAConfigDetailView,
 )
 from .views_telemetry_backfill import TelemetryBackfillView
+from .views_push import (
+    PushConfigView,
+    PushSubscribeView,
+    PushPreferenceView,
+    PushTestView,
+    MyNotificationsFeedView,
+)
 from .views_point_gaps import PointGapsView
 from .views_compliance import (
     ComplianceListView,
@@ -92,6 +99,14 @@ urlpatterns = [
 
     # Preferencias de notificación del usuario
     path('me/notify-email/', MyNotificationPreferenceView.as_view(), name='my_notify_email'),
+
+    # ── Notificaciones push (navegador / app móvil) ────────────────────────
+    # Todo aditivo: ver docs/WEB_PUSH.md para la guía de integración.
+    path('me/push/config/', PushConfigView.as_view(), name='push_config'),
+    path('me/push/subscribe/', PushSubscribeView.as_view(), name='push_subscribe'),
+    path('me/push/preferences/', PushPreferenceView.as_view(), name='push_preferences'),
+    path('me/push/test/', PushTestView.as_view(), name='push_test'),
+    path('me/notifications/', MyNotificationsFeedView.as_view(), name='my_notifications'),
 
     # Points summary (reemplaza get_profile para Centro de Control)
     path('points_summary/', PointsSummaryView.as_view(), name='points_summary'),

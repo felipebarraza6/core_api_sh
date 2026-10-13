@@ -746,9 +746,13 @@ class TicketNotification(ModelApi):
 
     MENTION = "MENTION"
     REFERENCE = "REFERENCE"
+    REPLY = "REPLY"
+    STATUS_CHANGE = "STATUS_CHANGE"
     TYPE_CHOICES = [
         (MENTION, "Mención en comentario"),
         (REFERENCE, "Referencia a otro ticket"),
+        (REPLY, "Nueva respuesta en el ticket"),
+        (STATUS_CHANGE, "Cambio de estado del ticket"),
     ]
 
     notification_type = models.CharField(

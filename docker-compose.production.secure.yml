@@ -193,6 +193,14 @@ services:
       - GOOGLE_CHAT_WEBHOOK_URL=${GOOGLE_CHAT_WEBHOOK_URL}
       - GOOGLE_CHAT_DGA_WEBHOOK_URL=${GOOGLE_CHAT_DGA_WEBHOOK_URL}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+      # ✅ WEB PUSH: interruptor + claves VAPID (ver .env y docs/WEB_PUSH.md)
+      - PUSH_ENABLED=${PUSH_ENABLED}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_CLAIM_EMAIL=${VAPID_CLAIM_EMAIL}
+      # ✅ WEB PUSH: pywebpush vive en ./pylibs (bind mount persistente).
+      #    /tmp es efímero y HOME=/tmp → el user site de pip se pierde al recrear.
+      - PYTHONPATH=/app/pylibs
     volumes:
       # ✅ SEGURIDAD: Bind mount restringido (NO expone .env, .git/, credentials/)
       - ./api:/app/api
@@ -203,6 +211,7 @@ services:
       - ./conf:/app/conf
       - ./backups:/app/backups:rw
       - ./tests:/app/tests
+      - ./pylibs:/app/pylibs
       - ./manage.py:/app/manage.py
       - ./docker-entrypoint.sh:/app/docker-entrypoint.sh
       - ./gunicorn_config.py:/app/gunicorn_config.py
@@ -348,6 +357,13 @@ services:
       - GOOGLE_CHAT_WEBHOOK_URL=${GOOGLE_CHAT_WEBHOOK_URL}
       - GOOGLE_CHAT_DGA_WEBHOOK_URL=${GOOGLE_CHAT_DGA_WEBHOOK_URL}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+      # ✅ WEB PUSH: el dispatcher de alertas corre en este contenedor
+      - PUSH_ENABLED=${PUSH_ENABLED}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_CLAIM_EMAIL=${VAPID_CLAIM_EMAIL}
+      # ✅ WEB PUSH: pywebpush en ./pylibs — /tmp es tmpfs aquí, se pierde en cada restart
+      - PYTHONPATH=/app/pylibs
     volumes:
       # ✅ SEGURIDAD: Bind mount restringido (NO expone .env, .git/, credentials/)
       - ./api:/app/api
@@ -359,6 +375,7 @@ services:
       - ./manage.py:/app/manage.py
       - ./cron-entrypoint.sh:/app/cron-entrypoint.sh
       - ./rotate-cron-logs.sh:/app/rotate-cron-logs.sh
+      - ./pylibs:/app/pylibs
       - ./requirements.txt:/app/requirements.txt
       - ./.cron_env.sh:/app/.cron_env.sh
       - cron_logs:/var/log/smarthydro

@@ -187,6 +187,31 @@ GOOGLE_CHAT_WEBHOOK_URL = os.environ.get('GOOGLE_CHAT_WEBHOOK_URL', '')
 GOOGLE_CHAT_DGA_WEBHOOK_URL = os.environ.get('GOOGLE_CHAT_DGA_WEBHOOK_URL', '')
 
 # ========================================
+# WEB PUSH (notificaciones push a navegador / app móvil)
+# ========================================
+# ⚠️ TODO APAGADO POR DEFECTO. El sistema de push queda inerte hasta que se
+# configuren las claves VAPID y se ponga PUSH_ENABLED=True en .env.
+# Mientras tanto: los endpoints devuelven {"enabled": false}, los envíos se
+# omiten y ninguna tarea ni request se ve afectada.
+#
+# Generar claves (una sola vez):
+#   pip install py-vapid && py_vapid generate-keys --applicationServerKey
+#
+# PUSH_ENABLED=False  → interruptor maestro del backend (además de la
+#                       preferencia individual `User.notify_push`).
+# VAPID_PRIVATE_KEY   → clave privada VAPID (base64url). NUNCA commitear.
+# VAPID_PUBLIC_KEY    → clave pública VAPID (base64url). Se expone vía API
+#                       para que el navegador la use al suscribirse.
+# VAPID_CLAIM_EMAIL   → email de contacto que viaja en la cabecera `mailto:`.
+PUSH_ENABLED = os.environ.get("PUSH_ENABLED", "False").lower() == "true"
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_CLAIM_EMAIL = os.environ.get(
+    "VAPID_CLAIM_EMAIL",
+    os.environ.get("DEFAULT_FROM_EMAIL", "soporte@smarthydro.cl"),
+)
+
+# ========================================
 # USER CONFIGURATION (DEPRECATED)
 # ========================================
 # DEPRECATED: No usar para nuevos usuarios

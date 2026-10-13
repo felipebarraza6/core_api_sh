@@ -11,6 +11,7 @@ from .catchment_points import (Client, ProjectCatchments, CatchmentPoint,
                                DgaDataConfigCatchment, SchemesCatchment,
                                Variable,  RegisterPersons, CounterResetLog)
 from .alerts import AlertRule, AlertChannel, AlertTrigger, SystemEvent
+from .push import WebPushSubscription
 from .tickets import (
     SLAConfig,
     SupportTicket,
