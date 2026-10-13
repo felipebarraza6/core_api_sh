@@ -13,6 +13,10 @@ MAX_FLOW_LS = 150.0           # Máximo caudal razonable en L/s
 MAX_TIME_GAP_HOURS = 2        # Si Δt > 2 horas, no calcular (reconexión)
 MAX_DIFF_M3_PER_HOUR = 500    # Máximo consumo razonable por hora
 
+# Sentinela para `average_flow(previous=...)`: "no me des el registro anterior,
+# búscalo tú". None sí significa "no existe registro anterior".
+_PREV_UNSET = object()
+
 
 def _get_profile_limits(point_catchment: dict):
     """Lee límites configurables del profile, o retorna defaults."""
@@ -129,11 +133,20 @@ def instantaneous_flow(value, convert_to_lt, scale_divisor=None):
 
 
 
-def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logger_dt=None):
+def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logger_dt=None,
+                 previous=_PREV_UNSET, quiet=False):
     """
     Caudal promedio (L/s) = ((total_actual - total_anterior) / Δt_seg) * 1000
     Δt usa preferentemente la diferencia de date_time_last_logger si está disponible (mayor precisión),
     sino usa date_time_medition.
+
+    Args:
+        previous: registro anterior ya resuelto. Por defecto (_PREV_UNSET) se
+            busca en BD. Pásalo como InteractionDetail para evitar 1 query por
+            llamada, o None si no existe registro anterior.
+        quiet: silencia logs e `emit_system_event`. Debe ser True en rutas de
+            LECTURA (GET): estos guards se validan en el ingest, y llamarlos al
+            renderizar un endpoint insertaría un SystemEvent por request.
     """
     try:
         if not isinstance(point_catchment, dict) or "id" not in point_catchment:
@@ -152,16 +165,19 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
             curr_ts = date_lg.astimezone(chile_tz)
 
         # 2. Buscar registro anterior
-        query = InteractionDetail.objects.filter(
-            catchment_point_id=point_catchment["id"],
-            date_time_medition__isnull=False,
-            date_time_medition__lt=date_lg
-        )
-        if exclude_id:
-            query = query.exclude(pk=exclude_id)
+        if previous is _PREV_UNSET:
+            query = InteractionDetail.objects.filter(
+                catchment_point_id=point_catchment["id"],
+                date_time_medition__isnull=False,
+                date_time_medition__lt=date_lg
+            )
+            if exclude_id:
+                query = query.exclude(pk=exclude_id)
 
-        get_last = query.exclude(is_error=True).order_by('-date_time_medition').first()
-        
+            get_last = query.exclude(is_error=True).order_by('-date_time_medition').first()
+        else:
+            get_last = previous
+
         if not get_last or get_last.total is None:
             return 0.0
 
@@ -220,7 +236,7 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
         max_diff, max_flow, max_gap = _get_profile_limits(point_catchment)
         
         # 4a. Si hay brecha de tiempo muy grande (reconexión después de desconexión)
-        if time_difference > (max_gap * 3600):
+        if not quiet and time_difference > (max_gap * 3600):
             logger.info(
                 f"⚠️ Punto {point_catchment['id']}: Gap de tiempo grande "
                 f"({time_difference/3600:.1f}h > {max_gap}h). "
@@ -228,7 +244,8 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
             )
         
         # 4b. Si el registro anterior tenía días sin conexión (logger desconectado)
-        if hasattr(get_last, 'days_not_conection') and get_last.days_not_conection and get_last.days_not_conection > 0:
+        if (not quiet and hasattr(get_last, 'days_not_conection')
+                and get_last.days_not_conection and get_last.days_not_conection > 0):
             logger.info(
                 f"⚠️ Punto {point_catchment['id']}: Reconexión detectada "
                 f"(días sin conexión anterior: {get_last.days_not_conection}). "
@@ -252,29 +269,30 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
         # 5b. Validar que el consumo por hora sea razonable
         consumption_per_hour = (diff_cubics / time_difference) * 3600
         if consumption_per_hour > max_diff:
-            logger.warning(
-                f"🚨 Punto {point_catchment['id']}: Consumo por hora excesivo "
-                f"({consumption_per_hour:.0f} m³/h > {max_diff}) - Caudal = 0"
-            )
-            emit_system_event(
-                event_type="MASSIVE_JUMP_BLOCKED",
-                point_id=point_catchment["id"],
-                title="Consumo por hora excesivo",
-                message=f"Consumo por hora excesivo ({consumption_per_hour:.0f} m³/h > {max_diff}). Caudal forzado a 0.",
-                severity="WARNING",
-                extra_data={
-                    "decision": "RECHAZAR",
-                    "reason": "El consumo por hora calculado a partir del diff de totales supera el límite de seguridad. Se fuerza caudal a 0 para evitar picos falsos en reportes.",
-                    "actual_value": round(consumption_per_hour, 2),
-                    "threshold_value": max_diff,
-                    "expected_range": [None, max_diff],
-                    "consumption_m3_per_hour": consumption_per_hour,
-                    "limit": max_diff,
-                    "diff_cubics": diff_cubics,
-                    "time_difference_s": time_difference,
-                    "source": "api.cronjobs.telemetry.controllers.flow:average_flow",
-                },
-            )
+            if not quiet:
+                logger.warning(
+                    f"🚨 Punto {point_catchment['id']}: Consumo por hora excesivo "
+                    f"({consumption_per_hour:.0f} m³/h > {max_diff}) - Caudal = 0"
+                )
+                emit_system_event(
+                    event_type="MASSIVE_JUMP_BLOCKED",
+                    point_id=point_catchment["id"],
+                    title="Consumo por hora excesivo",
+                    message=f"Consumo por hora excesivo ({consumption_per_hour:.0f} m³/h > {max_diff}). Caudal forzado a 0.",
+                    severity="WARNING",
+                    extra_data={
+                        "decision": "RECHAZAR",
+                        "reason": "El consumo por hora calculado a partir del diff de totales supera el límite de seguridad. Se fuerza caudal a 0 para evitar picos falsos en reportes.",
+                        "actual_value": round(consumption_per_hour, 2),
+                        "threshold_value": max_diff,
+                        "expected_range": [None, max_diff],
+                        "consumption_m3_per_hour": consumption_per_hour,
+                        "limit": max_diff,
+                        "diff_cubics": diff_cubics,
+                        "time_difference_s": time_difference,
+                        "source": "api.cronjobs.telemetry.controllers.flow:average_flow",
+                    },
+                )
             return 0.0
 
         # 6. Calcular caudal (L/s)
@@ -282,27 +300,28 @@ def average_flow(point_catchment, total, date_lg, exclude_id=None, current_logge
 
         # 6b. Validar caudal máximo razonable
         if value > max_flow:
-            logger.warning(
-                f"🚨 Punto {point_catchment['id']}: Caudal excesivo "
-                f"({value:.2f} L/s > {max_flow}) - Caudal = 0"
-            )
-            emit_system_event(
-                event_type="MEASUREMENT_ERROR",
-                point_id=point_catchment["id"],
-                title="Caudal excesivo",
-                message=f"Caudal excesivo ({value:.2f} L/s > {max_flow}). Caudal forzado a 0.",
-                severity="WARNING",
-                extra_data={
-                    "decision": "RECHAZAR",
-                    "reason": "El caudal instantáneo reportado por el sensor supera el máximo físicamente razonable configurado. Se fuerza a 0 para evitar distorsiones.",
-                    "actual_value": round(value, 2),
-                    "threshold_value": max_flow,
-                    "expected_range": [None, max_flow],
-                    "flow_ls": value,
-                    "max_flow_ls": max_flow,
-                    "source": "api.cronjobs.telemetry.controllers.flow:instantaneous_flow",
-                },
-            )
+            if not quiet:
+                logger.warning(
+                    f"🚨 Punto {point_catchment['id']}: Caudal excesivo "
+                    f"({value:.2f} L/s > {max_flow}) - Caudal = 0"
+                )
+                emit_system_event(
+                    event_type="MEASUREMENT_ERROR",
+                    point_id=point_catchment["id"],
+                    title="Caudal excesivo",
+                    message=f"Caudal excesivo ({value:.2f} L/s > {max_flow}). Caudal forzado a 0.",
+                    severity="WARNING",
+                    extra_data={
+                        "decision": "RECHAZAR",
+                        "reason": "El caudal instantáneo reportado por el sensor supera el máximo físicamente razonable configurado. Se fuerza a 0 para evitar distorsiones.",
+                        "actual_value": round(value, 2),
+                        "threshold_value": max_flow,
+                        "expected_range": [None, max_flow],
+                        "flow_ls": value,
+                        "max_flow_ls": max_flow,
+                        "source": "api.cronjobs.telemetry.controllers.flow:instantaneous_flow",
+                    },
+                )
             return 0.0
 
         return value

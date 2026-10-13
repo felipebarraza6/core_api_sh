@@ -33,10 +33,99 @@ from api.core.models import (
     CounterResetLog,
 )
 from api.core.models.alerts import AlertRule, SystemEvent
+from api.core.utils.flow_display import (
+    get_interaction_flow_display_data,
+    _get_cached_point_config,
+)
+from api.cronjobs.telemetry.controllers.flow import _PREV_UNSET
 from .throttles import (
     LoginRateThrottle, BatchRateThrottle, SummaryRateThrottle,
     DashboardRateThrottle, PublicReadRateThrottle,
 )
+
+
+# ============================================================================
+# CAUDAL EN ENDPOINTS DE LECTURA
+# ============================================================================
+# Variable.store_average_flow controla si InteractionDetail.flow se guarda en
+# el ingest. Si es False el cron NUNCA escribe el campo (queda 0.00) y el
+# help_text promete "se calcula dinámicamente" — esa promesa vive en
+# api/core/utils/flow_display.py y ya la cumplen reports, compliance, admin y
+# DGA. Estos helpers la cumplen también en los endpoints Ikolu, que antes
+# devolvían el 0.00 crudo.
+#
+# Regla: si el valor guardado es la fuente de verdad (store_average_flow=True
+# o punto sin CAUDAL_PROMEDIO) se devuelve tal cual → costo 0 y ningún
+# cambio de comportamiento para los puntos que ya funcionan.
+
+def _point_flow_config(point_id):
+    """Config de caudal del punto (lru_cache por proceso)."""
+    return _get_cached_point_config(point_id)
+
+
+def _display_flow(record, point_id=None, previous=_PREV_UNSET, config=None):
+    """
+    Caudal a exponer en un endpoint de lectura.
+
+    Devuelve el valor guardado TAL CUAL (Decimal, para no alterar el formato
+    de las respuestas existentes) o el resultado dinámico (float). None si no
+    hay valor.
+
+    previous: registro anterior pre-resuelto para evitar 1 query por fila.
+    quiet=True siempre: una ruta de GET jamás debe insertar SystemEvent.
+    """
+    if record is None:
+        return None
+    if config is None:
+        config = _point_flow_config(
+            record.catchment_point_id if point_id is None else point_id
+        )
+    if config.get("has_avg_flow") and not config.get("store_average_flow", True):
+        return get_interaction_flow_display_data(
+            record, cached_config=config, previous=previous, quiet=True
+        )["value"]
+    return record.flow
+
+
+def _previous_by_record(records, point_id):
+    """
+    Map pk → registro anterior, replicando el WHERE de average_flow
+    (date_time_medition menor, sin errores) con UNA sola query extra en vez
+    de una por fila. `records` debe venir ordenado de más nuevo a más viejo.
+    """
+    prev = {}
+    if not records:
+        return prev
+
+    oldest = records[-1]
+    boundary = None
+    if oldest.date_time_medition is not None:
+        boundary = (
+            InteractionDetail.objects
+            .filter(
+                catchment_point_id=point_id,
+                date_time_medition__isnull=False,
+                date_time_medition__lt=oldest.date_time_medition,
+            )
+            .exclude(is_error=True)
+            .order_by('-date_time_medition')
+            .first()
+        )
+
+    # Recorrido de viejo a nuevo: el "anterior" del registro actual es el
+    # último registro válido ya visto.
+    candidate = boundary
+    for r in reversed(records):
+        same_or_newer = (
+            candidate is not None
+            and r.date_time_medition is not None
+            and candidate.date_time_medition is not None
+            and candidate.date_time_medition >= r.date_time_medition
+        )
+        prev[r.pk] = None if same_or_newer else candidate
+        if not r.is_error and r.date_time_medition is not None:
+            candidate = r
+    return prev
 
 
 class OptimizedLoginView(APIView):
@@ -331,9 +420,10 @@ class PointsSummaryView(APIView):
 
             # Última telemetría (precargada vía Prefetch)
             li = p.latest_interaction[0] if p.latest_interaction else None
+            flow_val = _display_flow(li, point_id=p.id) if li is not None else None
             latest = {
                 'date_time_medition': li.date_time_medition.isoformat() if li and li.date_time_medition else None,
-                'flow': str(li.flow) if li and li.flow is not None else None,
+                'flow': str(flow_val) if flow_val is not None else None,
                 'total': li.total if li else None,
                 'nivel': str(li.nivel) if li and li.nivel is not None else None,
                 'water_table': str(li.water_table) if li and li.water_table is not None else None,
@@ -490,6 +580,7 @@ class PointSummaryView(APIView):
             provider = 'novus'
 
         li = point.latest_interaction[0] if point.latest_interaction else None
+        flow_val = _display_flow(li, point_id=point.id) if li is not None else None
         is_active = (li.days_not_conection == 0) if li and li.days_not_conection is not None else True
 
         # ── Sumar alertas del nuevo subsistema ──
@@ -520,7 +611,7 @@ class PointSummaryView(APIView):
             } if dga_config else None,
             'latest_telemetry': {
                 'date_time_medition': li.date_time_medition.isoformat() if li and li.date_time_medition else None,
-                'flow': str(li.flow) if li and li.flow is not None else None,
+                'flow': str(flow_val) if flow_val is not None else None,
                 'total': li.total if li else None,
                 'nivel': str(li.nivel) if li and li.nivel is not None else None,
                 'water_table': str(li.water_table) if li and li.water_table is not None else None,
@@ -1556,11 +1647,22 @@ class PointRecordsView(APIView):
         addition = float(profile.addition) if profile and profile.addition else 0.0
 
         # Query optimizada
-        records = InteractionDetail.objects.filter(
+        records = list(InteractionDetail.objects.filter(
             catchment_point=point,
             date_time_medition__date__gte=start_date,
             date_time_medition__date__lte=end_date,
-        ).order_by('-date_time_medition')[:limit]
+        ).order_by('-date_time_medition')[:limit])
+
+        # Caudal: si la variable CAUDAL_PROMEDIO tiene store_average_flow=False
+        # el cron nunca escribe `flow`, así que hay que calcularlo aquí (mismo
+        # helper que reports/compliance/DGA). Se resuelven los registros
+        # anteriores con 1 sola query para no hacer 2 queries por fila.
+        flow_config = _point_flow_config(point.id)
+        needs_dynamic_flow = (
+            flow_config.get("has_avg_flow")
+            and not flow_config.get("store_average_flow", True)
+        )
+        prev_map = _previous_by_record(records, point.id) if needs_dynamic_flow else {}
 
         import pytz
         chile_tz = pytz.timezone('America/Santiago')
@@ -1581,11 +1683,17 @@ class PointRecordsView(APIView):
             dt_chile = r.date_time_medition.astimezone(chile_tz) if r.date_time_medition else None
             dt_logger_chile = r.date_time_last_logger.astimezone(chile_tz) if r.date_time_last_logger else None
 
+            flow_val = _display_flow(
+                r, point_id=point.id,
+                previous=prev_map.get(r.pk),
+                config=flow_config,
+            )
+
             data.append({
                 'date_time': dt_chile.isoformat() if dt_chile else None,
                 'date_time_last_logger': dt_logger_chile.isoformat() if dt_logger_chile else None,
                 'days_not_connection': r.days_not_conection,
-                'flow': float(r.flow) if r.flow is not None else None,
+                'flow': float(flow_val) if flow_val is not None else None,
                 'total': r.total,
                 'total_raw': total_raw,
                 'total_diff': r.total_diff,

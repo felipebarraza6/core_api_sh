@@ -1,7 +1,7 @@
 import logging
 import pytz
 from api.core.models import Variable, DgaDataConfigCatchment
-from api.cronjobs.telemetry.controllers.flow import average_flow
+from api.cronjobs.telemetry.controllers.flow import average_flow, _PREV_UNSET
 
 from functools import lru_cache
 
@@ -14,19 +14,23 @@ def _get_cached_point_config(cp_id):
     Esto acelera drásticamente el Admin y Serializers.
     """
     from api.core.models import Variable, DgaDataConfigCatchment
-    has_avg_flow = Variable.objects.filter(
+    avg_var = Variable.objects.filter(
         type_variable="CAUDAL_PROMEDIO",
         scheme_catchment__points_catchment=cp_id,
-    ).exists()
-    
+    ).first()
+
     dga_config = DgaDataConfigCatchment.objects.filter(point_catchment_id=cp_id).first()
     
     return {
-        "has_avg_flow": has_avg_flow,
+        "has_avg_flow": avg_var is not None,
+        # False => el cron NUNCA escribe InteractionDetail.flow, así que el
+        # valor hay que calcularlo en el momento (ver help_text del campo).
+        "store_average_flow": bool(avg_var.store_average_flow) if avg_var else True,
         "dga_config": dga_config
     }
 
-def get_interaction_flow_display_data(instance, cached_config=None):
+def get_interaction_flow_display_data(instance, cached_config=None,
+                                      previous=_PREV_UNSET, quiet=False):
     """
     Centraliza la lógica para obtener el caudal a mostrar (dinámico o guardado).
     Retorna un dict con:
@@ -37,14 +41,18 @@ def get_interaction_flow_display_data(instance, cached_config=None):
     Args:
         instance: InteractionDetail object
         cached_config: Optional dict with keys: 'has_avg_flow', 'dga_config', 'standard'
+        previous: registro anterior ya resuelto (ver average_flow) — evita
+            1 query por registro en endpoints que devuelven muchas filas.
+        quiet: silencia logs y SystemEvent de los guards de average_flow.
+            Las rutas de lectura (GET) deben usarlo: los eventos ya se
+            emiten en el ingest, aquí solo se está renderizando.
     """
-    catchment_point = instance.catchment_point
-    cp_id = catchment_point.id
+    cp_id = instance.catchment_point_id
     
     # 1. Obtener configuración (de argumento, lru_cache o BD)
     if not cached_config:
         cached_config = _get_cached_point_config(cp_id)
-        
+
     has_avg_flow = cached_config.get("has_avg_flow", False)
     
     if not has_avg_flow:
@@ -82,11 +90,13 @@ def get_interaction_flow_display_data(instance, cached_config=None):
         if curr_ts:
             # Re-usar average_flow del controlador
             calculated_flow = average_flow(
-                point_catchment={"id": catchment_point.id},
+                point_catchment={"id": cp_id},
                 total=float(instance.total) if instance.total else 0.0,
                 date_lg=curr_ts,
                 exclude_id=instance.pk,
-                current_logger_dt=instance.date_time_last_logger
+                current_logger_dt=instance.date_time_last_logger,
+                previous=previous,
+                quiet=quiet,
             )
             
             if calculated_flow > 0:

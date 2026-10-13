@@ -9,6 +9,9 @@ Cubre:
 - BatchStatsView (POST /api/ik/batch/stats/)
 """
 import json
+from datetime import timedelta
+from decimal import Decimal
+
 from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -16,7 +19,9 @@ from rest_framework.test import APIClient
 from api.core.models import (
     CatchmentPoint, Client, ProjectCatchments,
     InteractionDetail, ProfileDataConfigCatchment,
+    SchemesCatchment, Variable,
 )
+from api.core.models.alerts import SystemEvent
 
 User = get_user_model()
 
@@ -386,3 +391,231 @@ class ApiIkCalendarRegressionTests(TestCase):
         data = response.json()
         self.assertIn('variables', data)
         self.assertIsInstance(data['variables'], list)
+
+
+@override_settings(CACHES={
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    }
+})
+class ApiIkDynamicFlowRegressionTests(TestCase):
+    """
+    Caudal dinámico en los 3 endpoints Ikolu (GET).
+
+    Variable.store_average_flow=False hace que el cron NUNCA escriba
+    InteractionDetail.flow (queda 0.00). En ese caso los endpoints deben
+    calcularlo con el mismo helper que usan reports/compliance/DGA
+    (api.core.utils.flow_display), en modo quiet (sin SystemEvent por GET).
+
+    Cuando store_average_flow=True el valor guardado es la fuente de verdad:
+    se devuelve tal cual y no debe cambiar absolutamente nada.
+    """
+
+    # 10 m3 en 1h => (10/3600)*1000 = 2.78 L/s
+    EXPECTED_DYNAMIC_FLOW = 2.78
+    STORED_FLOW = "5.50"
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()  # Limpiar throttles entre tests
+
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123',
+            email='test@example.com'
+        )
+        self.client.force_authenticate(user=self.user)
+        self.client_obj = Client.objects.create(name="Test Client")
+        self.project = ProjectCatchments.objects.create(
+            name="Test Project", client=self.client_obj
+        )
+
+    # ── Fixtures ────────────────────────────────────────────────────────
+    def _make_point_with_avg_flow(self, store_average_flow, title):
+        """Punto con scheme + Variable CAUDAL_PROMEDIO y perfil de telemetría."""
+        point = CatchmentPoint.objects.create(
+            title=title,
+            owner_user=self.user,
+            project=self.project,
+            frecuency="60",
+        )
+        scheme = SchemesCatchment.objects.create(
+            name=title, description="esquema de prueba"
+        )
+        scheme.points_catchment.add(point)
+        Variable.objects.create(
+            scheme_catchment=scheme,
+            str_variable="caudal_medio",
+            label="Caudal medio",
+            type_variable="CAUDAL_PROMEDIO",
+            store_average_flow=store_average_flow,
+        )
+        ProfileDataConfigCatchment.objects.create(
+            point_catchment=point, is_telemetry=True, d1=12.50, d3=8.00
+        )
+        return point
+
+    def _make_hourly_records(self, point, count, stored_flow=0):
+        """
+        `count` registros horarios terminando ayer 23:00 (los totales crecen
+        10 m3/hora). El registro más reciente es el último creado.
+        """
+        from datetime import datetime, time as dtime
+        from django.utils import timezone
+
+        base = datetime.combine(
+            self.today - timedelta(days=1), dtime(23, 0)
+        )
+        base = timezone.make_aware(base)
+
+        records = []
+        for i in range(count):
+            ts = base - timedelta(hours=(count - 1 - i))
+            records.append(InteractionDetail.objects.create(
+                catchment_point=point,
+                date_time_medition=ts,
+                date_time_last_logger=ts,
+                total=str(1000 + 10 * i),
+                flow=stored_flow,
+                is_error=False,
+            ))
+        return records
+
+    @property
+    def today(self):
+        from datetime import date
+        return date.today()
+
+    def _records_url(self, point):
+        return (
+            f'/api/ik/point/{point.id}/records/'
+            f'?start_date={self.today - timedelta(days=7)}'
+            f'&end_date={self.today}&limit=500'
+        )
+
+    # ── PointRecordsView ───────────────────────────────────────────────
+    def test_records_calculates_flow_when_not_stored(self):
+        """store_average_flow=False → el 0.00 guardado se reemplaza por el cálculo."""
+        point = self._make_point_with_avg_flow(False, "Punto Dinamico")
+        self._make_hourly_records(point, count=4)
+
+        response = self.client.get(self._records_url(point))
+        self.assertEqual(response.status_code, 200)
+
+        records = response.json()['records']
+        self.assertEqual(len(records), 4)
+
+        # El más reciente tiene registro anterior => caudal calculado
+        self.assertAlmostEqual(
+            records[0]['flow'], self.EXPECTED_DYNAMIC_FLOW, places=2
+        )
+        # El más antiguo no tiene anterior => 0.0 (sin inventar caudal)
+        self.assertEqual(records[-1]['flow'], 0.0)
+        # Al menos uno con caudal real (antes salía 0.00 en el 100%)
+        self.assertGreater(sum(1 for r in records if r['flow']), 0)
+
+    def test_records_returns_stored_flow_when_stored(self):
+        """store_average_flow=True → el valor guardado se devuelve intacto."""
+        point = self._make_point_with_avg_flow(True, "Punto Guardado")
+        self._make_hourly_records(
+            point, count=3, stored_flow=Decimal(self.STORED_FLOW)
+        )
+
+        response = self.client.get(self._records_url(point))
+        self.assertEqual(response.status_code, 200)
+
+        for record in response.json()['records']:
+            self.assertEqual(record['flow'], float(self.STORED_FLOW))
+
+    def test_records_flow_zero_without_average_flow_variable(self):
+        """Punto sin CAUDAL_PROMEDIO → usa el valor guardado (INSTANTANEO)."""
+        point = CatchmentPoint.objects.create(
+            title="Punto Sin Promedio",
+            owner_user=self.user,
+            project=self.project,
+            frecuency="60",
+        )
+        self._make_hourly_records(point, count=3, stored_flow=Decimal("7.25"))
+
+        response = self.client.get(self._records_url(point))
+        self.assertEqual(response.status_code, 200)
+        for record in response.json()['records']:
+            self.assertEqual(record['flow'], 7.25)
+
+    def test_records_do_not_write_system_events(self):
+        """Una ruta de GET jamás debe insertar SystemEvent (modo quiet)."""
+        point = self._make_point_with_avg_flow(False, "Punto Quiet")
+        self._make_hourly_records(point, count=4)
+
+        before = SystemEvent.objects.count()
+        for url in (
+            self._records_url(point),
+            f'/api/ik/point/{point.id}/summary/',
+            '/api/ik/points_summary/',
+        ):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+        self.assertEqual(SystemEvent.objects.count(), before)
+
+    def test_records_query_count_does_not_scale_with_rows(self):
+        """
+        Las filas adicionales no deben agregar 2 queries por registro:
+        el registro anterior se resuelve con 1 sola query extra.
+        """
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        point = self._make_point_with_avg_flow(False, "Punto Queries")
+        self._make_hourly_records(point, count=20)
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(self._records_url(point))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()['records']), 20)
+
+        # Sin optimización serían ~40 queries (2 por fila) + base.
+        self.assertLess(len(ctx.captured_queries), 30)
+
+    # ── PointSummaryView / PointsSummaryView ───────────────────────────
+    def test_point_summary_calculates_flow_when_not_stored(self):
+        point = self._make_point_with_avg_flow(False, "Punto Resumen")
+        self._make_hourly_records(point, count=3)
+
+        response = self.client.get(f'/api/ik/point/{point.id}/summary/')
+        self.assertEqual(response.status_code, 200)
+
+        latest = response.json()['latest_telemetry']
+        self.assertAlmostEqual(
+            float(latest['flow']), self.EXPECTED_DYNAMIC_FLOW, places=2
+        )
+
+    def test_point_summary_keeps_stored_flow(self):
+        point = self._make_point_with_avg_flow(True, "Punto Resumen Guardado")
+        self._make_hourly_records(
+            point, count=3, stored_flow=Decimal(self.STORED_FLOW)
+        )
+
+        response = self.client.get(f'/api/ik/point/{point.id}/summary/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()['latest_telemetry']['flow'], self.STORED_FLOW
+        )
+
+    def test_points_summary_calculates_flow_when_not_stored(self):
+        dynamic = self._make_point_with_avg_flow(False, "Punto Lista Dinamico")
+        stored = self._make_point_with_avg_flow(True, "Punto Lista Guardado")
+        self._make_hourly_records(dynamic, count=3)
+        self._make_hourly_records(stored, count=3, stored_flow=Decimal(self.STORED_FLOW))
+
+        response = self.client.get('/api/ik/points_summary/')
+        self.assertEqual(response.status_code, 200)
+
+        by_id = {p['id']: p for p in response.json()['points']}
+        self.assertAlmostEqual(
+            float(by_id[dynamic.id]['latest_telemetry']['flow']),
+            self.EXPECTED_DYNAMIC_FLOW, places=2,
+        )
+        self.assertEqual(
+            by_id[stored.id]['latest_telemetry']['flow'], self.STORED_FLOW
+        )
