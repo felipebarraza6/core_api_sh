@@ -379,48 +379,6 @@ class InteractionXLSMonth(XLSXFileMixin, ReadOnlyModelViewSet):
             parts.append(ed)
         base = '_'.join(parts) if parts else 'export'
         return f"{base}.xlsx"
-    def get_filename(self, request=None, *args, **kwargs):
-        """Construye nombre de archivo según punto y rango de fechas."""
-        # Defaults
-        point_name = 'catchment'
-        start_date = None
-        end_date = None
-        qp = request.query_params if request is not None else {}
-        try:
-            cp = qp.get('catchment_point')
-            if cp:
-                try:
-                    cp_obj = CatchmentPoint.objects.filter(id=cp).first()
-                    if cp_obj and cp_obj.title:
-                        point_name = str(cp_obj.title)
-                    else:
-                        point_name = f'catchment_{cp}'
-                except Exception:
-                    point_name = f'catchment_{cp}'
-            dr = qp.get('date_time_medition__date__range')
-            if dr and ',' in dr:
-                start_date, end_date = [x.strip() for x in dr.split(',', 1)]
-        except Exception:
-            pass
-        # Saneamos nombre
-        import re as _re
-        def clean(t):
-            t = t or ''
-            t = t.strip()
-            t = t.replace(' ', '_')
-            t = _re.sub(r'[^A-Za-z0-9_\-]+', '', t)
-            return t
-        pn = clean(point_name)
-        sd = clean(start_date or '')
-        ed = clean(end_date or '')
-        # Armar nombre final
-        parts = [pn]
-        if sd:
-            parts.append(sd)
-        if ed:
-            parts.append(ed)
-        base = '_'.join(parts) if parts else 'export'
-        return f"{base}.xlsx"
     renderer_classes = (JSONRenderer, XLSXRenderer)
     filter_backends = (filters.DjangoFilterBackend,)
     class CustomPagination(PageNumberPagination):
@@ -462,21 +420,33 @@ class InteractionXLSMonth(XLSXFileMixin, ReadOnlyModelViewSet):
 
     filterset_class = InteractionFilter
 
+    # ⚠️ El renderer escribe column_header['titles'] en POSICIÓN sobre las
+    # columnas que quedan tras excluir estas claves. Por eso este listado debe
+    # dejar EXACTAMENTE 5 campos, en este orden:
+    #   date_time_medition, flow, total, total_today_diff, water_table
+    # → Fecha | Caudal (l/s) | Acumulado (m³) | Consumo (m³) | Nivel Freático (m)
+    # Si falta un nombre aquí, la columna se desplaza y las cabeceras no calzan.
     xlsx_ignore_headers = [
-        'modified', 
-        'id', 
+        'modified',
+        'id',
         'created',
-        "nivel", 
-        "days_not_conection",
-        'catchment_point', 
-        'send_dga', 
+        'catchment_point',
+        'date_time_last_logger',
+        'days_not_conection',
+        'is_partial',
+        'variable_details',
+        'variable_values',
+        'pulses',
+        'total_diff',
+        'nivel',
+        'send_dga',
         'return_dga',
-        "date_time_last_logger", 
-        "pulses",
-        "total_diff",
         'n_voucher',
-        "is_error", 
-        "notification"]
+        'is_error',
+        'dga_retry_count',
+        'dga_last_retry_at',
+        'notification',
+    ]
     
     
     column_header = {
