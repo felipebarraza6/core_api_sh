@@ -227,9 +227,17 @@ def _process_point(
 
         # Detectar fallo de getter: si date_time es None y value es 0,
         # es casi seguro un fallo de API/sensor, no una medición real.
-        # Para TOTALIZADO con historial previo, marcar como error de ingesta.
+        # Para TOTALIZADO (y LO Modbus) con historial previo, marcar error.
+        from api.cronjobs.telemetry.controllers.modbus_totalizer import (
+            is_modbus_hi_type,
+            is_totalizado_primary_type,
+        )
+
+        var_type = variable.get("type_variable") or ""
+        is_critical_total = is_totalizado_primary_type(var_type) or is_modbus_hi_type(var_type)
+
         if data is None:
-            if variable.get("type_variable") == "TOTALIZADO":
+            if is_critical_total:
                 data = {"value": 0, "date_time": None}
             else:
                 data = {"value": 0.00, "date_time": None}
@@ -241,10 +249,10 @@ def _process_point(
         # date_time=None indica que el getter no pudo contactar al sensor/API.
         # value=0 en este contexto NO es una medición real.
         if data.get("date_time") is None and data.get("value") == 0:
-            # Solo marcar is_error a nivel de registro si falla TOTALIZADO,
-            # que es la variable crítica. Si falla caudal o nivel, el registro
-            # sigue siendo válido porque el totalizado llegó bien.
-            if variable.get("type_variable") == "TOTALIZADO":
+            # Marcar is_error si falla TOTALIZADO clásico o cualquiera de los
+            # registros del par Modbus (ambos son necesarios para el acumulado).
+            # Si falla caudal o nivel, el registro sigue válido.
+            if is_critical_total:
                 telemetry_logger.warning(
                     f"[UNIFIED] Punto {point_id} - {variable.get('str_variable')}: "
                     f"Getter retornó value=0 sin timestamp. Probable fallo de ingesta. "
@@ -259,10 +267,11 @@ def _process_point(
                     severity="CRITICAL",
                     extra_data={
                         "decision": "MARCAR_ERROR",
-                        "reason": "El getter de la API de telemetría no pudo obtener un timestamp válido junto con el valor. Para variables TOTALIZADO esto indica una falla de comunicación con el sensor o la plataforma. Se marca el registro como error para no usarlo como baseline.",
+                        "reason": "El getter de la API de telemetría no pudo obtener un timestamp válido junto con el valor. Para variables TOTALIZADO / TOTALIZADO_MODBUS esto indica una falla de comunicación con el sensor o la plataforma. Se marca el registro como error para no usarlo como baseline.",
                         "actual_value": 0,
                         "expected_range": [1, None],
                         "variable": variable.get('str_variable'),
+                        "type_variable": var_type,
                         "value": 0,
                         "date_time": None,
                         "is_error": True,

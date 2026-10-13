@@ -133,6 +133,98 @@ def validate_frequency(point_catchment: Dict[str, Any], current_time: datetime, 
         return False
 
 
+def process_modbus_totalizer_variable(
+    data: Dict[str, Any],
+    variable: Dict[str, Any],
+    point_catchment: Dict[str, Any],
+    created_register: Dict[str, Any],
+    date_time_last_logger_total: Optional[str] = None,
+    medition_str: Optional[str] = None,
+) -> tuple:
+    """
+    Procesar par HI/LO de totalizador Modbus (dos registros).
+
+    Acumula en created_register los valores crudos de HI y LO. Cuando ambos
+    están presentes (mismo ciclo de cron), combina con corrección de
+    mid-rollover y delega en process_totalizado_variable para total/diff.
+    """
+    from .modbus_totalizer import (
+        combine_modbus_registers,
+        is_modbus_hi_type,
+        is_modbus_lo_type,
+    )
+
+    type_variable = (variable.get("type_variable") or "").upper()
+    getter_ok = data.get("date_time") is not None
+
+    # Solo stash si el getter trajo timestamp (evita HI/LO=0 fantasma).
+    if getter_ok:
+        try:
+            raw_value = int(float(data.get("value", 0)))
+        except (TypeError, ValueError):
+            raw_value = 0
+
+        if is_modbus_hi_type(type_variable):
+            created_register["_modbus_hi"] = raw_value
+            created_register["_modbus_hi_date_time"] = data.get("date_time")
+        elif is_modbus_lo_type(type_variable):
+            created_register["_modbus_lo"] = raw_value
+            created_register["_modbus_lo_date_time"] = data.get("date_time")
+            created_register["_modbus_lo_variable"] = variable
+
+    hi = created_register.get("_modbus_hi")
+    lo = created_register.get("_modbus_lo")
+    lo_variable = created_register.get("_modbus_lo_variable")
+
+    if hi is None or lo is None or lo_variable is None:
+        # Esperando al complemento del par; no escribe total todavía.
+        return date_time_last_logger_total, created_register
+
+    # Baseline: último pulses del punto (ya es el acumulado combinado previo).
+    prev_combined = None
+    try:
+        last = (
+            InteractionDetail.objects.filter(catchment_point_id=point_catchment["id"])
+            .exclude(pulses__isnull=True)
+            .order_by("-date_time_medition")
+            .first()
+        )
+        if last is not None and last.pulses is not None:
+            prev_combined = int(last.pulses)
+    except Exception as e:
+        telemetry_logger.warning(
+            f"Punto {point_catchment['id']} - no se pudo leer pulses previo "
+            f"para Modbus: {e}"
+        )
+
+    combined, status = combine_modbus_registers(hi, lo, prev_combined=prev_combined)
+    created_register["_modbus_combined"] = combined
+    created_register["_modbus_combine_status"] = status
+
+    if status != "OK":
+        telemetry_logger.info(
+            f"Punto {point_catchment['id']} - Modbus mid-rollover/hold: "
+            f"status={status}, hi={hi}, lo={lo}, combined={combined}, "
+            f"prev={prev_combined}"
+        )
+
+    # Timestamp: preferir LO, luego HI, luego el del data actual.
+    combine_date_time = (
+        created_register.get("_modbus_lo_date_time")
+        or created_register.get("_modbus_hi_date_time")
+        or data.get("date_time")
+    )
+    combined_data = {"value": combined, "date_time": combine_date_time}
+
+    return process_totalizado_variable(
+        combined_data,
+        lo_variable,
+        point_catchment,
+        created_register,
+        medition_str=medition_str,
+    )
+
+
 def process_totalizado_variable(
     data: Dict[str, Any],
     variable: Dict[str, Any],
@@ -533,23 +625,37 @@ def process_variable_safely(
         except (ValueError, TypeError):
             pass
 
+    type_upper = (type_variable or "").upper()
+
     try:
-        if type_variable.upper() == "TOTALIZADO":
+        from .modbus_totalizer import is_modbus_totalizer_type
+
+        if type_upper == "TOTALIZADO":
             date_time_last_logger_total, created_register = process_totalizado_variable(
                 data, variable, point_catchment, created_register, medition_str=medition_str
             )
 
-        elif type_variable.upper() == "NIVEL":
+        elif is_modbus_totalizer_type(type_upper):
+            date_time_last_logger_total, created_register = process_modbus_totalizer_variable(
+                data,
+                variable,
+                point_catchment,
+                created_register,
+                date_time_last_logger_total=date_time_last_logger_total,
+                medition_str=medition_str,
+            )
+
+        elif type_upper == "NIVEL":
             created_register = process_nivel_variable(
                 data, variable, point_catchment, created_register
             )
 
-        elif type_variable.upper() == "CAUDAL":
+        elif type_upper == "CAUDAL":
             created_register = process_caudal_variable(
                 data, variable, point_catchment, created_register
             )
 
-        elif type_variable.upper() == "CAUDAL_PROMEDIO":
+        elif type_upper == "CAUDAL_PROMEDIO":
             created_register = process_caudal_promedio_variable(
                 date_time_last_logger_total, created_register, point_catchment, variable
             )
@@ -576,12 +682,16 @@ def process_variable_safely(
     # Validación de calidad: rango min/max sobre el valor PROCESADO (P1.7)
     # Anteriormente se validaba el valor crudo (pulsos), que no tenía sentido
     # para los límites configurados en m³, metros o L/s.
+    # TOTALIZADO clásico y par Modbus (tras combinar HI+LO) escriben total.
+    # Si aún falta el complemento del par, total no existe → skip.
+    from .modbus_totalizer import is_modbus_totalizer_type as _is_modbus
+
     processed_value = None
-    if type_variable.upper() == "TOTALIZADO":
+    if type_upper == "TOTALIZADO" or _is_modbus(type_upper):
         processed_value = created_register.get("total")
-    elif type_variable.upper() == "NIVEL":
+    elif type_upper == "NIVEL":
         processed_value = created_register.get("nivel")
-    elif type_variable.upper() in ("CAUDAL", "CAUDAL_PROMEDIO"):
+    elif type_upper in ("CAUDAL", "CAUDAL_PROMEDIO"):
         processed_value = created_register.get("flow")
 
     if processed_value is not None:

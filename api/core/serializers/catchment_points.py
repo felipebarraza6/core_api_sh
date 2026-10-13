@@ -340,10 +340,16 @@ class SchemesCatchmentCronSerializer(serializers.ModelSerializer):
         """
         Retrieve and serialize variables for the given scheme catchment.
         """
+        # TOTALIZADO / Modbus HI+LO primero (HI antes que LO alfabéticamente
+        # vía type_variable) para que el acumulado esté listo antes de
+        # CAUDAL_PROMEDIO y el stash HI exista al procesar LO.
         get_data = Variable.objects.filter(
             scheme_catchment=obj).select_related('provider').order_by(
             Case(
                 When(type_variable='TOTALIZADO', then=0),
+                When(type_variable='TOTALIZADO_MODBUS_HI', then=0),
+                When(type_variable='TOTALIZADO_MODBUS_LO', then=0),
+                When(type_variable='TOTALIZADO_MODBUS', then=0),
                 When(token_service__isnull=True, then=2),
                 default=1,
                 output_field=IntegerField()
@@ -498,10 +504,16 @@ class DataConfigUserSerializer(serializers.ModelSerializer):
                 return []
             # Ordenar en memoria si tenemos los datos prefetcheados
             from operator import attrgetter
+            _modbus_types = {
+                'TOTALIZADO',
+                'TOTALIZADO_MODBUS_HI',
+                'TOTALIZADO_MODBUS_LO',
+                'TOTALIZADO_MODBUS',
+            }
             variables = sorted(
                 variables,
                 key=lambda v: (
-                    0 if v.type_variable == 'TOTALIZADO' else (2 if v.token_service is None else 1),
+                    0 if v.type_variable in _modbus_types else (2 if v.token_service is None else 1),
                     v.type_variable or '',
                     v.token_service or ''
                 )
@@ -514,6 +526,9 @@ class DataConfigUserSerializer(serializers.ModelSerializer):
             ).order_by(
                 Case(
                     When(type_variable='TOTALIZADO', then=0),
+                    When(type_variable='TOTALIZADO_MODBUS_HI', then=0),
+                    When(type_variable='TOTALIZADO_MODBUS_LO', then=0),
+                    When(type_variable='TOTALIZADO_MODBUS', then=0),
                     When(token_service__isnull=True, then=2),
                     default=1,
                     output_field=IntegerField()
