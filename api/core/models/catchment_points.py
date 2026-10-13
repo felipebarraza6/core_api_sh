@@ -725,8 +725,12 @@ class Variable(ModelApi):
     type_variable = models.CharField(
         max_length=1200,
         verbose_name="Tipo variable",
-        help_text="Tipo semántico: CAUDAL, NIVEL, TOTALIZADO, CAUDAL_PROMEDIO, o cualquier nuevo tipo. "
-                  "El procesador unificado aplica lógica específica solo a los tipos conocidos.",
+        help_text=(
+            "Tipo semántico: CAUDAL, NIVEL, TOTALIZADO, CAUDAL_PROMEDIO, "
+            "TOTALIZADO_MODBUS_LO / TOTALIZADO_MODBUS_HI (par Modbus 16-bit + multiplicador), "
+            "o TOTALIZADO_MODBUS (alias del LO). "
+            "El procesador unificado aplica lógica específica solo a los tipos conocidos."
+        ),
     )
 
     token_service = models.CharField(

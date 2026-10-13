@@ -133,6 +133,246 @@ def validate_frequency(point_catchment: Dict[str, Any], current_time: datetime, 
         return False
 
 
+def _bump_profile_addition(point_id: int, amount_to_add: float) -> float:
+    """
+    Suma amount_to_add al addition del perfil (misma idea que reset PARTIAL
+    en total_m3). Retorna el addition resultante.
+    """
+    from django.db import transaction
+    from django.db.models import F
+
+    from api.core.models import ProfileDataConfigCatchment
+
+    if not amount_to_add:
+        profile = ProfileDataConfigCatchment.objects.filter(
+            point_catchment_id=point_id
+        ).first()
+        return float(profile.addition or 0) if profile else 0.0
+
+    with transaction.atomic():
+        profile_obj = (
+            ProfileDataConfigCatchment.objects.select_for_update()
+            .filter(point_catchment_id=point_id)
+            .first()
+        )
+        if not profile_obj:
+            telemetry_logger.error(
+                f"Cannot update addition: ProfileDataConfigCatchment not found "
+                f"for point {point_id}"
+            )
+            return amount_to_add
+        profile_obj.addition = F("addition") + amount_to_add
+        profile_obj.save(update_fields=["addition"])
+        profile_obj.refresh_from_db()
+        return float(profile_obj.addition or 0)
+
+
+def _finalize_modbus_with_rebaseline(
+    *,
+    point_catchment: Dict[str, Any],
+    created_register: Dict[str, Any],
+    lo_variable: Dict[str, Any],
+    combined: int,
+    absorb_pulses: float,
+    combine_date_time: Optional[str],
+    medition_str: Optional[str],
+    status: str,
+) -> tuple:
+    """
+    Re-baseline via addition (absorbe pulsos previos) y escribe pulses/total
+    sin pasar por la detección de reset de total_m3 (evita ZERO_KEPT /
+    PARTIAL_REJECTED que congelarían el punto).
+    """
+    from .total import total_day, total_hour
+
+    point_id = point_catchment["id"]
+    pulses_factor = lo_variable.get("pulses_factor", 1000)
+    if not pulses_factor or pulses_factor <= 0:
+        pulses_factor = 1000
+
+    amount_to_add = (float(absorb_pulses) * float(pulses_factor)) / 1000.0
+    new_addition = _bump_profile_addition(point_id, amount_to_add)
+
+    # Mantener el dict serializado coherente para lecturas posteriores del ciclo.
+    profile_data = point_catchment.get("profile_data_config")
+    if isinstance(profile_data, dict):
+        profile_data["addition"] = new_addition
+
+    created_register["pulses"] = int(combined)
+    total_calculado = int(round((float(combined) * float(pulses_factor)) / 1000.0 + new_addition))
+    created_register["total"] = total_calculado
+
+    if medition_str:
+        current_dt = datetime.strptime(medition_str, "%Y-%m-%dT%H:%M:%S")
+    elif combine_date_time:
+        current_dt = datetime.strptime(combine_date_time, "%Y-%m-%dT%H:%M:%S")
+    else:
+        current_dt = datetime.now()
+    if current_dt.tzinfo is None:
+        current_dt = timezone.make_aware(current_dt)
+
+    created_register["total_diff"] = total_hour(
+        created_register["total"], point_catchment, current_dt
+    )
+    created_register["total_today_diff"] = total_day(
+        point_catchment, current_dt, created_register["total"]
+    )
+
+    if combine_date_time:
+        created_register["date_time_last_logger"] = combine_date_time
+    else:
+        created_register["date_time_last_logger"] = created_register.get(
+            "date_time_medition"
+        )
+
+    created_register = calculate_days_not_connection(
+        created_register, chile_tz, point_catchment
+    )
+
+    telemetry_logger.info(
+        f"Punto {point_id} - Modbus re-baseline ({status}): "
+        f"combined={combined}, absorb_pulses={absorb_pulses}, "
+        f"addition={new_addition}, total={total_calculado}"
+    )
+
+    return created_register.get("date_time_last_logger"), created_register
+
+
+def process_modbus_totalizer_variable(
+    data: Dict[str, Any],
+    variable: Dict[str, Any],
+    point_catchment: Dict[str, Any],
+    created_register: Dict[str, Any],
+    date_time_last_logger_total: Optional[str] = None,
+    medition_str: Optional[str] = None,
+) -> tuple:
+    """
+    Procesar par HI/LO de totalizador Modbus (dos registros).
+
+    Acumula en created_register los valores crudos de HI y LO. Cuando ambos
+    están presentes (mismo ciclo de cron), combina con corrección de
+    mid-rollover y delega en process_totalizado_variable para total/diff.
+
+    Casos especiales (conservadores):
+    - DEVICE_RESET (0,0): absorbe pulses previos en addition y re-baseline.
+    - Migración desde TOTALIZADO clásico: no usa pulses viejos como baseline
+      de mid-rollover; absorbe la diferencia en addition para continuidad.
+    """
+    from .modbus_totalizer import (
+        combine_modbus_registers,
+        is_modbus_hi_type,
+        is_modbus_lo_type,
+        last_record_used_modbus,
+    )
+
+    type_variable = (variable.get("type_variable") or "").upper()
+    getter_ok = data.get("date_time") is not None
+
+    # Solo stash si el getter trajo timestamp (evita HI/LO=0 fantasma).
+    if getter_ok:
+        try:
+            raw_value = int(float(data.get("value", 0)))
+        except (TypeError, ValueError):
+            raw_value = 0
+
+        if is_modbus_hi_type(type_variable):
+            created_register["_modbus_hi"] = raw_value
+            created_register["_modbus_hi_date_time"] = data.get("date_time")
+        elif is_modbus_lo_type(type_variable):
+            created_register["_modbus_lo"] = raw_value
+            created_register["_modbus_lo_date_time"] = data.get("date_time")
+            created_register["_modbus_lo_variable"] = variable
+
+    hi = created_register.get("_modbus_hi")
+    lo = created_register.get("_modbus_lo")
+    lo_variable = created_register.get("_modbus_lo_variable")
+
+    if hi is None or lo is None or lo_variable is None:
+        # Esperando al complemento del par; no escribe total todavía.
+        return date_time_last_logger_total, created_register
+
+    # Baseline Modbus: solo comparar con pulses de un ciclo Modbus previo.
+    # Si el último registro fue TOTALIZADO clásico (migración p.ej. punto 152),
+    # no usar esos pulses como prev_combined (evitarían freeze / hold).
+    prev_combined = None
+    last = None
+    migrating_from_totalizado = False
+    try:
+        last = (
+            InteractionDetail.objects.filter(catchment_point_id=point_catchment["id"])
+            .exclude(pulses__isnull=True)
+            .order_by("-date_time_medition")
+            .first()
+        )
+        if last is not None and last.pulses is not None:
+            if last_record_used_modbus(last.variable_details):
+                prev_combined = int(last.pulses)
+            else:
+                migrating_from_totalizado = True
+    except Exception as e:
+        telemetry_logger.warning(
+            f"Punto {point_catchment['id']} - no se pudo leer pulses previo "
+            f"para Modbus: {e}"
+        )
+
+    combined, status = combine_modbus_registers(hi, lo, prev_combined=prev_combined)
+    created_register["_modbus_combined"] = combined
+    created_register["_modbus_combine_status"] = status
+
+    if status != "OK" or migrating_from_totalizado:
+        telemetry_logger.info(
+            f"Punto {point_catchment['id']} - Modbus combine: "
+            f"status={status}, hi={hi}, lo={lo}, combined={combined}, "
+            f"prev={prev_combined}, migrating={migrating_from_totalizado}"
+        )
+
+    combine_date_time = (
+        created_register.get("_modbus_lo_date_time")
+        or created_register.get("_modbus_hi_date_time")
+        or data.get("date_time")
+    )
+
+    # Reset de dispositivo (0,0): re-baseline con addition, no freeze.
+    if status == "DEVICE_RESET" and prev_combined is not None and prev_combined > 0:
+        created_register["_modbus_combine_status"] = "DEVICE_RESET"
+        return _finalize_modbus_with_rebaseline(
+            point_catchment=point_catchment,
+            created_register=created_register,
+            lo_variable=lo_variable,
+            combined=combined,
+            absorb_pulses=float(prev_combined),
+            combine_date_time=combine_date_time,
+            medition_str=medition_str,
+            status="DEVICE_RESET",
+        )
+
+    # Migración TOTALIZADO → Modbus: absorber delta de pulses en addition
+    # para que total no salte ni se congele (PARTIAL_REJECTED).
+    if migrating_from_totalizado and last is not None and last.pulses is not None:
+        last_pulses = float(last.pulses)
+        absorb = last_pulses - float(combined)
+        created_register["_modbus_combine_status"] = "TYPE_MIGRATION"
+        return _finalize_modbus_with_rebaseline(
+            point_catchment=point_catchment,
+            created_register=created_register,
+            lo_variable=lo_variable,
+            combined=combined,
+            absorb_pulses=absorb,
+            combine_date_time=combine_date_time,
+            medition_str=medition_str,
+            status="TYPE_MIGRATION",
+        )
+
+    combined_data = {"value": combined, "date_time": combine_date_time}
+    return process_totalizado_variable(
+        combined_data,
+        lo_variable,
+        point_catchment,
+        created_register,
+        medition_str=medition_str,
+    )
+
+
 def process_totalizado_variable(
     data: Dict[str, Any],
     variable: Dict[str, Any],
@@ -533,23 +773,37 @@ def process_variable_safely(
         except (ValueError, TypeError):
             pass
 
+    type_upper = (type_variable or "").upper()
+
     try:
-        if type_variable.upper() == "TOTALIZADO":
+        from .modbus_totalizer import is_modbus_totalizer_type
+
+        if type_upper == "TOTALIZADO":
             date_time_last_logger_total, created_register = process_totalizado_variable(
                 data, variable, point_catchment, created_register, medition_str=medition_str
             )
 
-        elif type_variable.upper() == "NIVEL":
+        elif is_modbus_totalizer_type(type_upper):
+            date_time_last_logger_total, created_register = process_modbus_totalizer_variable(
+                data,
+                variable,
+                point_catchment,
+                created_register,
+                date_time_last_logger_total=date_time_last_logger_total,
+                medition_str=medition_str,
+            )
+
+        elif type_upper == "NIVEL":
             created_register = process_nivel_variable(
                 data, variable, point_catchment, created_register
             )
 
-        elif type_variable.upper() == "CAUDAL":
+        elif type_upper == "CAUDAL":
             created_register = process_caudal_variable(
                 data, variable, point_catchment, created_register
             )
 
-        elif type_variable.upper() == "CAUDAL_PROMEDIO":
+        elif type_upper == "CAUDAL_PROMEDIO":
             created_register = process_caudal_promedio_variable(
                 date_time_last_logger_total, created_register, point_catchment, variable
             )
@@ -576,12 +830,16 @@ def process_variable_safely(
     # Validación de calidad: rango min/max sobre el valor PROCESADO (P1.7)
     # Anteriormente se validaba el valor crudo (pulsos), que no tenía sentido
     # para los límites configurados en m³, metros o L/s.
+    # TOTALIZADO clásico y par Modbus (tras combinar HI+LO) escriben total.
+    # Si aún falta el complemento del par, total no existe → skip.
+    from .modbus_totalizer import is_modbus_totalizer_type as _is_modbus
+
     processed_value = None
-    if type_variable.upper() == "TOTALIZADO":
+    if type_upper == "TOTALIZADO" or _is_modbus(type_upper):
         processed_value = created_register.get("total")
-    elif type_variable.upper() == "NIVEL":
+    elif type_upper == "NIVEL":
         processed_value = created_register.get("nivel")
-    elif type_variable.upper() in ("CAUDAL", "CAUDAL_PROMEDIO"):
+    elif type_upper in ("CAUDAL", "CAUDAL_PROMEDIO"):
         processed_value = created_register.get("flow")
 
     if processed_value is not None:
