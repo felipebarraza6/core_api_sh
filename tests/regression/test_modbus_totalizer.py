@@ -5,8 +5,12 @@ Tests para totalizador Modbus de dos registros (HI + LO).
 Cubre:
 - Combinación HI*65536 + LO
 - Wrap 65535→0 y LO==65536
-- Mid-rollover desfasado (LO ahead / HI ahead) sin negativos ni spikes
-- Integración con process_variable_safely → pulses/total/total_diff
+- Mid-rollover solo con patrón inequívoco (LO near-top→near-zero / HI ahead)
+- Regresión chica de LO → hold (no fake jump)
+- Device reset (0,0) → re-baseline via addition
+- Migración TOTALIZADO → Modbus (punto 152)
+- Huecos largos >65536 con HI/LO coherentes
+- Regresión: TOTALIZADO clásico idéntico (factor 1000, addition 830293)
 """
 
 from datetime import timedelta
@@ -29,9 +33,19 @@ from api.cronjobs.telemetry.controllers.modbus_totalizer import (
     is_modbus_hi_type,
     is_modbus_lo_type,
     is_totalizado_primary_type,
+    last_record_used_modbus,
     normalize_lo_register,
 )
-from api.cronjobs.telemetry.controllers.unified_processing import process_variable_safely
+from api.cronjobs.telemetry.controllers.total import total_m3
+from api.cronjobs.telemetry.controllers.unified_processing import (
+    process_totalizado_variable,
+    process_variable_safely,
+)
+
+MODBUS_DETAILS = [
+    {"str_variable": "5002", "type_variable": "TOTALIZADO_MODBUS_HI", "value": 0, "success": True},
+    {"str_variable": "5001", "type_variable": "TOTALIZADO_MODBUS_LO", "value": 0, "success": True},
+]
 
 
 class ModbusCombineUnitTests(TestCase):
@@ -70,7 +84,7 @@ class ModbusCombineUnitTests(TestCase):
         self.assertLess(combined - prev, MODBUS_UINT16_MODULUS)
 
     def test_mid_rollover_lo_ahead(self):
-        """LO ya wrapeó a 10, HI todavía en 2 → no debe producir caída."""
+        """LO ya wrapeó a 10 (near zero), HI todavía en 2, prev LO near top."""
         prev = 2 * MODBUS_UINT16_MODULUS + 65500
         combined, status = combine_modbus_registers(2, 10, prev_combined=prev)
         self.assertEqual(status, "MID_ROLLOVER_LO_AHEAD")
@@ -78,12 +92,23 @@ class ModbusCombineUnitTests(TestCase):
         self.assertGreaterEqual(combined, prev)
         self.assertLessEqual(combined - prev, MODBUS_UINT16_MODULUS)
 
+    def test_small_lo_regression_holds_no_fake_jump(self):
+        """
+        Bug 1: (6,5)->(6,3) no debe aplicar LO-ahead (+65534).
+        LO previo no está near-top → hold.
+        """
+        prev = 6 * MODBUS_UINT16_MODULUS + 5
+        combined, status = combine_modbus_registers(6, 3, prev_combined=prev)
+        self.assertEqual(status, "HELD_NEGATIVE")
+        self.assertEqual(combined, prev)
+        self.assertNotEqual(combined, 7 * MODBUS_UINT16_MODULUS + 3)
+
     def test_mid_rollover_hi_ahead(self):
         """HI ya subió a 3, LO todavía alto → no debe producir spike de ~65536."""
         prev = 2 * MODBUS_UINT16_MODULUS + 65500
         combined, status = combine_modbus_registers(3, 65500, prev_combined=prev)
         self.assertEqual(status, "MID_ROLLOVER_HI_AHEAD")
-        self.assertEqual(combined, prev)  # sin progreso real aún
+        self.assertEqual(combined, prev)
         self.assertLess(combined - prev, 100)
 
     def test_mid_rollover_hi_ahead_with_lo_creep(self):
@@ -93,17 +118,29 @@ class ModbusCombineUnitTests(TestCase):
         self.assertEqual(status, "MID_ROLLOVER_HI_AHEAD")
         self.assertEqual(combined, prev + 10)
 
+    def test_device_reset_zero_zero(self):
+        """Bug 2: (0,0) tras acumulado previo → DEVICE_RESET, no hold forever."""
+        prev = 5 * MODBUS_UINT16_MODULUS + 1000
+        combined, status = combine_modbus_registers(0, 0, prev_combined=prev)
+        self.assertEqual(status, "DEVICE_RESET")
+        self.assertEqual(combined, 0)
+
+    def test_long_gap_consistent_advance_accepted(self):
+        """
+        Bug 4: avance 100000 con HI/LO coherentes (hueco largo) → OK,
+        sin restar 65536 ni HELD_SPIKE.
+        """
+        prev = 1 * MODBUS_UINT16_MODULUS + 0  # (1, 0)
+        # +100000 → (2, 34464)
+        combined, status = combine_modbus_registers(2, 34464, prev_combined=prev)
+        self.assertEqual(status, "OK")
+        self.assertEqual(combined, prev + 100000)
+
     def test_unexplained_negative_held(self):
         prev = 5 * MODBUS_UINT16_MODULUS + 1000
-        # Caída grande que no cabe en un solo modulus → hold
+        # Caída grande que no es (0,0) ni wrap near-top→near-zero → hold
         combined, status = combine_modbus_registers(1, 0, prev_combined=prev)
         self.assertEqual(status, "HELD_NEGATIVE")
-        self.assertEqual(combined, prev)
-
-    def test_huge_spike_held(self):
-        prev = 100
-        combined, status = combine_modbus_registers(10, 0, prev_combined=prev)
-        self.assertEqual(status, "HELD_SPIKE")
         self.assertEqual(combined, prev)
 
     def test_first_reading_no_prev(self):
@@ -119,6 +156,12 @@ class ModbusCombineUnitTests(TestCase):
         self.assertTrue(is_totalizado_primary_type("TOTALIZADO_MODBUS_LO"))
         self.assertFalse(is_totalizado_primary_type("TOTALIZADO_MODBUS_HI"))
         self.assertFalse(is_modbus_lo_type("CAUDAL"))
+        self.assertTrue(last_record_used_modbus(MODBUS_DETAILS))
+        self.assertFalse(
+            last_record_used_modbus(
+                [{"type_variable": "TOTALIZADO", "str_variable": "Acumulado"}]
+            )
+        )
 
 
 class ModbusProcessIntegrationTests(TestCase):
@@ -136,6 +179,7 @@ class ModbusProcessIntegrationTests(TestCase):
         self.profile = ProfileDataConfigCatchment.objects.get(point_catchment=self.point)
         self.profile.is_telemetry = True
         self.profile.max_diff_m3_per_hour = 5000
+        self.profile.addition = 0
         self.profile.save()
         self.point_dict = {
             "id": self.point.id,
@@ -155,8 +199,21 @@ class ModbusProcessIntegrationTests(TestCase):
             "id": 2,
             "type_variable": "TOTALIZADO_MODBUS_LO",
             "str_variable": "5001",
-            "pulses_factor": 1000,  # como punto 152: factor 1000 → m³ = combined
+            "pulses_factor": 1000,
         }
+
+    def _seed_modbus_history(self, pulses, total=None, hours_ago=1):
+        t0 = timezone.now().replace(minute=0, second=0, microsecond=0)
+        InteractionDetail.objects.create(
+            catchment_point=self.point,
+            date_time_medition=t0 - timedelta(hours=hours_ago),
+            total=str(total if total is not None else pulses),
+            pulses=pulses,
+            total_diff=0,
+            flow=0.0,
+            variable_details=MODBUS_DETAILS,
+        )
+        return t0
 
     def _run_pair(self, hi, lo, medition, created_register=None, order=("hi", "lo")):
         created_register = created_register or {"date_time_medition": medition}
@@ -182,39 +239,20 @@ class ModbusProcessIntegrationTests(TestCase):
         reg = self._run_pair(hi=2, lo=1000, medition=medition)
         expected_pulses = 2 * MODBUS_UINT16_MODULUS + 1000
         self.assertEqual(reg["pulses"], expected_pulses)
-        self.assertEqual(int(reg["total"]), expected_pulses)  # factor 1000
+        self.assertEqual(int(reg["total"]), expected_pulses)
         self.assertEqual(reg["_modbus_combine_status"], "OK")
 
     def test_consumption_diff_after_progress(self):
-        t0 = timezone.now().replace(minute=0, second=0, microsecond=0)
-        prev_pulses = 2 * MODBUS_UINT16_MODULUS + 1000
-        InteractionDetail.objects.create(
-            catchment_point=self.point,
-            date_time_medition=t0 - timedelta(hours=1),
-            total=str(prev_pulses),
-            pulses=prev_pulses,
-            total_diff=0,
-            flow=0.0,
-        )
-        medition = (t0).strftime("%Y-%m-%dT%H:00:00")
-        # +50 en LO
+        t0 = self._seed_modbus_history(2 * MODBUS_UINT16_MODULUS + 1000)
+        medition = t0.strftime("%Y-%m-%dT%H:00:00")
         reg = self._run_pair(hi=2, lo=1050, medition=medition)
-        self.assertEqual(reg["pulses"], prev_pulses + 50)
+        self.assertEqual(reg["pulses"], 2 * MODBUS_UINT16_MODULUS + 1050)
         self.assertEqual(reg["total_diff"], 50)
 
     def test_rollover_edge_lo_ahead_no_negative_diff(self):
-        t0 = timezone.now().replace(minute=0, second=0, microsecond=0)
         prev_pulses = 2 * MODBUS_UINT16_MODULUS + 65500
-        InteractionDetail.objects.create(
-            catchment_point=self.point,
-            date_time_medition=t0 - timedelta(hours=1),
-            total=str(prev_pulses),
-            pulses=prev_pulses,
-            total_diff=0,
-            flow=0.0,
-        )
+        t0 = self._seed_modbus_history(prev_pulses)
         medition = t0.strftime("%Y-%m-%dT%H:00:00")
-        # LO wrapeó, HI aún no
         reg = self._run_pair(hi=2, lo=20, medition=medition)
         self.assertEqual(reg["_modbus_combine_status"], "MID_ROLLOVER_LO_AHEAD")
         self.assertGreaterEqual(reg["pulses"], prev_pulses)
@@ -222,21 +260,103 @@ class ModbusProcessIntegrationTests(TestCase):
         self.assertLess(reg["total_diff"], MODBUS_UINT16_MODULUS)
 
     def test_rollover_edge_hi_ahead_no_spike(self):
-        t0 = timezone.now().replace(minute=0, second=0, microsecond=0)
         prev_pulses = 2 * MODBUS_UINT16_MODULUS + 65500
-        InteractionDetail.objects.create(
-            catchment_point=self.point,
-            date_time_medition=t0 - timedelta(hours=1),
-            total=str(prev_pulses),
-            pulses=prev_pulses,
-            total_diff=0,
-            flow=0.0,
-        )
+        t0 = self._seed_modbus_history(prev_pulses)
         medition = t0.strftime("%Y-%m-%dT%H:00:00")
         reg = self._run_pair(hi=3, lo=65500, medition=medition)
         self.assertEqual(reg["_modbus_combine_status"], "MID_ROLLOVER_HI_AHEAD")
         self.assertEqual(reg["pulses"], prev_pulses)
         self.assertEqual(reg["total_diff"], 0)
+
+    def test_small_lo_regression_integration_no_fake_consumption(self):
+        """Bug 1 integración: (6,5)->(6,3) no suma consumo fantasma."""
+        prev_pulses = 6 * MODBUS_UINT16_MODULUS + 5
+        t0 = self._seed_modbus_history(prev_pulses)
+        medition = t0.strftime("%Y-%m-%dT%H:00:00")
+        reg = self._run_pair(hi=6, lo=3, medition=medition)
+        self.assertEqual(reg["_modbus_combine_status"], "HELD_NEGATIVE")
+        self.assertEqual(reg["pulses"], prev_pulses)
+        self.assertEqual(reg["total_diff"], 0)
+
+    def test_device_reset_rebaselines_addition(self):
+        """Bug 2: (0,0) re-baseline; siguiente lectura no queda congelada."""
+        prev_pulses = 5 * MODBUS_UINT16_MODULUS + 1000
+        t0 = self._seed_modbus_history(prev_pulses, total=prev_pulses)
+        medition = t0.strftime("%Y-%m-%dT%H:00:00")
+        reg = self._run_pair(hi=0, lo=0, medition=medition)
+        self.assertEqual(reg["_modbus_combine_status"], "DEVICE_RESET")
+        self.assertEqual(reg["pulses"], 0)
+        # Continuidad de total vía addition
+        self.assertEqual(int(reg["total"]), prev_pulses)
+        self.profile.refresh_from_db()
+        self.assertEqual(float(self.profile.addition), float(prev_pulses))
+
+        # Persistir el reset y avanzar
+        InteractionDetail.objects.create(
+            catchment_point=self.point,
+            date_time_medition=t0,
+            total=str(reg["total"]),
+            pulses=0,
+            total_diff=reg["total_diff"],
+            flow=0.0,
+            variable_details=MODBUS_DETAILS,
+        )
+        self.point_dict["profile_data_config"]["addition"] = float(self.profile.addition)
+
+        t1 = t0 + timedelta(hours=1)
+        reg2 = self._run_pair(
+            hi=0,
+            lo=50,
+            medition=t1.strftime("%Y-%m-%dT%H:00:00"),
+            created_register={"date_time_medition": t1.strftime("%Y-%m-%dT%H:00:00")},
+        )
+        self.assertEqual(reg2["pulses"], 50)
+        self.assertEqual(int(reg2["total"]), prev_pulses + 50)
+
+    def test_type_migration_from_totalizado_no_freeze(self):
+        """
+        Bug 3: punto 152-like — pulses previos de TOTALIZADO (316217)
+        no congelan la primera lectura Modbus (0, 1200).
+        """
+        old_pulses = 316217
+        old_addition = 0
+        t0 = timezone.now().replace(minute=0, second=0, microsecond=0)
+        InteractionDetail.objects.create(
+            catchment_point=self.point,
+            date_time_medition=t0 - timedelta(hours=1),
+            total=str(old_pulses),
+            pulses=old_pulses,
+            total_diff=0,
+            flow=0.0,
+            # TOTALIZADO clásico — sin tipos Modbus
+            variable_details=[
+                {
+                    "str_variable": "Acumulado",
+                    "type_variable": "TOTALIZADO",
+                    "value": old_pulses,
+                    "success": True,
+                }
+            ],
+        )
+        medition = t0.strftime("%Y-%m-%dT%H:00:00")
+        reg = self._run_pair(hi=0, lo=1200, medition=medition)
+        self.assertEqual(reg["_modbus_combine_status"], "TYPE_MIGRATION")
+        self.assertEqual(reg["pulses"], 1200)
+        # total continuo: old_pulses ≈ new_total (absorb delta en addition)
+        self.assertEqual(int(reg["total"]), old_pulses)
+        self.profile.refresh_from_db()
+        expected_addition = old_addition + (old_pulses - 1200)
+        self.assertEqual(float(self.profile.addition), float(expected_addition))
+
+    def test_long_gap_integration_no_subtract(self):
+        """Bug 4 integración: +100000 coherente no se recorta en 65536."""
+        prev = MODBUS_UINT16_MODULUS  # (1, 0)
+        t0 = self._seed_modbus_history(prev, hours_ago=48)
+        medition = t0.strftime("%Y-%m-%dT%H:00:00")
+        reg = self._run_pair(hi=2, lo=34464, medition=medition)
+        self.assertEqual(reg["_modbus_combine_status"], "OK")
+        self.assertEqual(reg["pulses"], prev + 100000)
+        self.assertEqual(reg["total_diff"], 100000)
 
     def test_order_lo_then_hi_still_combines(self):
         medition = "2026-03-01T11:00:00"
@@ -281,3 +401,81 @@ class ModbusProcessIntegrationTests(TestCase):
         self.assertNotIn("total", created)
         self.assertNotIn("pulses", created)
         self.assertEqual(created.get("_modbus_lo"), 100)
+
+
+class TotalizadoRegressionPoint152ConfigTests(TestCase):
+    """
+    Regresión: TOTALIZADO clásico (config tipo punto 152) no debe cambiar
+    con el código Modbus. pulses_factor=1000, addition=830293.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create(username="tot_reg", email="t@example.com")
+        self.client_obj = Client.objects.create(name="IANSA")
+        self.project = ProjectCatchments.objects.create(
+            name="Chillan", client=self.client_obj
+        )
+        self.point = CatchmentPoint.objects.create(
+            title="IANSA Chillan P2", owner_user=self.user, project=self.project
+        )
+        self.profile = ProfileDataConfigCatchment.objects.get(point_catchment=self.point)
+        self.profile.is_telemetry = True
+        self.profile.addition = 830293
+        self.profile.max_diff_m3_per_hour = 5000
+        self.profile.save()
+        self.point_dict = {
+            "id": self.point.id,
+            "profile_data_config": {
+                "addition": 830293,
+                "max_diff_m3_per_hour": 5000,
+                "reconnection_threshold_hours": 2,
+            },
+        }
+        self.variable = {
+            "type_variable": "TOTALIZADO",
+            "str_variable": "Acumulado",
+            "pulses_factor": 1000,
+        }
+
+    def test_total_m3_formula_with_addition_830293(self):
+        """total = (pulses * 1000)/1000 + 830293 — idéntico a main."""
+        pulses = 316217
+        result = total_m3(
+            pulses_factor=1000,
+            value=pulses,
+            point_catchment=self.point_dict,
+        )
+        self.assertEqual(result, pulses + 830293)
+
+    def test_process_totalizado_matches_main_formula(self):
+        """process_totalizado_variable con config 152 produce total esperado."""
+        pulses = 316217
+        # Baseline previo monotónico para no disparar reset
+        InteractionDetail.objects.create(
+            catchment_point=self.point,
+            date_time_medition=timezone.now() - timedelta(hours=1),
+            total=str(316200 + 830293),
+            pulses=316200,
+            total_diff=0,
+            flow=0.0,
+            variable_details=[
+                {
+                    "str_variable": "Acumulado",
+                    "type_variable": "TOTALIZADO",
+                    "value": 316200,
+                    "success": True,
+                }
+            ],
+        )
+        medition = timezone.now().replace(minute=0, second=0, microsecond=0)
+        medition_str = medition.strftime("%Y-%m-%dT%H:00:00")
+        _, reg = process_totalizado_variable(
+            data={"value": pulses, "date_time": medition_str},
+            variable=self.variable,
+            point_catchment=self.point_dict,
+            created_register={"date_time_medition": medition_str},
+            medition_str=medition_str,
+        )
+        self.assertEqual(reg["pulses"], pulses)
+        self.assertEqual(int(reg["total"]), pulses + 830293)
+        self.assertEqual(reg["total_diff"], 17)  # 316217 - 316200

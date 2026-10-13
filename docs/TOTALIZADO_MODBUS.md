@@ -21,10 +21,16 @@ consumo         = total_actual - total_anterior   (clamp ≥ 0)
 
 - El wrap se maneja tanto en **65535→0** (uint16) como si el equipo reporta
   **LO = 65536** (se normaliza a LO=0 y +1 a HI).
-- Si HI y LO llegan desfasados en lecturas distintas (mid-rollover), el
-  combinador corrige o sostiene el valor previo para **no** generar consumo
-  negativo ni picos de ~65536, y para **no** disparar resets falsos en
-  `ProfileDataConfigCatchment.addition`.
+- Mid-rollover solo se corrige con patrón inequívoco:
+  - **LO-ahead:** LO previo cerca del tope (≥90%) y LO nuevo cerca de 0 (≤10%),
+    mismo HI. Una regresión chica (ej. LO 5→3) **se sostiene**, no se suma 65534.
+  - **HI-ahead:** HI +1 y LO sigue en zona alta. Huecos largos con HI/LO
+    coherentes (avance >65536) **se aceptan** sin restar el módulo.
+- **Reset (0,0):** re-baseline absorbiendo pulses previos en `addition`
+  (no congela el punto).
+- **Migración desde TOTALIZADO:** la primera lectura Modbus no usa pulses del
+  TOTALIZADO clásico como baseline de mid-rollover; absorbe el delta en
+  `addition` para continuidad de `total` (ej. punto 152).
 
 ## Tipos de variable (`Variable.type_variable`)
 

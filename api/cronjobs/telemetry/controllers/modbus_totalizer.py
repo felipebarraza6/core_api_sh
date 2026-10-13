@@ -11,11 +11,11 @@ Acumulado bruto = HI * 65536 + LO
 El wrap puede ocurrir en 65535→0 (uint16) o, en algunos equipos, al llegar a
 65536. Ambas se normalizan de forma segura.
 
-Cuando HI y LO llegan en lecturas distintas / desfasadas (mid-rollover), el
-valor combinado naive puede bajar o saltar ~65536. Este módulo corrige esos
-bordes antes de alimentar el pipeline TOTALIZADO (total_m3 / total_hour),
-para no generar consumo negativo ni picos enormes, ni disparar resets falsos
-en addition.
+Cuando HI y LO llegan desfasados (mid-rollover), el valor combinado naive
+puede bajar o saltar ~65536. Este módulo solo corrige esos bordes cuando el
+patrón es inequívoco (LO previo cerca del tope + LO nuevo cerca de 0, o HI
+adelantado con LO aún alto). Cualquier otra regresión se sostiene; avances
+grandes con HI/LO coherentes se aceptan (huecos largos).
 """
 
 from __future__ import annotations
@@ -24,6 +24,12 @@ from typing import Any, Optional, Tuple
 
 # Módulo del contador LO. uint16 wrapa en 65535→0; la base aritmética es 65536.
 MODBUS_UINT16_MODULUS = 65536
+
+# Umbrales conservadores para detectar wrap real vs ruido de LO.
+# Solo se aplica corrección LO-ahead si el LO previo estaba en el tramo alto
+# y el nuevo en el tramo bajo (wrap 65535→0 típico).
+LO_NEAR_TOP_RATIO = 0.90
+LO_NEAR_ZERO_RATIO = 0.10
 
 # Tipos semánticos reconocidos (Variable.type_variable, free string).
 TYPE_MODBUS_LO = "TOTALIZADO_MODBUS_LO"
@@ -68,6 +74,34 @@ def is_totalizado_primary_type(type_variable: Optional[str]) -> bool:
     return type_variable.upper() in TOTALIZADO_PRIMARY_TYPES
 
 
+def last_record_used_modbus(variable_details: Any) -> bool:
+    """
+    True si el InteractionDetail previo ya fue producido con el par Modbus.
+
+    Sirve para no usar pulses de un TOTALIZADO clásico como baseline de
+    mid-rollover al migrar un punto (ej. 152).
+    """
+    if not variable_details:
+        return False
+    if isinstance(variable_details, dict):
+        items = variable_details.get("variables") or variable_details.get("items") or []
+        if not items and any(
+            is_modbus_totalizer_type(k) for k in variable_details.keys()
+        ):
+            return True
+    elif isinstance(variable_details, list):
+        items = variable_details
+    else:
+        return False
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if is_modbus_totalizer_type(item.get("type_variable")):
+            return True
+    return False
+
+
 def normalize_lo_register(
     lo: Any, modulus: int = MODBUS_UINT16_MODULUS
 ) -> Tuple[int, int]:
@@ -107,37 +141,56 @@ def combine_raw(hi: Any, lo: Any, modulus: int = MODBUS_UINT16_MODULUS) -> int:
     return (hi_int + hi_extra) * modulus + lo_norm
 
 
+def decompose_combined(
+    combined: int, modulus: int = MODBUS_UINT16_MODULUS
+) -> Tuple[int, int]:
+    """Descompone un acumulado en (hi, lo)."""
+    try:
+        value = int(combined)
+    except (TypeError, ValueError):
+        return 0, 0
+    if value < 0:
+        return 0, 0
+    return value // modulus, value % modulus
+
+
 def combine_modbus_registers(
     hi: Any,
     lo: Any,
     prev_combined: Optional[int] = None,
     modulus: int = MODBUS_UINT16_MODULUS,
-    max_step: Optional[int] = None,
+    lo_near_top_ratio: float = LO_NEAR_TOP_RATIO,
+    lo_near_zero_ratio: float = LO_NEAR_ZERO_RATIO,
 ) -> Tuple[int, str]:
     """
-    Combina registros Modbus en un acumulado monotónico seguro.
+    Combina registros Modbus en un acumulado seguro ante mid-rollover.
 
     Args:
         hi: Multiplicador / conteo de rollovers (registro 5002).
         lo: Contador 16-bit (registro 5001).
-        prev_combined: Acumulado de la lectura anterior (InteractionDetail.pulses).
+        prev_combined: Acumulado Modbus de la lectura anterior (solo si el
+            punto ya venía en TOTALIZADO_MODBUS_*). None = primera lectura
+            Modbus / sin baseline comparable.
         modulus: Base del LO (65536).
-        max_step: Tope de avance tras corregir mid-rollover. Default = modulus - 1
-            (un avance "normal" nunca alcanza un módulo completo; un salto de
-            exactamente 65536 con LO aún alto es HI-ahead, no consumo real).
 
     Returns:
         (combined, status) con status en:
-        - OK: avance normal o primera lectura
-        - MID_ROLLOVER_LO_AHEAD: LO wrapeó y HI aún no incrementó
-        - MID_ROLLOVER_HI_AHEAD: HI incrementó y LO aún no wrapeó
-        - HELD_NEGATIVE: caída no explicable → se mantiene prev
-        - HELD_SPIKE: salto demasiado grande → se mantiene prev
+        - OK: avance normal, hueco largo coherente, o primera lectura
+        - MID_ROLLOVER_LO_AHEAD: LO wrapeó (cerca de 0) y HI aún no subió
+        - MID_ROLLOVER_HI_AHEAD: HI subió y LO sigue alto (aún no wrapeó)
+        - DEVICE_RESET: HI=0 y LO=0 tras un acumulado previo → re-baseline
+        - HELD_NEGATIVE: regresión no explicable como wrap → se mantiene prev
     """
-    if max_step is None:
-        max_step = modulus - 1
+    try:
+        hi_int = int(float(hi))
+    except (TypeError, ValueError):
+        hi_int = 0
+    if hi_int < 0:
+        hi_int = 0
 
-    combined = combine_raw(hi, lo, modulus=modulus)
+    lo_norm, hi_extra = normalize_lo_register(lo, modulus=modulus)
+    curr_hi = hi_int + hi_extra
+    combined = curr_hi * modulus + lo_norm
 
     if prev_combined is None:
         return combined, "OK"
@@ -147,33 +200,47 @@ def combine_modbus_registers(
     except (TypeError, ValueError):
         return combined, "OK"
 
-    diff = combined - prev
-
-    # Avance normal: [0, modulus). Un salto de exactamente `modulus` con el
-    # mismo LO es mid-rollover HI-ahead, no progreso legítimo.
-    if 0 <= diff < modulus:
+    if prev < 0:
         return combined, "OK"
 
-    # Mid-rollover A: LO ya wrapeó, HI aún no → combined cae ~modulus.
-    if -modulus <= diff < 0:
-        corrected = combined + modulus  # equivalente a (hi+1)*modulus + lo
-        corr_diff = corrected - prev
-        if 0 <= corr_diff <= max_step:
+    # Reset de dispositivo: ambos registros en 0. No sostener forever;
+    # el caller debe absorber el acumulado previo en addition.
+    if curr_hi == 0 and lo_norm == 0 and prev > 0:
+        return 0, "DEVICE_RESET"
+
+    prev_hi, prev_lo = decompose_combined(prev, modulus=modulus)
+    near_top = int(modulus * lo_near_top_ratio)
+    near_zero = int(modulus * lo_near_zero_ratio)
+    diff = combined - prev
+
+    if diff >= 0:
+        # Mid-rollover HI-ahead: HI +1 y LO sigue en zona alta (no wrapeó).
+        # No aplicar si HI/LO son coherentes con un hueco largo (LO ya no alto).
+        if (
+            curr_hi == prev_hi + 1
+            and prev_lo >= near_top
+            and lo_norm >= near_top
+        ):
+            corrected = (prev_hi * modulus) + lo_norm  # = combined - modulus
+            if corrected >= prev:
+                return corrected, "MID_ROLLOVER_HI_AHEAD"
+            return prev, "MID_ROLLOVER_HI_AHEAD"
+
+        # Avance normal o hueco largo con HI/LO mutuamente consistentes.
+        return combined, "OK"
+
+    # diff < 0 — regresión -------------------------------------------------
+    # Mid-rollover LO-ahead SOLO si el wrap es inequívoco:
+    # LO previo cerca del tope y LO nuevo cerca de 0, mismo HI.
+    if (
+        curr_hi == prev_hi
+        and prev_lo >= near_top
+        and lo_norm <= near_zero
+    ):
+        corrected = combined + modulus  # (hi+1)*modulus + lo
+        if corrected >= prev:
             return corrected, "MID_ROLLOVER_LO_AHEAD"
         return prev, "HELD_NEGATIVE"
 
-    # Mid-rollover B: HI ya subió, LO aún no wrapeó → salto ≈ modulus..2*modulus.
-    if modulus <= diff <= 2 * modulus:
-        corrected = combined - modulus  # equivalente a (hi-1)*modulus + lo
-        corr_diff = corrected - prev
-        if 0 <= corr_diff <= max_step:
-            return corrected, "MID_ROLLOVER_HI_AHEAD"
-        # Corregir deja valor < prev (desfase sin progreso) → sostener.
-        if corrected <= prev:
-            return prev, "MID_ROLLOVER_HI_AHEAD"
-        return prev, "HELD_SPIKE"
-
-    if diff < 0:
-        return prev, "HELD_NEGATIVE"
-
-    return prev, "HELD_SPIKE"
+    # Regresión chica (ej. LO 5→3) u otra caída no-wrap: sostener.
+    return prev, "HELD_NEGATIVE"
