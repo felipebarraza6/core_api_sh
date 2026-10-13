@@ -11,6 +11,7 @@ from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 
 from api.core.notifications import notify
+from api.core.notifications.digest import send_or_queue as digest_or_send
 from api.core.models.alerts import AlertTrigger, SystemEvent
 from api.core.models.tickets import SupportTicket, TicketCategory
 
@@ -391,12 +392,21 @@ def _notify_ticket_references(comment, ticket, author):
         html_message = render_to_string("tickets/ticket_reference.html", context)
         plain_message = strip_tags(html_message)
         subject = f"Referenciaron tu ticket en #{ticket.id}: {ticket.title}"
-        notify(
+        # Correo de alto volumen: se agrupa en el resumen diario. Si el digest
+        # no puede encolarlo, mantiene el envío en caliente.
+        digest_or_send(
+            users=recipients,
+            ticket=ticket,
             subject=subject,
             message=plain_message,
-            recipients=recipients,
-            ticket=ticket,
             html_message=html_message,
+            summary=(
+                f"{author_name} referenció "
+                f"{', '.join(f'#{r.id}' for r in sorted(ref_tickets, key=lambda x: x.id))} "
+                f"desde el ticket #{ticket.id}"
+            ),
+            link=f"/tickets/{ticket.id}",
+            dedup_key=f"comment:{comment.id}:references",
         )
 
     return notified
@@ -489,12 +499,22 @@ def _notify_ticket_status_changed(ticket, actor, old_status, new_status):
         f"{ticket.title}"
     )
 
-    notify(
+    # Correo de alto volumen (3 rutas de disparo): se agrupa en el resumen
+    # diario. Si el digest no puede encolarlo, mantiene el envío en caliente.
+    digest_or_send(
+        users=users,
+        ticket=ticket,
         subject=subject,
         message=plain_message,
-        recipients=users,
-        ticket=ticket,
         html_message=html_message,
+        summary=(
+            f"{actor_name} marcó el ticket como "
+            f"{status_display.get(new_status, new_status)}"
+        ),
+        link=f"/tickets/{ticket.id}",
+        # Red de seguridad: si otra ruta emite el mismo cambio en <5 min,
+        # no se encola ni se envía dos veces.
+        dedup_key=f"ticket:{ticket.id}:status:{new_status}",
     )
 
     return [u.email for u in users if u.email]

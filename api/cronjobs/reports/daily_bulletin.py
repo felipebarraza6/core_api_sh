@@ -78,10 +78,18 @@ def get_standard_order(standard):
 
 
 def get_staff_emails():
-    """Obtener emails de usuarios staff/admin"""
+    """
+    Emails de usuarios staff/admin que aceptan correo (`notify_email=True`).
+
+    El boletín diario era el único correo del sistema que ignoraba este flag;
+    los demás ya lo respetaban. El default del campo es True, así que nadie
+    deja de recibirlo hasta que usa `POST /api/ik/me/notify-email/`.
+    Los destinatarios manuales de `ADDITIONAL_RECIPIENTS` no se ven afectados.
+    """
     return list(
         User.objects.filter(
             Q(is_staff=True) | Q(is_superuser=True),
+            notify_email=True,
             email__isnull=False
         ).exclude(email='').values_list('email', flat=True)
     )

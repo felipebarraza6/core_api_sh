@@ -186,7 +186,6 @@
 | `api/^variable/(?P<id>[^/.]+)/$` | `VariableViewSet` | `api.core.views.catchment_points` |
 | `api/^variable/(?P<id>[^/.]+)\.(?P<format>[a-z0-9]+)/?$` | `VariableViewSet` | `api.core.views.catchment_points` |
 | `api/^variable\.(?P<format>[a-z0-9]+)/?$` | `VariableViewSet` | `api.core.views.catchment_points` |
-| `api/chat-bot/` | `google_chat_handler` | `api.core.chatbot.views` |
 | `api/chat/` | `View.as_view.<locals>.view` | `api.core.views.chatbot` |
 | `api/password_reset/` | `View.as_view.<locals>.view` | `django_rest_passwordreset.views` |
 | `api/password_reset/confirm/` | `View.as_view.<locals>.view` | `django_rest_passwordreset.views` |

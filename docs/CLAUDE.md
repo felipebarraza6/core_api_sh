@@ -235,7 +235,7 @@ Defined in `api/settings.py` CRONJOBS list:
 - **novus.run()** - NOVUS hourly ingestion
 - **cron_dga.run()** - Every 3 minutes (DGA transmission queue)
 - **cron_sma.run()** - Every 5 minutes (SMA transmission queue)
-- **cron_alerts.run()** - Every 10 minutes (email alerts)
+- **alert_engine.run()** - Every minute (umbral alerts / AlertRule)
 - **cluster_backup_complete_final.run()** - Every hour (cluster backup/sync)
 
 Each cronjob writes logs to `/tmp/smarthydro/*.log`

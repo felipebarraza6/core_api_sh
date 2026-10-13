@@ -746,7 +746,6 @@ class ManagementViewSet(viewsets.ViewSet):
                 {'namespace': 'root', 'url': '/admin/telemetry-monitoring/', 'methods': ['GET']},
                 {'namespace': 'root', 'url': '/reports/active-points/', 'methods': ['GET']},
                 {'namespace': 'root', 'url': '/api/password_reset/', 'methods': ['POST']},
-                {'namespace': 'root', 'url': '/api/chat-bot/', 'methods': ['POST']},
             ]
 
             # 3. Cronjobs desde settings

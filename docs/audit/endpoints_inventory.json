@@ -3784,14 +3784,6 @@
     "category": "legacy"
   },
   {
-    "route": "api/chat-bot/",
-    "namespace": "",
-    "name": "google_chat_handler",
-    "view_module": "api.core.chatbot.views",
-    "view": "google_chat_handler",
-    "category": "legacy"
-  },
-  {
     "route": "api/schema/",
     "namespace": "",
     "name": "schema",

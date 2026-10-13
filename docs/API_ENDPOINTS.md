@@ -591,15 +591,6 @@ Chatbot inteligente para la app web/móvil.
 
 ---
 
-### Google Chat Webhook (`/api/chat-bot/`)
-
-#### `POST /api/chat-bot/`
-Webhook para integración con Google Chat. Soporta cards interactivas y slash commands.
-
-**Auth:** Token de verificación de Google Chat (configurado en el bot).
-
----
-
 ## 10. Sistema
 
 ### Health & Status

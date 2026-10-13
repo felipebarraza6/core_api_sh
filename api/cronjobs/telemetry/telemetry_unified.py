@@ -13,10 +13,11 @@ Principios:
 """
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 import requests
+from django.conf import settings
 from django.utils import timezone
 
 from django.db.models import Q
@@ -174,6 +175,143 @@ def run(frequency: str, dry_run: bool = False, point_id: Optional[int] = None, p
     )
 
 
+# Antigüedad máxima que se considera "dato fresco" del proveedor.
+# El getter devuelve SIEMPRE el último valor conocido, aunque tenga días;
+# por encima de este umbral el registro se marca como obsoleto.
+STALE_THRESHOLD_HOURS = 2
+
+# Cooldown por punto para el SystemEvent de dato obsoleto.
+# `emit_system_event` solo deduplica CRITICAL, y aquí usamos WARNING
+# porque los CRITICAL crean ticket automático.
+STALE_EVENT_COOLDOWN_MINUTES = 240
+
+# Handlers cuyo getter parsea cadenas con sufijo "Z", por lo que devuelve
+# hora UTC naive. Los demás usan `datetime.fromtimestamp`, que con el
+# TIME_ZONE de Django (America/Santiago) devuelve hora local naive.
+_UTC_NAIVE_HANDLERS = {"thethings", "tago"}
+
+
+def _as_aware_utc(date_time_str, handler_name):
+    """
+    Convierte el timestamp naive que devuelve un getter a UTC aware.
+
+    Los getters no son consistentes entre sí: tratar todos como UTC inflaba
+    la antigüedad en +3 h y marcaba como obsoletos puntos que entregaban
+    datos en ese momento (falsos positivos en TDATA/NOVUS).
+    """
+    if not date_time_str:
+        return None
+    try:
+        naive = datetime.strptime(date_time_str, "%Y-%m-%dT%H:%M:%S")
+    except Exception:
+        return None
+    tz = (
+        timezone.utc
+        if handler_name in _UTC_NAIVE_HANDLERS
+        else timezone.get_current_timezone()
+    )
+    try:
+        return timezone.make_aware(naive, tz).astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _mark_stale_data(
+    point_id: int,
+    provider_datetimes: list,
+    variable_details: list,
+    created_register: Dict[str, Any],
+):
+    """
+    Detecta que el proveedor dejó de entregar datos frescos.
+
+    El registro se sella con la hora actual, por lo que sin esta marca la API
+    no puede distinguir un dato de hace 16 minutos de uno de hace 3 días.
+    Se observó en 23 puntos Nettra clavados en el mismo timestamp mientras la
+    API seguía mostrando registros "de hoy".
+
+    No cambia valores ni la ingesta: solo anota la frescura en
+    `variable_details` y emite un SystemEvent WARNING.
+
+    Args:
+        provider_datetimes: datetimes aware en UTC ya normalizados por el caller.
+    """
+    threshold = getattr(settings, "TELEMETRY_STALE_THRESHOLD_HOURS", STALE_THRESHOLD_HOURS)
+    stale_hours = None
+
+    if provider_datetimes:
+        try:
+            newest_utc = max(provider_datetimes).astimezone(timezone.utc)
+            stale_hours = round(
+                (timezone.now() - newest_utc).total_seconds() / 3600.0, 2
+            )
+        except Exception:
+            stale_hours = None
+
+    is_stale = stale_hours is not None and stale_hours > threshold
+    created_register["variable_details"] = [
+        {**d, "stale": is_stale} for d in variable_details
+    ]
+
+    if is_stale:
+        telemetry_logger.warning(
+            f"[UNIFIED] Punto {point_id}: dato del proveedor con {stale_hours} h "
+            f"de antigüedad (umbral {threshold} h). Se guarda igual, marcado como obsoleto."
+        )
+        _emit_stale_event(point_id, stale_hours, variable_details)
+
+
+def _emit_stale_event(point_id: int, stale_hours: float, variable_details: list):
+    """SystemEvent de dato obsoletos, con cooldown propio por punto."""
+    try:
+        from api.core.models.alerts import SystemEvent
+
+        reciente = SystemEvent.objects.filter(
+            event_type="API_ERROR",
+            point_catchment_id=point_id,
+            title__startswith="Dato del proveedor desactualizado",
+            created__gte=timezone.now() - timedelta(minutes=STALE_EVENT_COOLDOWN_MINUTES),
+        ).exists()
+        if reciente:
+            return
+
+        from api.cronjobs.telemetry.utils.audit import emit_system_event
+
+        variables_txt = ", ".join(
+            f"{d.get('str_variable')}@{d.get('provider_datetime')}"
+            for d in variable_details
+            if d.get("provider_datetime")
+        )
+        emit_system_event(
+            event_type="API_ERROR",
+            point_id=point_id,
+            title=f"Dato del proveedor desactualizado ({stale_hours:.1f} h)",
+            message=(
+                f"El proveedor entregó por última vez hace {stale_hours:.1f} h "
+                f"({variables_txt or 'sin timestamp'}). El registro se guarda con la "
+                f"hora actual, por lo que la API no refleja la antigüedad real del dato."
+            ),
+            severity="WARNING",
+            extra_data={
+                "stale_hours": stale_hours,
+                "variables": [
+                    {
+                        "variable": d.get("str_variable"),
+                        "provider_datetime": d.get("provider_datetime"),
+                        "value": d.get("value"),
+                    }
+                    for d in variable_details
+                    if d.get("provider_datetime")
+                ],
+                "source": "api.cronjobs.telemetry.telemetry_unified:_mark_stale_data",
+            },
+        )
+    except Exception:
+        telemetry_logger.debug(
+            f"[UNIFIED] No se pudo emitir evento de dato obsoleto para punto {point_id}"
+        )
+
+
 def _process_point(
     point_catchment: Dict[str, Any],
     now: datetime,
@@ -210,6 +348,7 @@ def _process_point(
     max_days_not_conection = 0
     best_date_time_last_logger: Optional[datetime] = None
     variable_details: list = []
+    provider_datetimes: list = []
 
     for variable in variables:
         data = None
@@ -318,17 +457,39 @@ def _process_point(
             "value": data.get("value"),
             "success": getter_succeeded,
         })
+        # Timestamp real entregado por el proveedor (no el de "ahora" del registro).
+        # Normalizado a UTC aware: los getters NO devuelven la misma zona horaria.
+        #   thingsio / tago  -> parsean "...Z"      -> naive UTC
+        #   tdata / generic  -> datetime.fromtimestamp -> naive hora del servidor
+        #                       (Django fija TIME_ZONE=America/Santiago)
+        if getter_succeeded:
+            provider_dt = _as_aware_utc(
+                data["date_time"],
+                provider.get("handler_name") if isinstance(provider, dict)
+                else getattr(provider, "handler_name", None),
+            )
+            if provider_dt is not None:
+                provider_datetimes.append(provider_dt)
 
     # Replicar último registro si no hay datos y está configurado (Nettra legacy)
     if replicate_on_missing and best_date_time_last_logger is None:
         _replicate_last_record(point_id, created_register, now)
 
-    created_register["variable_details"] = variable_details
+    # Marca la frescura real del dato ANTES de fijar variable_details,
+    # porque _replicate_last_record puede vaciar la lista.
+    _mark_stale_data(point_id, provider_datetimes, variable_details, created_register)
     created_register["is_partial"] = False
 
     # Determinar si enviar a DGA
     try:
-        dga_config = DgaDataConfigCatchment.objects.get(point_catchment_id=point_id)
+        # Tolerar configs duplicadas: preferir la activa (send_dga=True), luego la más reciente
+        dga_config = DgaDataConfigCatchment.objects.filter(
+            point_catchment_id=point_id
+        ).order_by("-send_dga", "-id").first()
+        if dga_config is None:
+            raise DgaDataConfigCatchment.DoesNotExist(
+                f"Sin config DGA para punto {point_id}"
+            )
         record_time = datetime.strptime(medition_str, "%Y-%m-%dT%H:%M:%S" if frequency != "60" else "%Y-%m-%dT%H:00:00")
         created_register["send_dga"] = dga_config.send_dga and validate_frequency(point_catchment, record_time, frequency)
     except DgaDataConfigCatchment.DoesNotExist:

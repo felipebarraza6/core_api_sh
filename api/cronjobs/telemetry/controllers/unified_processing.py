@@ -96,9 +96,14 @@ def validate_frequency(point_catchment: Dict[str, Any], current_time: datetime, 
     try:
         from api.core.models import DgaDataConfigCatchment
 
-        get = DgaDataConfigCatchment.objects.get(
+        # Tolerar configs duplicadas: preferir la activa (send_dga=True), luego la más reciente
+        get = DgaDataConfigCatchment.objects.filter(
             point_catchment__id=point_catchment["id"]
-        )
+        ).order_by("-send_dga", "-id").first()
+        if get is None:
+            raise DgaDataConfigCatchment.DoesNotExist(
+                f"Sin config DGA para punto {point_catchment['id']}"
+            )
         standard = get.standard
 
         if standard == "MAYOR":
@@ -676,9 +681,14 @@ def determine_dga_send(point_catchment: Dict[str, Any], chile_tz: Any) -> bool:
     from api.core.models import DgaDataConfigCatchment
 
     try:
-        get = DgaDataConfigCatchment.objects.get(
+        # Tolerar configs duplicadas: preferir la activa (send_dga=True), luego la más reciente
+        get = DgaDataConfigCatchment.objects.filter(
             point_catchment__id=point_catchment["id"]
-        )
+        ).order_by("-send_dga", "-id").first()
+        if get is None:
+            raise DgaDataConfigCatchment.DoesNotExist(
+                f"Sin config DGA para punto {point_catchment['id']}"
+            )
         current_time = datetime.now(chile_tz)
 
         # Solo enviar a DGA si está habilitado Y corresponde la frecuencia

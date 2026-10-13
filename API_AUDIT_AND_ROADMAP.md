@@ -93,7 +93,6 @@
 | `/status/dashboard/` | GET | HTML dashboard de status | login_required |
 | `/reports/active-points/` | GET | Excel puntos activos | IsAuthenticated |
 | `/compliance/dga/verify/` | GET | Verificar comprobante DGA | IsAuthenticated |
-| `/api/chat-bot/` | POST | Webhook Google Chat | Google Chat token |
 | `/api/schema/` | GET | OpenAPI Schema | AllowAny |
 | `/api/schema/swagger-ui/` | GET | Swagger UI | AllowAny |
 | `/api/schema/redoc/` | GET | Redoc | AllowAny |

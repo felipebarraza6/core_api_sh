@@ -282,14 +282,9 @@ CRONJOBS = [
         "api.cronjobs.space_backup.run",
         ">> /tmp/smarthydro/space_backup.log 2>&1",
     ),
-    # alertas legacy (monolito NotificationsCatchment) — APAGADO
-    # Las alertas umbral ahora se evalúan vía alert_engine.py (AlertRule).
-    # Solo quedan activos tickets de soporte (SUPPORT) en el modelo legacy.
-    # (
-    #     "*/10 * * * *",
-    #     "api.cronjobs.alerts.cron_alerts.run",
-    #     ">> /tmp/smarthydro/alerts.log 2>&1",
-    # ),
+    # alertas legacy (monolito NotificationsCatchment): APAGADO.
+    # Las alertas umbral ahora se evalúan vía alert_engine.py (AlertRule);
+    # solo quedan activos tickets de soporte (SUPPORT) en el modelo legacy.
     # motor de alertas nuevo (AlertRule / AlertTrigger)
     (
         "* * * * *",
@@ -319,6 +314,14 @@ CRONJOBS = [
         "0 13 * * *",
         "api.cronjobs.reports.daily_active_tickets.run",
         ">> /tmp/smarthydro/daily_active_tickets.log 2>&1",
+    ),
+    # digest de correos de tickets de alto volumen (cambio de estado y
+    # referencias) - 19:00 Chile (22:00 UTC). Solo llega a staff/operadores,
+    # nunca a clientes (NOTIFY_CLIENTS=False).
+    (
+        "0 22 * * *",
+        "api.core.notifications.digest.run",
+        ">> /tmp/smarthydro/ticket_digest.log 2>&1",
     ),
     # reporte horario DGA MAYOR - cada hora a los :05 (reporta hora anterior)
     (

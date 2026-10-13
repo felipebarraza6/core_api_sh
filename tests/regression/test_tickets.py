@@ -901,8 +901,12 @@ class TicketAPITests(TestCase):
         self.assertEqual(root["reply_count"], 1)
         self.assertTrue(any(c["parent_id"] == parent["id"] for c in results))
 
+    @override_settings(CACHES={
+        "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    })
     def test_comment_ticket_reference_notifies_involved(self):
         from django.core import mail
+        from api.core.notifications.digest import flush
         colleague = User.objects.create_user(
             email="refcolleague@smarthydro.cl", password="pass", username="refcolleague"
         )
@@ -930,8 +934,13 @@ class TicketAPITests(TestCase):
                 notification_type="REFERENCE",
             ).exists()
         )
+        # Correo de alto volumen → al resumen diario, no en caliente.
+        self.assertEqual(len(mail.outbox), 0)
+
+        self.assertEqual(flush(), 1)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn(colleague.email, mail.outbox[0].to)
+        self.assertIn("Resumen de tickets", mail.outbox[0].subject)
 
     def test_detail_with_multiple_accessible_points(self):
         """Ticket con varios puntos accesibles no debe lanzar MultipleObjectsReturned."""
@@ -4171,8 +4180,21 @@ class TicketAssignmentEmailNotificationTests(TestCase):
         self.assertIn(self.assignee.email, mail.outbox[0].to)
 
 
+@override_settings(CACHES={
+    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+})
 class TicketStatusEmailNotificationTests(TestCase):
-    """Correos al cambiar el estado de un ticket (involucrados, sin el actor)."""
+    """
+    Correos al cambiar el estado de un ticket (involucrados, sin el actor).
+
+    Cambio de contrato: este correo es de alto volumen, así que va al digest
+    diario (`api.core.notifications.digest`) en lugar de salir en caliente.
+    El cache se fija en locmem para que el digest no toque Redis de producción.
+    """
+
+    def _flush_digest(self):
+        from api.core.notifications.digest import flush
+        return flush()
 
     def setUp(self):
         self.actor = User.objects.create_user(
@@ -4224,13 +4246,19 @@ class TicketStatusEmailNotificationTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 200)
+        # En caliente no sale nada: quedó encolado para el resumen diario.
+        self.assertEqual(len(mail.outbox), 0)
+
+        self.assertEqual(self._flush_digest(), 1)
         self.assertEqual(len(mail.outbox), 1)
         recipients = set(mail.outbox[0].to)
         self.assertIn(self.assignee.email, recipients)
         self.assertIn(self.creator.email, recipients)
         self.assertIn(self.operator.email, recipients)
         self.assertNotIn(self.actor.email, recipients)
-        self.assertIn("cambió", mail.outbox[0].subject)
+        # El asunto del resumen agrupado; el detalle va en el cuerpo.
+        self.assertIn("Resumen de tickets", mail.outbox[0].subject)
+        self.assertIn("cambió", mail.outbox[0].body)
 
     def test_status_change_via_comment_sends_email(self):
         from django.core import mail
@@ -4242,8 +4270,11 @@ class TicketStatusEmailNotificationTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 201)
+        self.assertEqual(len(mail.outbox), 0)
+
+        self.assertEqual(self._flush_digest(), 1)
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("cambió", mail.outbox[0].subject)
+        self.assertIn("cambió", mail.outbox[0].body)
 
     def test_status_change_via_patch_sends_email(self):
         from django.core import mail
@@ -4255,10 +4286,34 @@ class TicketStatusEmailNotificationTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 0)
+
+        self.assertEqual(self._flush_digest(), 1)
         self.assertEqual(len(mail.outbox), 1)
         recipients = set(mail.outbox[0].to)
         self.assertIn(self.assignee.email, recipients)
         self.assertIn(self.creator.email, recipients)
+
+    def test_multiple_status_changes_group_into_one_email(self):
+        """Dos cambios el mismo día → un solo correo del resumen."""
+        from django.core import mail
+        ticket = self._ticket()
+        mail.outbox = []
+        for status in ("EN_ANALISIS", "RESUELTO"):
+            response = self.client.post(
+                f"/api/ik/tickets/{ticket.id}/status/",
+                {"status": status},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 0)
+
+        self.assertEqual(self._flush_digest(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        # El segundo cambio viaja en el mismo resumen (muestra el display).
+        self.assertIn("Resuelto", mail.outbox[0].body)
+        self.assertIn("En análisis", mail.outbox[0].body)
+        self.assertIn("2 novedades", mail.outbox[0].subject)
 
     def test_same_status_no_email(self):
         from django.core import mail
@@ -4271,6 +4326,7 @@ class TicketStatusEmailNotificationTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(self._flush_digest(), 0)
 
     def test_status_notify_email_false_respected(self):
         from django.core import mail
@@ -4283,5 +4339,9 @@ class TicketStatusEmailNotificationTests(TestCase):
             {"status": "EN_ANALISIS"},
             format="json",
         )
+        self.assertEqual(len(mail.outbox), 0)
+
+        self.assertEqual(self._flush_digest(), 1)
         self.assertEqual(len(mail.outbox), 1)
         self.assertNotIn(self.assignee.email, mail.outbox[0].to)
+        self.assertIn(self.creator.email, mail.outbox[0].to)

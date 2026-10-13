@@ -55,8 +55,6 @@ urlpatterns = [
     re_path(r'^media/(?P<path>.*)$', serve,
             {'document_root': settings.MEDIA_ROOT}),
     path('api/password_reset/', include('django_rest_passwordreset.urls', namespace='password_reset')),
-    # Chatbot Integration
-    path('api/chat-bot/', include('api.core.chatbot.urls')),
 
     # OpenAPI Schema + Swagger UI + Redoc
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),

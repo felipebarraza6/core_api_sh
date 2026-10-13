@@ -976,19 +976,6 @@ Validar si un token es válido.
 
 ---
 
-## 🤖 9. CHATBOT — `/api/chat-bot/`
-
-Webhook para Google Chat. **Sin auth** (maneja su propia validación interna).
-
-### `POST /api/chat-bot/`
-Recibe eventos de Google Chat.
-
-**Body:** JSON de evento Google Chat (types: `ADDED_TO_SPACE`, `MESSAGE`, `CARD_CLICKED`, `APP_COMMAND`).
-
-> **Nota:** Este endpoint es para la integración con Google Chat, no para uso directo del frontend.
-
----
-
 ## 🛡️ 10. ADMIN PERSONALIZADO
 
 > Requiere `staff_member_required` (sesión de Django Admin).
