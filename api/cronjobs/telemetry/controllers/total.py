@@ -319,53 +319,69 @@ def total_m3(pulses_factor, value, point_catchment, variable_id=None, return_ful
                     last_total_safe = 0
 
                 # DETECCIÓN DE REINICIO
-                # Caso 1: pulsos=0 con last_pulses>0
+                # Caso 1: pulsos=0
                 # FIX CRÍTICO: Un valor 0 es casi SIEMPRE error de ingesta
                 # (sensor desconectado, getter falló, valor None convertido a 0).
                 # NO detectar reset a 0 — mantener total anterior para preservar
                 # monotonicidad. Un reset real del contador físico se maneja
                 # en reconexión (cuando el sensor vuelve con valor > 0).
-                if current_pulses == 0 and last_pulses > 0:
-                    cr_log_id = _create_counter_reset_log(
-                        point_catchment_id=point_catchment["id"],
-                        reset_type="ZERO_KEPT",
-                        last_pulses=last_pulses,
-                        current_pulses=current_pulses,
-                        pulses_factor=pulses_factor,
-                        addition_before=offset,
-                        total_before=last_total_safe,
-                        total_after=last_total_safe,
-                        passed_anti_jump=True,
-                        reconnection_threshold=reconnection_threshold,
-                        is_reconnection=False,
-                        days_not_connection=last_interaction.days_not_conection if last_interaction else None,
-                        time_diff_hours=time_diff_hours,
-                        date_time_medition=current_dt,
-                    )
+                #
+                # FIX 2026-10: la condición era "current_pulses == 0 and
+                # last_pulses > 0". Cuando el totalizador lleva 2+ horas en 0,
+                # last_pulses ya es 0, la rama no se activaba y el cálculo
+                # final devolvía total = 0 + offset, colapsando el acumulado
+                # al offset. Punto 110 (P3 Iansa Chillán) perdió 39 790 m³
+                # visibles el 2026-09-16 20:00 (1 199 738 -> 1 159 948).
+                # Un totalizador muerto debe mantener el último total válido
+                # durante TODAS las horas en cero, no solo la primera.
+                if current_pulses == 0:
+                    # Log y SystemEvent SOLO en la transición a cero
+                    # (last_pulses > 0). Si no, un totalizador muerto emitiría
+                    # un evento por hora: el punto 187 lleva 1 007 horas en 0.
+                    # El comportamiento del total (mantener el último válido)
+                    # es el mismo en la transición y en las horas siguientes.
+                    cr_log_id = None
+                    if last_pulses > 0:
+                        cr_log_id = _create_counter_reset_log(
+                            point_catchment_id=point_catchment["id"],
+                            reset_type="ZERO_KEPT",
+                            last_pulses=last_pulses,
+                            current_pulses=current_pulses,
+                            pulses_factor=pulses_factor,
+                            addition_before=offset,
+                            total_before=last_total_safe,
+                            total_after=last_total_safe,
+                            passed_anti_jump=True,
+                            reconnection_threshold=reconnection_threshold,
+                            is_reconnection=False,
+                            days_not_connection=last_interaction.days_not_conection if last_interaction else None,
+                            time_diff_hours=time_diff_hours,
+                            date_time_medition=current_dt,
+                        )
 
-                    logger.warning(
-                        f"⚠️  Punto {point_catchment['id']}: pulsos=0 detectado. "
-                        f"Tratando como error de ingesta / sensor desconectado. "
-                        f"Manteniendo total anterior {last_total_safe}."
-                    )
-                    emit_system_event(
-                        event_type="MEASUREMENT_ERROR",
-                        point_id=point_catchment["id"],
-                        title="Pulsos cero con histórico previo",
-                        message=f"Pulsos=0 detectado con histórico previo ({last_pulses}). Manteniendo total anterior {last_total_safe}.",
-                        severity="WARNING",
-                        extra_data={
-                            "decision": "MANTENER",
-                            "reason": "Un valor cero en un totalizador con histórico previo es casi siempre una falla de comunicación o sensor desconectado, no un consumo real nulo. Se preserva la monotonicidad manteniendo el último total válido.",
-                            "actual_value": current_pulses,
-                            "expected_range": [1, None],
-                            "last_pulses": last_pulses,
-                            "total_kept": last_total_safe,
-                            "logic": "ZERO_KEPT",
-                            "counter_reset_log_id": cr_log_id,
-                            "source": "api.cronjobs.telemetry.controllers.total:total_m3",
-                        },
-                    )
+                        logger.warning(
+                            f"⚠️  Punto {point_catchment['id']}: pulsos=0 detectado. "
+                            f"Tratando como error de ingesta / sensor desconectado. "
+                            f"Manteniendo total anterior {last_total_safe}."
+                        )
+                        emit_system_event(
+                            event_type="MEASUREMENT_ERROR",
+                            point_id=point_catchment["id"],
+                            title="Pulsos cero con histórico previo",
+                            message=f"Pulsos=0 detectado con histórico previo ({last_pulses}). Manteniendo total anterior {last_total_safe}.",
+                            severity="WARNING",
+                            extra_data={
+                                "decision": "MANTENER",
+                                "reason": "Un valor cero en un totalizador con histórico previo es casi siempre una falla de comunicación o sensor desconectado, no un consumo real nulo. Se preserva la monotonicidad manteniendo el último total válido.",
+                                "actual_value": current_pulses,
+                                "expected_range": [1, None],
+                                "last_pulses": last_pulses,
+                                "total_kept": last_total_safe,
+                                "logic": "ZERO_KEPT",
+                                "counter_reset_log_id": cr_log_id,
+                                "source": "api.cronjobs.telemetry.controllers.total:total_m3",
+                            },
+                        )
 
                     if return_full_details:
                         return last_total_safe, {

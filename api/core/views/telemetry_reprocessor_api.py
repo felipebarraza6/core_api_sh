@@ -400,6 +400,12 @@ class TelemetryReprocessorView(APIView):
     # ================================================================
     def _do_fix_totals(self, pid, start_dt, end_dt, apply):
         factor = get_factor(pid)
+        # FIX 2026-10: excluir is_error del registro base. Un registro en error
+        # tiene total/pulses corruptos (p. ej. el proveedor devolvió basura y el
+        # código escribió total = pulses perdiendo el offset). Anclarse ahí
+        # propaga ese offset erróneo hacia adelante: en el punto 110 el dry-run
+        # hundía el total de 1 159 948 a 187 886 y reescribía 2 149 de 3 506
+        # registros. El registro base debe ser el último valor sano.
         prev = (
             InteractionDetail.objects.filter(
                 catchment_point_id=pid, date_time_medition__lt=start_dt
@@ -407,6 +413,7 @@ class TelemetryReprocessorView(APIView):
             .exclude(total__isnull=True)
             .exclude(total="")
             .exclude(total="None")
+            .exclude(is_error=True)
             .order_by("-date_time_medition")
             .values("id", "pulses", "total", "date_time_medition")
             .first()
