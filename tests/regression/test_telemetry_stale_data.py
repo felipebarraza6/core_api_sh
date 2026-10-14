@@ -76,23 +76,27 @@ class MarkStaleDataTests(TestCase):
             title="Punto Stale", project=self.project, owner_user=self.owner
         )
 
-    def _details(self, provider_dt):
-        return [{
-            "str_variable": "nivel",
-            "type_variable": "NIVEL",
-            "value": 10.0,
-            "success": True,
-            "provider_datetime": provider_dt,
-        }]
+    def _iso(self, hours=0.0):
+        return (timezone.now() - timedelta(hours=hours)).isoformat()
 
-    def _fresh_utc(self, hours=0.0):
-        return (timezone.now() - timedelta(hours=hours)).astimezone(timezone.utc)
+    def _details(self, **por_variable):
+        """Detalles con provider_datetime real por variable (nombre -> horas)."""
+        return [
+            {
+                "str_variable": nombre,
+                "type_variable": "NIVEL",
+                "value": 10.0,
+                "success": True,
+                "provider_datetime": (
+                    None if horas is None else self._iso(horas)
+                ),
+            }
+            for nombre, horas in por_variable.items()
+        ]
 
     def test_fresh_data_is_not_marked(self):
         register = {}
-        _mark_stale_data(
-            self.point.id, [self._fresh_utc()], self._details("x"), register
-        )
+        _mark_stale_data(self.point.id, self._details(nivel=0), register)
         self.assertFalse(register["variable_details"][0]["stale"])
         self.assertEqual(
             SystemEvent.objects.filter(point_catchment_id=self.point.id).count(), 0
@@ -102,8 +106,7 @@ class MarkStaleDataTests(TestCase):
         register = {}
         _mark_stale_data(
             self.point.id,
-            [self._fresh_utc(hours=STALE_THRESHOLD_HOURS + 5)],
-            self._details("x"),
+            self._details(nivel=STALE_THRESHOLD_HOURS + 5),
             register,
         )
         self.assertTrue(register["variable_details"][0]["stale"])
@@ -116,12 +119,7 @@ class MarkStaleDataTests(TestCase):
         """Los CRITICAL crean ticket automático; un WARNING no debe hacerlo."""
         from api.core.models import SupportTicket
 
-        _mark_stale_data(
-            self.point.id,
-            [self._fresh_utc(hours=99)],
-            self._details("x"),
-            {},
-        )
+        _mark_stale_data(self.point.id, self._details(nivel=99), {})
         evento = SystemEvent.objects.get(point_catchment_id=self.point.id)
         self.assertEqual(
             SupportTicket.objects.filter(system_event=evento).count(), 0
@@ -129,41 +127,55 @@ class MarkStaleDataTests(TestCase):
 
     def test_cooldown_prevents_event_spam(self):
         """El cron corre cada minuto: no puede emitir 1 evento por hora."""
-        dt = [self._fresh_utc(hours=99)]
-        _mark_stale_data(self.point.id, dt, self._details("x"), {})
-        _mark_stale_data(self.point.id, dt, self._details("x"), {})
-        _mark_stale_data(self.point.id, dt, self._details("x"), {})
+        for _ in range(3):
+            _mark_stale_data(self.point.id, self._details(nivel=99), {})
         self.assertEqual(
             SystemEvent.objects.filter(point_catchment_id=self.point.id).count(), 1
         )
 
-    def test_no_provider_datetimes_means_not_stale(self):
+    def test_no_provider_datetime_means_not_stale(self):
+        """Sin fecha del proveedor no hay antigüedad que reportar."""
         register = {}
-        _mark_stale_data(self.point.id, [], self._details(None), register)
+        _mark_stale_data(self.point.id, self._details(nivel=None), register)
         self.assertFalse(register["variable_details"][0]["stale"])
         self.assertEqual(
             SystemEvent.objects.filter(point_catchment_id=self.point.id).count(), 0
         )
 
-    def test_uses_newest_variable(self):
-        """Si al menos una variable es fresca, el registro no es obsoleto."""
+    def test_mixed_freshness_marks_only_the_old_variable(self):
+        """
+        Regresión: antes se usaba max(provider_datetimes), así que un punto con
+        `nivel` al día y `caudal` de hace 2 años quedaba entero SIN marcar y la
+        API mostraba el dato viejo como recién actualizado.
+        """
         register = {}
         _mark_stale_data(
             self.point.id,
-            [self._fresh_utc(hours=99), self._fresh_utc(hours=0)],
-            self._details("x"),
+            self._details(nivel=0, caudal=STALE_THRESHOLD_HOURS + 5),
             register,
         )
-        self.assertFalse(register["variable_details"][0]["stale"])
+        por_nombre = {d["str_variable"]: d for d in register["variable_details"]}
+        self.assertFalse(por_nombre["nivel"]["stale"])
+        self.assertNotIn("stale_hours", por_nombre["nivel"])
+        self.assertTrue(por_nombre["caudal"]["stale"])
+        self.assertIn("stale_hours", por_nombre["caudal"])
+
+    def test_event_lists_only_the_stale_variables(self):
+        """El SystemEvent debe nombrar solo las variables afectadas."""
+        _mark_stale_data(
+            self.point.id,
+            self._details(nivel=0, caudal=STALE_THRESHOLD_HOURS + 5),
+            {},
+        )
+        evento = SystemEvent.objects.get(point_catchment_id=self.point.id)
+        afectadas = [v["variable"] for v in evento.extra_data["variables"]]
+        self.assertEqual(afectadas, ["caudal"])
 
     def test_keeps_provider_datetime_in_details(self):
+        detalles = self._details(nivel=99)
         register = {}
-        _mark_stale_data(
-            self.point.id,
-            [self._fresh_utc(hours=99)],
-            self._details("2026-10-12T10:00:00"),
-            register,
-        )
+        _mark_stale_data(self.point.id, detalles, register)
         self.assertEqual(
-            register["variable_details"][0]["provider_datetime"], "2026-10-12T10:00:00"
+            register["variable_details"][0]["provider_datetime"],
+            detalles[0]["provider_datetime"],
         )

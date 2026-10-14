@@ -216,49 +216,68 @@ def _as_aware_utc(date_time_str, handler_name):
         return None
 
 
+def _stale_hours_for(provider_datetime: Any, now) -> Optional[float]:
+    """Antigüedad en horas del timestamp que devolvió el proveedor."""
+    if not provider_datetime:
+        return None
+    try:
+        parsed = (
+            datetime.fromisoformat(provider_datetime)
+            if isinstance(provider_datetime, str)
+            else provider_datetime
+        )
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return round((now - parsed).total_seconds() / 3600.0, 2)
+    except Exception:
+        return None
+
+
 def _mark_stale_data(
     point_id: int,
-    provider_datetimes: list,
     variable_details: list,
     created_register: Dict[str, Any],
 ):
     """
-    Detecta que el proveedor dejó de entregar datos frescos.
+    Detecta variables cuyo proveedor dejó de entregar datos frescos.
 
     El registro se sella con la hora actual, por lo que sin esta marca la API
     no puede distinguir un dato de hace 16 minutos de uno de hace 3 días.
-    Se observó en 23 puntos Nettra clavados en el mismo timestamp mientras la
-    API seguía mostrando registros "de hoy".
+    Se observó en puntos clavados en el mismo timestamp mientras la API
+    seguía mostrando registros "de hoy".
+
+    La frescura se calcula POR VARIABLE, no por punto: un logger puede tener
+    `nivel` al día y `caudal` congelado hace 2 años. Usar el timestamp más
+    reciente del punto (antes: max(provider_datetimes)) tapaba ese caso y
+    dejaba el dato viejo marcado como actual.
 
     No cambia valores ni la ingesta: solo anota la frescura en
     `variable_details` y emite un SystemEvent WARNING.
-
-    Args:
-        provider_datetimes: datetimes aware en UTC ya normalizados por el caller.
     """
     threshold = getattr(settings, "TELEMETRY_STALE_THRESHOLD_HOURS", STALE_THRESHOLD_HOURS)
-    stale_hours = None
+    now = timezone.now()
 
-    if provider_datetimes:
-        try:
-            newest_utc = max(provider_datetimes).astimezone(timezone.utc)
-            stale_hours = round(
-                (timezone.now() - newest_utc).total_seconds() / 3600.0, 2
-            )
-        except Exception:
-            stale_hours = None
+    marcadas = []
+    for detalle in variable_details:
+        hours = _stale_hours_for(detalle.get("provider_datetime"), now)
+        detalle["stale"] = hours is not None and hours > threshold
+        if detalle["stale"]:
+            detalle["stale_hours"] = hours
+            marcadas.append(detalle)
 
-    is_stale = stale_hours is not None and stale_hours > threshold
-    created_register["variable_details"] = [
-        {**d, "stale": is_stale} for d in variable_details
-    ]
+    created_register["variable_details"] = variable_details
 
-    if is_stale:
-        telemetry_logger.warning(
-            f"[UNIFIED] Punto {point_id}: dato del proveedor con {stale_hours} h "
-            f"de antigüedad (umbral {threshold} h). Se guarda igual, marcado como obsoleto."
+    if marcadas:
+        peor = max(d["stale_hours"] for d in marcadas)
+        nombres = ", ".join(
+            f"{d.get('str_variable')} ({d['stale_hours']:.1f} h)" for d in marcadas
         )
-        _emit_stale_event(point_id, stale_hours, variable_details)
+        telemetry_logger.warning(
+            f"[UNIFIED] Punto {point_id}: {len(marcadas)} variable(s) con dato "
+            f"obsoleto del proveedor (umbral {threshold} h): {nombres}. "
+            f"Se guarda igual, marcado como obsoleto."
+        )
+        _emit_stale_event(point_id, peor, marcadas)
 
 
 def _emit_stale_event(point_id: int, stale_hours: float, variable_details: list):
@@ -348,7 +367,6 @@ def _process_point(
     max_days_not_conection = 0
     best_date_time_last_logger: Optional[datetime] = None
     variable_details: list = []
-    provider_datetimes: list = []
 
     for variable in variables:
         data = None
@@ -451,25 +469,31 @@ def _process_point(
         # Detalle para variable_details (compatibilidad con legacy)
         # ✅ FIX: success refleja si el getter realmente funcionó (date_time no es None)
         getter_succeeded = data.get("date_time") is not None
-        variable_details.append({
-            "str_variable": variable.get("str_variable"),
-            "type_variable": variable.get("type_variable"),
-            "value": data.get("value"),
-            "success": getter_succeeded,
-        })
+
         # Timestamp real entregado por el proveedor (no el de "ahora" del registro).
         # Normalizado a UTC aware: los getters NO devuelven la misma zona horaria.
         #   thingsio / tago  -> parsean "...Z"      -> naive UTC
         #   tdata / generic  -> datetime.fromtimestamp -> naive hora del servidor
         #                       (Django fija TIME_ZONE=America/Santiago)
+        provider_dt = None
         if getter_succeeded:
             provider_dt = _as_aware_utc(
                 data["date_time"],
                 provider.get("handler_name") if isinstance(provider, dict)
                 else getattr(provider, "handler_name", None),
             )
-            if provider_dt is not None:
-                provider_datetimes.append(provider_dt)
+
+        variable_details.append({
+            "str_variable": variable.get("str_variable"),
+            "type_variable": variable.get("type_variable"),
+            "value": data.get("value"),
+            "success": getter_succeeded,
+            # Fecha real que devolvió el proveedor. Se persiste para que la API
+            # pueda mostrar "dato de hace 40 h" en vez de solo un flag booleano,
+            # y para que _mark_stale_data calcule la frescura POR VARIABLE
+            # (un logger puede tener `nivel` al día y `caudal` congelado hace años).
+            "provider_datetime": provider_dt.isoformat() if provider_dt else None,
+        })
 
     # Replicar último registro si no hay datos y está configurado (Nettra legacy)
     if replicate_on_missing and best_date_time_last_logger is None:
@@ -477,7 +501,7 @@ def _process_point(
 
     # Marca la frescura real del dato ANTES de fijar variable_details,
     # porque _replicate_last_record puede vaciar la lista.
-    _mark_stale_data(point_id, provider_datetimes, variable_details, created_register)
+    _mark_stale_data(point_id, variable_details, created_register)
     created_register["is_partial"] = False
 
     # Determinar si enviar a DGA
