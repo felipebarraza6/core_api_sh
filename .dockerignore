@@ -1,0 +1,41 @@
+# .dockerignore — qué NO entra en la imagen (contexto de build)
+#
+# IMPORTANTE: esto solo afecta a "ADD . /app/" del Dockerfile. Los bind mounts
+# del compose (./api, ./tests, ./backups, ./templates, ./conf, ...) se surten
+# del host EN RUNTIME y no dependen de esta lista, así que excluir aquí un
+# directorio montado es seguro: el mount lo provee igual.
+#
+# NO excluir: cron-entrypoint.sh, rotate-cron-logs.sh (el Dockerfile los COPY'a
+# explícitamente), api/requirements.txt, ni ningún .py que se importe.
+
+# --- Secretos: jamás en las capas de la imagen ---
+# /app/.env lo lee settings.py con load_dotenv(); ahora las claves llegan por
+# env_file: .env en el compose (servicios django y cron).
+.env
+.env.*
+*.pem
+*.key
+
+# Credenciales de Google: el contenedor las recibe por el volumen
+# "google_credentials" montado en /app/credentials, no desde la imagen.
+credentials/
+
+# --- Datos grandes o sensibles generados ---
+# 3,4 GB de dumps; siempre montado en /app/backups en runtime.
+backups/
+
+# --- Control de versiones ---
+.git
+.gitignore
+.gitattributes
+
+# --- Documentación: no se usa en runtime ---
+docs/
+
+# --- Basura de build / entornos ---
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/

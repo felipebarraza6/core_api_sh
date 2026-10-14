@@ -153,6 +153,13 @@ services:
   django:
     build: .
     container_name: django_api_secure
+    # Variables adicionales que load_dotenv() tomaba de /app/.env (quemado en la
+    # imagen por "ADD . /app/"). Al excluirlas del .dockerignore hay que
+    # proveerlas desde el .env del host. environment: tiene precedencia sobre
+    # env_file, así que las claves ya listadas abajo no cambian de valor.
+    # Efectivo al recrear el contenedor (docker-compose up -d), no en restart.
+    env_file:
+      - .env
     environment:
       - LOCAL_DB_NAME=smarthydro_prod
       - LOCAL_DB_USER=smarthydro_user
@@ -336,6 +343,9 @@ services:
     build: .
     container_name: cron_jobs_secure
     entrypoint: /app/cron-entrypoint.sh
+    # Mismo motivo que el servicio django: ver comentario ahí.
+    env_file:
+      - .env
     environment:
       - LOCAL_DB_NAME=smarthydro_prod
       - LOCAL_DB_USER=smarthydro_user
