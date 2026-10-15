@@ -1089,8 +1089,9 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
 
 
 class DgaSendInfoSerializer(serializers.Serializer):
-    """Info de envíos DGA por punto: standard, último envío, voucher y próximo envío."""
+    """Info de envíos DGA por punto: standard, shac, último envío, voucher y próximo envío."""
     standard = serializers.CharField(allow_null=True, required=False)
+    shac = serializers.CharField(allow_null=True, required=False)
     last_send = serializers.CharField(allow_null=True, required=False)
     voucher = serializers.CharField(allow_null=True, required=False)
     next_send = serializers.CharField(allow_null=True, required=False)
@@ -1107,8 +1108,8 @@ class PublicMapPointSerializer(serializers.Serializer):
     code = serializers.CharField()
     code_kind = serializers.ChoiceField(choices=('DGA', 'OTHER'))
     type_dga = serializers.CharField(allow_null=True, required=False)
-    measurements = serializers.ListField(
-        child=serializers.ChoiceField(choices=('nivel_freatico', 'caudal', 'totalizado')),
+    measurements = serializers.DictField(
+        child=serializers.FloatField(allow_null=True),
         required=False,
     )
     dga = DgaSendInfoSerializer(allow_null=True, required=False)

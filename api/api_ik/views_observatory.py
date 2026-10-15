@@ -2,18 +2,25 @@
 Observatorio georreferenciado público
 =====================================
 
-GET /api/ik/observatory/public/   — AllowAny: solo códigos DGA (OB*) con coords
+GET /api/ik/observatory/public/   — AllowAny: solo códigos DGA (OB*) con coordenadas
 GET /api/ik/observatory/points/   — IsAuthenticated: DGA + no-DGA del usuario (o todos si staff)
 
-Respuesta mínima: id, lat, lon, code, code_kind, type_dga, measurements, dga.
-`measurements` normaliza nivel freático / caudal / totalizado desde las variables
-del punto (`Variable.type_variable`); si no hay variables, se infiere por `type_dga`.
-`dga` (solo puntos DGA) trae `standard`, último envío (`last_send`), el `voucher`
-(comprobante) y el próximo envío programado (`next_send`).
+Respuesta: `stats` (indicadores agregados) + `mode`, `count`, `dga_count`,
+`other_count`, `legend` y `points` (id, lat, lon, code, code_kind, type_dga,
+measurements, dga).
+Las coordenadas UTM (lat= northing, lon= easting, zona 19S) se convierten a
+lat/lon decimal en la lectura; no se modifica la base de datos. Los puntos sin
+coordenada válida no se muestran.
+`measurements` es un diccionario {categoría: valor} de la última medición
+enviada; la categoría (nivel freático / caudal / totalizado) se normaliza desde
+las variables del punto (`Variable.type_variable`) o se infiere por `type_dga`.
+`dga` (solo puntos DGA) trae `standard`, `shac`, último envío (`last_send`), el
+`voucher` (comprobante) y el próximo envío programado (`next_send`).
 Sin cliente, título, telemetría ni credenciales.
 """
 
-from datetime import timedelta
+import math
+from datetime import datetime, timedelta
 
 import pytz
 
@@ -42,6 +49,65 @@ def _parse_coord(value):
     if number != number:  # NaN
         return None
     return number
+
+
+def _utm_to_latlon(easting, northing, zone=19, southern=True):
+    """Convierte UTM (WGS84) a lat/lon decimal. Por defecto zona 19S (Chile central).
+
+    Fórmula de la serie estándar (USGS); sin dependencias externas.
+    """
+    a = 6378137.0
+    f = 1 / 298.257223563
+    e2 = f * (2 - f)
+    k0 = 0.9996
+    e1 = (1 - math.sqrt(1 - e2)) / (1 + math.sqrt(1 - e2))
+    x = easting - 500000.0
+    y = northing - (10000000.0 if southern else 0.0)
+    lon0 = math.radians(zone * 6 - 183)
+    m = y / k0
+    mu = m / (a * (1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256))
+    phi1 = (
+        mu
+        + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * math.sin(2 * mu)
+        + (21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32) * math.sin(4 * mu)
+        + (151 * e1 ** 3 / 96) * math.sin(6 * mu)
+    )
+    n1 = a / math.sqrt(1 - e2 * math.sin(phi1) ** 2)
+    t1 = math.tan(phi1) ** 2
+    c1 = e2 / (1 - e2) * math.cos(phi1) ** 2
+    r1 = a * (1 - e2) / (1 - e2 * math.sin(phi1) ** 2) ** 1.5
+    d = x / (n1 * k0)
+    lat = phi1 - (n1 * math.tan(phi1) / r1) * (
+        d ** 2 / 2
+        - (5 + 3 * t1 + 10 * c1 - 4 * c1 ** 2 - 9 * (e2 / (1 - e2))) * d ** 4 / 24
+        + (61 + 90 * t1 + 298 * c1 + 45 * t1 ** 2 - 252 * (e2 / (1 - e2)) - 3 * c1 ** 2) * d ** 6 / 720
+    )
+    lon = lon0 + (
+        d
+        - (1 + 2 * t1 + c1) * d ** 3 / 6
+        + (5 - 2 * c1 + 28 * t1 - 3 * c1 ** 2 + 8 * (e2 / (1 - e2)) + 24 * t1 ** 2) * d ** 5 / 120
+    ) / math.cos(phi1)
+    return math.degrees(lat), math.degrees(lon)
+
+
+def _resolve_coords(lat_raw, lon_raw):
+    """Devuelve (lat, lon) decimales o (None, None).
+
+    Acepta lat/lon geográficas directas; si no lo son pero el par parece UTM
+    (`lat`=northing, `lon`=easting) se convierte desde zona 19S. Solo lectura.
+    """
+    lat = _parse_coord(lat_raw)
+    lon = _parse_coord(lon_raw)
+    if lat is None or lon is None:
+        return None, None
+    if -90 <= lat <= 90 and -180 <= lon <= 180:
+        return lat, lon
+    northing, easting = lat, lon
+    if 0 <= northing <= 10000000 and 100000 <= easting <= 900000:
+        clat, clon = _utm_to_latlon(easting, northing, zone=19, southern=True)
+        if -90 <= clat <= 90 and -180 <= clon <= 180:
+            return clat, clon
+    return None, None
 
 
 def _code_kind(code):
@@ -129,50 +195,93 @@ def _dga_info(cfg, kind):
     standard = (getattr(cfg, 'standard', '') or 'SIN_ESTANDAR')
     return {
         'standard': standard,
+        'shac': (getattr(cfg, 'shac', '') or None),
         'last_send': None,
         'voucher': None,
         'next_send': _next_dga_send(standard),
     }
 
 
+def _metric(value):
+    """Convierte un valor de medición a float (o None si vacío / no numérico)."""
+    if value is None:
+        return None
+    text = str(value).strip().replace(',', '.')
+    if not text:
+        return None
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _record_measurements(record):
+    """{categoría: valor} a partir de un registro de telemetría."""
+    if record is None:
+        return {'nivel_freatico': None, 'caudal': None, 'totalizado': None}
+    return {
+        'nivel_freatico': _metric(record.water_table),
+        'caudal': _metric(record.flow),
+        'totalizado': _metric(record.total),
+    }
+
+
 def _fill_last_dga(points):
-    """Completa `last_send`/`voucher` con el último comprobante DGA de cada punto."""
-    ids = [p['id'] for p in points if p.get('dga')]
-    if not ids:
-        return
+    """Rellena valores de medición y, para DGA, el último envío (voucher).
+
+    Los DGA toman el valor del último envío (comprobante); los no-DGA, de su
+    última medición disponible.
+    """
+    dga_ids = [p['id'] for p in points if p.get('dga')]
+    other_ids = [p['id'] for p in points if not p.get('dga')]
+
+    fields = ('catchment_point_id', 'date_time_medition', 'flow', 'water_table', 'total')
     last = {}
-    qs = (
-        InteractionDetail.objects
-        .filter(catchment_point_id__in=ids, n_voucher__isnull=False)
-        .exclude(n_voucher='')
-        .only('catchment_point_id', 'date_time_medition', 'n_voucher')
-        .order_by('catchment_point_id', '-date_time_medition')
-        .distinct('catchment_point_id')
-    )
-    for obj in qs:
-        last[obj.catchment_point_id] = obj
+    if dga_ids:
+        qs = (
+            InteractionDetail.objects
+            .filter(catchment_point_id__in=dga_ids, n_voucher__isnull=False)
+            .exclude(n_voucher='')
+            .only(*(fields + ('n_voucher',)))
+            .order_by('catchment_point_id', '-date_time_medition')
+            .distinct('catchment_point_id')
+        )
+        for obj in qs:
+            last[obj.catchment_point_id] = obj
+    if other_ids:
+        qs = (
+            InteractionDetail.objects
+            .filter(catchment_point_id__in=other_ids)
+            .only(*fields)
+            .order_by('catchment_point_id', '-date_time_medition')
+            .distinct('catchment_point_id')
+        )
+        for obj in qs:
+            last[obj.catchment_point_id] = obj
+
     for point in points:
-        if not point.get('dga'):
-            continue
         record = last.get(point['id'])
-        if record and record.date_time_medition:
-            point['dga']['last_send'] = timezone.localtime(
+        values = _record_measurements(record)
+        measurements = point.get('measurements') or {}
+        for category in measurements:
+            measurements[category] = values.get(category)
+        dga = point.get('dga')
+        if dga and record and record.date_time_medition:
+            dga['last_send'] = timezone.localtime(
                 record.date_time_medition, CHILE_TZ
             ).isoformat()
-            point['dga']['voucher'] = record.n_voucher
+            dga['voucher'] = record.n_voucher
 
 
 def _serialize_point(point, cfg):
-    lat = _parse_coord(point.lat)
-    lon = _parse_coord(point.lon)
-    if lat is None or lon is None:
-        return None
-    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-        return None
-
     code = (cfg.code_dga or '').strip() if cfg else ''
     kind = _code_kind(code)
     if not kind:
+        return None
+
+    lat, lon = _resolve_coords(point.lat, point.lon)
+    if lat is None or lon is None:
+        # Sin coordenadas válidas el punto no se muestra en el mapa.
         return None
 
     return {
@@ -182,7 +291,7 @@ def _serialize_point(point, cfg):
         'code': code,
         'code_kind': kind,
         'type_dga': (cfg.type_dga or None) if cfg else None,
-        'measurements': _measurements(point, cfg),
+        'measurements': {category: None for category in _measurements(point, cfg)},
         'dga': _dga_info(cfg, kind),
     }
 
@@ -196,7 +305,7 @@ def _base_queryset():
             'dga_data_config_profiles',
             queryset=DgaDataConfigCatchment.objects.only(
                 'point_catchment_id', 'code_dga', 'type_dga', 'standard',
-                'send_dga', 'sma_device_id'
+                'send_dga', 'sma_device_id', 'shac'
             ),
         )
     )
@@ -207,6 +316,75 @@ def _scoped_queryset(user):
     if user.is_staff or user.is_superuser:
         return qs
     return qs.filter(Q(owner_user=user) | Q(users_viewers=user)).distinct()
+
+
+def _build_stats(points):
+    """Indicadores agregados de los puntos devueltos (para el observatorio)."""
+    by_type = {}
+    by_standard = {}
+    by_measurement = {}
+    by_shac = {}
+    sent = 0
+    last_sends = []
+    next_sends = []
+    metrics = {'nivel_freatico': [], 'caudal': [], 'totalizado': []}
+
+    def _parse(iso):
+        try:
+            return datetime.fromisoformat(iso)
+        except (TypeError, ValueError):
+            return None
+
+    for point in points:
+        type_dga = point.get('type_dga') or 'SIN_TIPO'
+        by_type[type_dga] = by_type.get(type_dga, 0) + 1
+
+        dga = point.get('dga') or {}
+        standard = dga.get('standard') or 'SIN_ESTANDAR'
+        by_standard[standard] = by_standard.get(standard, 0) + 1
+        shac = dga.get('shac') or 'Sin SHAC'
+        by_shac[shac] = by_shac.get(shac, 0) + 1
+
+        for category, value in (point.get('measurements') or {}).items():
+            by_measurement[category] = by_measurement.get(category, 0) + 1
+            if value is not None:
+                metrics.setdefault(category, []).append(value)
+
+        if dga.get('last_send'):
+            sent += 1
+            last_sends.append(dga['last_send'])
+        if dga.get('next_send'):
+            next_sends.append(dga['next_send'])
+
+    def _agg(values):
+        if not values:
+            return {'count': 0, 'min': None, 'max': None, 'avg': None}
+        return {
+            'count': len(values),
+            'min': round(min(values), 2),
+            'max': round(max(values), 2),
+            'avg': round(sum(values) / len(values), 2),
+        }
+
+    def _extreme(values, pick):
+        parsed = [(raw, _parse(raw)) for raw in values]
+        parsed = [(raw, dt) for raw, dt in parsed if dt is not None]
+        if not parsed:
+            return None
+        return pick(parsed, key=lambda item: item[1])[0]
+
+    total = len(points)
+    return {
+        'total': total,
+        'by_type_dga': by_type,
+        'by_standard': by_standard,
+        'by_measurement': by_measurement,
+        'by_shac': by_shac,
+        'sending': {'sent': sent, 'pending': total - sent},
+        'last_send': _extreme(last_sends, max),
+        'next_send': _extreme(next_sends, min),
+        'metrics': {cat: _agg(vals) for cat, vals in metrics.items()},
+    }
 
 
 def _collect_points(queryset, *, kinds):
@@ -252,6 +430,7 @@ class ObservatoryPublicPointsView(APIView):
         _fill_last_dga(points)
         data = PublicMapPointSerializer(points, many=True).data
         return Response({
+            'stats': _build_stats(points),
             'mode': 'public',
             'count': len(data),
             'dga_count': len(data),
@@ -321,6 +500,7 @@ class ObservatoryAuthPointsView(APIView):
         other_count = len(data) - dga_count
 
         return Response({
+            'stats': _build_stats(points),
             'mode': 'authenticated',
             'count': len(data),
             'dga_count': dga_count,
