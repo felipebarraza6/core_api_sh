@@ -382,6 +382,28 @@ CORS_ORIGIN_WHITELIST = [
     "http://localhost:3001",  # Local UI development
 ]
 
+# ✅ FIX CORS: Orígenes por IP solo en desarrollo (DEBUG=true) — nunca en producción
+if DEBUG:
+    CORS_ORIGIN_WHITELIST += [
+        "http://104.28.235.11",
+        "http://104.28.235.11:3000",
+        "http://104.28.235.11:3001",
+        "http://104.28.235.11:5173",
+        "http://104.28.235.11:8000",
+        "http://104.28.235.11:8080",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ]
+    ALLOWED_HOSTS = ALLOWED_HOSTS + ["104.28.235.11", "127.0.0.1"]
+    CSRF_TRUSTED_ORIGINS = CSRF_TRUSTED_ORIGINS + [
+        "http://104.28.235.11",
+        "http://104.28.235.11:3000",
+        "http://104.28.235.11:3001",
+        "http://104.28.235.11:5173",
+        "http://104.28.235.11:8000",
+        "http://104.28.235.11:8080",
+    ]
+
 # ✅ FIX CORS: Permitir también patrones con regex para subdominios
 CORS_ORIGIN_REGEX_WHITELIST = [
     r"^https://.*\.smarthydro\.app$",
