@@ -249,9 +249,10 @@ def _get_dga_config(register: InteractionDetail) -> Optional[DgaDataConfigCatchm
     """
     try:
         # Obtener configuración DGA para el punto de captación
+        # Tolerar configs duplicadas: preferir la activa (send_dga=True), luego la más reciente
         dga_config = DgaDataConfigCatchment.objects.filter(
             point_catchment=register.catchment_point
-        ).first()
+        ).order_by("-send_dga", "-id").first()
 
         if not dga_config:
             dga_logger.warning(

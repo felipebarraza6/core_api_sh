@@ -72,9 +72,14 @@ def run():
             sma_logger.info(f"📋 Procesando registro ID: {register.id} - Punto: {register.catchment_point_id}")
 
             # Obtener configuración DGA para este punto
-            dga_config = DgaDataConfigCatchment.objects.get(
+            # Tolerar configs duplicadas: preferir la activa, luego la más reciente
+            dga_config = DgaDataConfigCatchment.objects.filter(
                 point_catchment_id=register.catchment_point_id
-            )
+            ).order_by("-send_dga", "-id").first()
+            if dga_config is None:
+                raise DgaDataConfigCatchment.DoesNotExist(
+                    f"Sin config DGA para punto {register.catchment_point_id}"
+                )
 
             # Validar registro
             if not _validate_register(register):
