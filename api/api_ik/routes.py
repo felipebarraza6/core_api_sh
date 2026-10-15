@@ -11,6 +11,8 @@ Endpoints disponibles:
 - POST /api/ik/login/               - Login optimizado (menos datos)
 - GET  /api/ik/points_summary/      - Resumen de puntos del usuario + última telemetría
 - GET  /api/ik/point/<id>/summary/  - Resumen de un punto específico
+- GET  /api/ik/observatory/public/  - Mapa público: solo códigos DGA con coords
+- GET  /api/ik/observatory/points/  - Mapa auth: DGA + no-DGA del alcance
 """
 
 from django.urls import path
@@ -73,6 +75,10 @@ from .views_control_center import (
     ControlCenterSystemEventsPointDetailView,
 )
 from .views_agent import AgentPointsTokensView
+from .views_observatory import (
+    ObservatoryPublicPointsView,
+    ObservatoryAuthPointsView,
+)
 
 try:
     from django_rest_passwordreset.views import (
@@ -139,6 +145,10 @@ urlpatterns = [
 
     # Public announcements (sin auth)
     path('announcements/public/', PublicAnnouncementsView.as_view(), name='public_announcements'),
+
+    # Observatorio georreferenciado (mapa público)
+    path('observatory/public/', ObservatoryPublicPointsView.as_view(), name='observatory_public'),
+    path('observatory/points/', ObservatoryAuthPointsView.as_view(), name='observatory_points'),
 
     # Tickets de soporte + SLA
     path('tickets/', TicketsListCreateView.as_view(), name='tickets_list_create'),

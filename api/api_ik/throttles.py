@@ -58,7 +58,7 @@ class TicketRateThrottle(UserRateThrottle):
 
 class PublicReadRateThrottle(AnonRateThrottle):
     """
-    Throttle para endpoints públicos de solo lectura (announcements).
+    Throttle para endpoints públicos de solo lectura (announcements, observatorio).
     """
-    rate = "30/minute"
+    rate = "60/minute"
     scope = "public_read"

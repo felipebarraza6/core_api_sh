@@ -1086,3 +1086,16 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
         model = CatchmentPoint
         fields = ('id', 'title','frecuency',
                   'profile_ikolu', 'config_data', 'dga', 'modules', 'lat','lon')
+
+
+class PublicMapPointSerializer(serializers.Serializer):
+    """
+    Observatorio público: solo código regulatorio + coordenadas.
+    Nunca expone cliente, título, telemetría ni credenciales.
+    """
+    id = serializers.IntegerField()
+    lat = serializers.FloatField()
+    lon = serializers.FloatField()
+    code = serializers.CharField()
+    code_kind = serializers.ChoiceField(choices=('DGA', 'OTHER'))
+    type_dga = serializers.CharField(allow_null=True, required=False)
