@@ -25,6 +25,7 @@ Uso:
 
 import argparse
 import os
+import re
 import sys
 from datetime import datetime, timedelta
 from collections import OrderedDict
@@ -43,6 +44,32 @@ UTC = pytz.utc
 
 WINDOW_START = datetime(2026, 8, 1, 0, 0, 0, tzinfo=UTC)
 WINDOW_END = datetime.utcnow().replace(tzinfo=UTC)
+
+# Voucher SMA (IdVerificacion) es una UUID: NO es comprobante DGA.
+SMA_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def has_dga_voucher(n_voucher):
+    """True solo si n_voucher es un comprobante DGA real (no SMA ni placeholder)."""
+    if not n_voucher:
+        return False
+    if n_voucher in ("", "None", "No se pudo obtener el comprobante"):
+        return False
+    if SMA_UUID_RE.match(n_voucher):
+        return False  # voucher SMA, no DGA
+    return True
+
+
+def is_local_time_valid(dt_clt):
+    """False para horas inexistentes (salto de horario: p.ej. 6-sep 00:00 CLT)."""
+    loc = CHILE.localize(dt_clt)
+    return loc.astimezone(UTC).astimezone(CHILE).replace(tzinfo=None) == dt_clt
+
+
+def get_config(pid):
+    """Config DGA tolerando duplicados: prefiere la activa (send_dga=True), luego la más reciente."""
+    cfgs = DgaDataConfigCatchment.objects.filter(point_catchment_id=pid).order_by("-send_dga", "-id")
+    return cfgs.first()
 
 
 def qualifies(standard, dt_clt, freq):
@@ -71,28 +98,24 @@ def qualifies(standard, dt_clt, freq):
 
 
 def slot_keys(standard, start_clt, end_clt, freq):
-    """Conjunto de (fecha, hora) CLT que DEBEN tener un envío en la ventana."""
+    """Conjunto de (fecha, hora) CLT que DEBEN tener un envío en la ventana.
+
+    Excluye horas locales inexistentes por cambio de horario (DST).
+    """
     slots = set()
     t = start_clt
-    if freq >= 60:
-        # recorrer cada hora
-        t = t.replace(minute=0, second=0, microsecond=0)
-        while t < end_clt:
-            if qualifies(standard, t, 60):
-                slots.add(t.replace(minute=0, second=0, microsecond=0))
-            t += timedelta(hours=1)
-    else:
-        # recorrer cada hora verificando minute<freq (desalineación tolerada)
-        t = t.replace(minute=0, second=0, microsecond=0)
-        while t < end_clt:
-            if qualifies(standard, t, freq):
-                slots.add(t.replace(minute=0, second=0, microsecond=0))
-            t += timedelta(hours=1)
+    t = t.replace(minute=0, second=0, microsecond=0)
+    while t < end_clt:
+        if is_local_time_valid(t) and qualifies(standard, t, freq):
+            slots.add(t)
+        t += timedelta(hours=1)
     return slots
 
 
 def audit_point(pid):
-    cfg = DgaDataConfigCatchment.objects.get(point_catchment_id=pid)
+    cfg = get_config(pid)
+    if cfg is None:
+        raise DgaDataConfigCatchment.DoesNotExist
     pt = cfg.point_catchment
     freq = int(pt.frecuency) if pt.frecuency else 60
     standard = cfg.standard
@@ -107,7 +130,7 @@ def audit_point(pid):
     )
 
     # Clasificar registros existentes
-    ok = en_cola = lv = con_error = 0
+    ok = en_cola = lv = con_error = sma = 0
     lv_samples = []
     ce_samples = []
     sent_slots = set()   # slots con envío válido (voucher)
@@ -118,7 +141,8 @@ def audit_point(pid):
         if not qualifies(standard, dt_clt, freq):
             continue
         slot = dt_clt.replace(minute=0, second=0, microsecond=0)
-        has_voucher = bool(n_voucher) and n_voucher not in ("", "None", "No se pudo obtener el comprobante")
+        has_voucher = has_dga_voucher(n_voucher)
+        is_sma = bool(n_voucher) and SMA_UUID_RE.match(n_voucher or "")
         if is_error:
             con_error += 1
             sent_slots.add(slot)
@@ -129,6 +153,10 @@ def audit_point(pid):
             sent_slots.add(slot)
         elif has_voucher:
             ok += 1
+            ok_slots.add(slot)
+        elif is_sma:
+            # Reportado por SMA (mismo campo n_voucher); no es voucher DGA.
+            sma += 1
             ok_slots.add(slot)
         else:
             lv += 1
@@ -141,14 +169,19 @@ def audit_point(pid):
     end_clt = WINDOW_END.astimezone(CHILE).replace(tzinfo=None)
     expected = slot_keys(standard, start_clt, end_clt, freq)
     all_sent = sent_slots | ok_slots
-    laguna_dato = sorted(expected - all_sent)
+    # La hora en curso todavía está en proceso (cola/telemetría) -> no es laguna
+    hora_en_curso = end_clt.replace(minute=0, second=0, microsecond=0)
+    pendientes = sorted(expected - all_sent)
+    en_curso = [s for s in pendientes if s >= hora_en_curso]
+    laguna_dato = [s for s in pendientes if s < hora_en_curso]
     ld_samples = [CHILE.localize(s).astimezone(UTC) for s in laguna_dato[:3]]
 
     return {
         "pid": pid, "title": pt.title, "freq": freq, "standard": standard,
         "start_compliance": cfg.date_start_compliance,
         "esperados": len(expected),
-        "ok": ok, "en_cola": en_cola, "lv": lv, "ld": len(laguna_dato), "err": con_error,
+        "ok": ok, "en_cola": en_cola, "lv": lv, "ld": len(laguna_dato),
+        "err": con_error, "sma": sma, "en_curso": len(en_curso),
         "lv_samples": lv_samples, "ld_samples": ld_samples, "ce_samples": ce_samples,
     }
 
@@ -164,7 +197,7 @@ def main():
         pids = list(
             DgaDataConfigCatchment.objects.filter(send_dga=True)
             .order_by("point_catchment_id")
-            .values_list("point_catchment_id", flat=True)
+            .values_list("point_catchment_id", flat=True).distinct()
         )
 
     rows = []
@@ -178,16 +211,13 @@ def main():
 
     rows.sort(key=lambda r: (r["standard"], r["pid"]))
 
-    print(f"{'pt':<5}{'freq':<5}{'standard':<22}{'esp':>5}{'ok':>5}{'cola':>5}{'lv':>5}{'ld':>5}{'err':>5}  detalle")
-    print("-" * 120)
-    tot = {"esperados": 0, "ok": 0, "en_cola": 0, "lv": 0, "ld": 0, "err": 0}
+    print(f"{'pt':<5}{'freq':<5}{'standard':<22}{'esp':>5}{'ok':>5}{'sma':>5}{'cola':>5}"
+          f"{'curso':>6}{'lv':>5}{'ld':>5}{'err':>5}  detalle")
+    print("-" * 130)
+    tot = {"esperados": 0, "ok": 0, "sma": 0, "en_cola": 0, "en_curso": 0, "lv": 0, "ld": 0, "err": 0}
     for r in rows:
-        tot["esperados"] += r["esperados"]
-        tot["ok"] += r["ok"]
-        tot["en_cola"] += r["en_cola"]
-        tot["lv"] += r["lv"]
-        tot["ld"] += r["ld"]
-        tot["err"] += r["err"]
+        for k in tot:
+            tot[k] += r[k]
         det = ""
         if r["lv_samples"]:
             det += " LV:" + ",".join(x.strftime("%d%H%M") for x in r["lv_samples"])
@@ -195,11 +225,14 @@ def main():
             det += " LD:" + ",".join(x.strftime("%d%H") for x in r["ld_samples"])
         if r["ce_samples"]:
             det += " ERR:" + ",".join(x.strftime("%d%H") for x in r["ce_samples"])
+        if r["sma"] and not r["ok"]:
+            det += " (voucher=SMA, sin envío DGA)"
         print(f"{r['pid']:<5}{r['freq']:<5}{r['standard']:<22}"
-              f"{r['esperados']:>5}{r['ok']:>5}{r['en_cola']:>5}"
-              f"{r['lv']:>5}{r['ld']:>5}{r['err']:>5}  {det}")
-    print("-" * 120)
-    print(f"TOTALES: esperados={tot['esperados']} con_voucher={tot['ok']} en_cola={tot['en_cola']} "
+              f"{r['esperados']:>5}{r['ok']:>5}{r['sma']:>5}{r['en_cola']:>5}"
+              f"{r['en_curso']:>6}{r['lv']:>5}{r['ld']:>5}{r['err']:>5}  {det}")
+    print("-" * 130)
+    print(f"TOTALES: esperados={tot['esperados']} con_voucher_dga={tot['ok']} sma={tot['sma']} "
+          f"en_cola={tot['en_cola']} en_curso={tot['en_curso']} "
           f"LAGUNA_VOUCHER={tot['lv']} LAGUNA_DATO={tot['ld']} con_error={tot['err']}")
 
 
