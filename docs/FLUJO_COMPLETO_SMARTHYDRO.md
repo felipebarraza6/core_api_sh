@@ -88,7 +88,7 @@ Se crea un registro en `core_profiledataconfigcatchment` vinculado al punto.
 
 **Qué significa cada campo:**
 - **str_variable:** El código que usa el proveedor (TwinDimension, Novus, etc.)
-- **type_variable:** Qué representa (CAUDAL, NIVEL, TOTALIZADO, CAUDAL_PROMEDIO)
+- **type_variable:** Qué representa (CAUDAL, NIVEL, TOTALIZADO, CAUDAL_PROMEDIO, TOTALIZADO_MODBUS_LO/HI — ver `docs/TOTALIZADO_MODBUS.md`)
 - **display_key:** Cómo se muestra en el frontend Ikolu (`caudal`, `nivel`, `total`)
 - **min/max:** Rango válido. Si el sensor manda -5 L/s, el sistema marca `is_error=True`
 - **pulses_factor:** Si el sensor manda "pulsos", se multiplica por esto. Default: 1000
