@@ -15,6 +15,7 @@ Cubre:
 
 from datetime import timedelta
 
+from django.core.exceptions import FieldError
 from django.test import TestCase
 from django.utils import timezone
 
@@ -41,6 +42,7 @@ from api.cronjobs.telemetry.controllers.unified_processing import (
     process_totalizado_variable,
     process_variable_safely,
 )
+from api.cronjobs.telemetry.telemetry_unified import _save_to_db
 
 MODBUS_DETAILS = [
     {"str_variable": "5002", "type_variable": "TOTALIZADO_MODBUS_HI", "value": 0, "success": True},
@@ -401,6 +403,49 @@ class ModbusProcessIntegrationTests(TestCase):
         self.assertNotIn("total", created)
         self.assertNotIn("pulses", created)
         self.assertEqual(created.get("_modbus_lo"), 100)
+
+    def test_save_to_db_strips_modbus_temp_keys(self):
+        """
+        Regresión prod (punto 152): el stash Modbus deja claves ``_modbus_*``
+        en created_register. Sin filtrarlas, update_or_create levanta FieldError.
+        """
+        # Caso real dry-run VPS: HI=9, LO=63222 → combined = 9*65536+63222
+        hi, lo = 9, 63222
+        expected_pulses = hi * MODBUS_UINT16_MODULUS + lo
+        medition = "2026-03-01T14:00:00"
+        reg = self._run_pair(hi=hi, lo=lo, medition=medition)
+
+        temp_keys = [k for k in reg if str(k).startswith("_")]
+        self.assertIn("_modbus_hi", temp_keys)
+        self.assertIn("_modbus_lo", temp_keys)
+        self.assertIn("_modbus_combined", temp_keys)
+        self.assertEqual(reg["pulses"], expected_pulses)
+
+        # Sin strip: Django trata las claves temporales como columnas.
+        with self.assertRaises(FieldError):
+            InteractionDetail.objects.update_or_create(
+                catchment_point_id=self.point.id,
+                date_time_medition=medition,
+                defaults=reg,
+            )
+
+        _save_to_db(
+            point_id=self.point.id,
+            medition_str=medition,
+            created_register=reg,
+            use_transaction=False,
+        )
+
+        saved = InteractionDetail.objects.get(
+            catchment_point_id=self.point.id,
+            date_time_medition=medition,
+        )
+        self.assertEqual(saved.pulses, expected_pulses)
+        self.assertEqual(int(saved.total), expected_pulses)
+        # Ninguna clave temporal es campo del modelo ni quedó en defaults.
+        model_field_names = {f.name for f in InteractionDetail._meta.get_fields()}
+        for key in temp_keys:
+            self.assertNotIn(key, model_field_names)
 
 
 class TotalizadoRegressionPoint152ConfigTests(TestCase):

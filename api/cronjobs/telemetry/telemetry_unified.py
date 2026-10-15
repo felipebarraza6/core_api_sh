@@ -734,7 +734,17 @@ def _save_to_db(
     created_register: Dict[str, Any],
     use_transaction: bool,
 ):
-    """Guarda el registro en InteractionDetail."""
+    """Guarda el registro en InteractionDetail.
+
+    Descarta claves temporales (p.ej. stash Modbus ``_modbus_hi`` / ``_modbus_lo``
+    / ``_modbus_combined``) antes de ``update_or_create``: Django las trataría
+    como columnas del modelo y levantaría ``FieldError``.
+    """
+    defaults = {
+        key: value
+        for key, value in created_register.items()
+        if not str(key).startswith("_")
+    }
     try:
         if use_transaction:
             from django.db import transaction as db_transaction
@@ -742,13 +752,13 @@ def _save_to_db(
                 InteractionDetail.objects.update_or_create(
                     catchment_point_id=point_id,
                     date_time_medition=medition_str,
-                    defaults=created_register,
+                    defaults=defaults,
                 )
         else:
             InteractionDetail.objects.update_or_create(
                 catchment_point_id=point_id,
                 date_time_medition=medition_str,
-                defaults=created_register,
+                defaults=defaults,
             )
         telemetry_logger.debug(f"[UNIFIED] Punto {point_id} guardado OK")
     except Exception as e:
