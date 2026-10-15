@@ -106,11 +106,13 @@ def main():
     log("=" * 70)
     log(f"BACKFILL Punto {point.id} ({point.title})")
     log(f"Rango: {args.start} → {args.end}")
-    log(f"Modo: {'APLICAR' if args.force else 'DRY-RUN'}")
+    log(f"Modo: {'APLICAR' if args.force else 'DRY-RUN'} | safe=True (no toca voucher DGA)")
     log("=" * 70)
 
     try:
-        result = backfill_point_from_providers(point, start_dt, end_dt, dry_run=not args.force)
+        result = backfill_point_from_providers(
+            point, start_dt, end_dt, dry_run=not args.force, safe=True
+        )
     except ValueError as e:
         log(f"❌ {e}")
         sys.exit(1)

@@ -77,12 +77,19 @@ class InteractionDetailModelSerializer(serializers.ModelSerializer):
         config = request_cache['points_config'][cp_id]
         total_d6 = config['total_d6']
 
-        # Aplicar d6 al total
-        current_total = representation.get("total", 0) or 0
-        total_d6_int = int(float(total_d6))
-        current_total_int = int(float(current_total))
-        actual_total = total_d6_int + current_total_int
-        representation["total"] = actual_total
+        # Vista de presentación del totalizador (stored + d6).
+        # Fuente de verdad: api.core.utils.totalizer.resolve_totalizer_views
+        # Ver docs/TOTALIZER_VIEWS.md
+        from api.core.utils.totalizer import resolve_totalizer_views
+        views = resolve_totalizer_views(
+            stored_total=representation.get("total", 0),
+            addition=0,  # addition ya está dentro de stored; d6 es solo display
+            d6=total_d6,
+        )
+        representation["total"] = views["display"]
+        # Campos explícitos para consumidores que necesiten las 3 vistas
+        representation["total_stored"] = views["stored"]
+        representation["total_display"] = views["display"]
 
         # ✅ OPTIMIZACIÓN CRÍTICA: Procesar día completo en batch para evitar N+1
         try:

@@ -104,7 +104,7 @@ class TelemetryAuditTestCase(TestCase):
         self.assertIn("base inválida", event.title.lower())
 
     def test_total_negative_pulses_creates_system_event(self):
-        """Pulsos negativos en total_m3 deben generar SystemEvent CRITICAL."""
+        """Códigos de estado del logger (-N) generan SystemEvent WARNING, no CRITICAL."""
         point_data = {
             "id": self.point.id,
             "profile_data_config": {"max_diff_m3_per_hour": 500},
@@ -115,10 +115,17 @@ class TelemetryAuditTestCase(TestCase):
         event = SystemEvent.objects.filter(
             point_catchment=self.point,
             event_type="MEASUREMENT_ERROR",
-            severity="CRITICAL",
+            severity="WARNING",
         ).first()
         self.assertIsNotNone(event)
-        self.assertIn("pulsos negativos", event.title.lower())
+        self.assertIn("código", event.title.lower())
+        # No debe haber CRITICAL por códigos de estado
+        self.assertFalse(
+            SystemEvent.objects.filter(
+                point_catchment=self.point,
+                severity="CRITICAL",
+            ).exists()
+        )
 
     def test_emit_system_event_deduplicates_critical(self):
         """SystemEvent CRITICAL duplicado dentro del cooldown no se crea."""

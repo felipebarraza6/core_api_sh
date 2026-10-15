@@ -73,7 +73,7 @@ class TelemetryBackfillEndpointTests(TestCase):
         self.assertIn("30", response.json().get("error", ""))
 
     def test_backfill_accepts_valid_range(self):
-        """Debe aceptar un rango válido de 3 días y retornar estructura esperada."""
+        """Debe aceptar un rango válido de 3 días (dry-run por defecto)."""
         # Crear esquema y variable necesarios para el backfill
         from api.core.models import SchemesCatchment, Variable
         scheme = SchemesCatchment.objects.create(name="Test Scheme", description="Test")
@@ -100,8 +100,10 @@ class TelemetryBackfillEndpointTests(TestCase):
         if response.status_code == 200:
             data = response.json()
             self.assertTrue(data["success"])
+            self.assertTrue(data.get("dry_run", True))
             self.assertIn("records_created", data)
             self.assertIn("processing", data)
+            self.assertIn("by_reason", data)
             self.assertIn("totals_updated", data["processing"])
             self.assertIn("flow_updated", data["processing"])
 

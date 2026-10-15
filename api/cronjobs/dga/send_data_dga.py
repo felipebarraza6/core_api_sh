@@ -10,6 +10,21 @@ from api.core.utils.compliance import ComplianceConfig
 from api.cronjobs.utils.logging_config import dga_logger
 
 
+def _update_dga_outcome(id_interaction, *, set_error=None, **fields):
+    """
+    Actualiza el resultado del envío DGA.
+
+    Contrato de is_error:
+    - Nunca se borra (is_error=False) por aceptación o reintento DGA.
+      La marca de error de ingesta debe sobrevivir al comprobante.
+    - Solo se puede elevar a True ante fallo definitivo de DGA.
+    """
+    if set_error is True:
+        fields["is_error"] = True
+    # set_error=False / None → no tocar el campo
+    InteractionDetail.objects.filter(id=id_interaction).update(**fields)
+
+
 def send(response, delay_seconds=2):
     """Envio DGA via API REST."""
 
@@ -155,12 +170,12 @@ def send(response, delay_seconds=2):
                         
                         dga_logger.info(f"REGISTRO DUPLICADO - Ya enviado: {numero_comprobante}")
                         
-                        # Marcar como enviado exitosamente
-                        InteractionDetail.objects.filter(id=id_interaction).update(
+                        # Marcar como enviado; NUNCA borrar is_error de ingesta
+                        _update_dga_outcome(
+                            id_interaction,
                             return_dga=f"Duplicado: {error_message}",
-                            send_dga=False,  # Ya no pendiente
+                            send_dga=False,
                             n_voucher=numero_comprobante,
-                            is_error=False,  # Es éxito (ya estaba enviado)
                         )
                         
                         time.sleep(delay_seconds)  # Rate limit configurable
@@ -170,10 +185,11 @@ def send(response, delay_seconds=2):
                         # 🔴 ERRORES ESPECÍFICOS PARA NO REINTENTAR
                         if "Usuario no es el informante registrado en la Obra" in error_message:
                             dga_logger.error(f"ERROR IRRECUPERABLE: {error_message}")
-                            InteractionDetail.objects.filter(id=id_interaction).update(
+                            _update_dga_outcome(
+                                id_interaction,
+                                set_error=True,
                                 return_dga=f"Error DGA Irrecuperable: {error_message}",
-                                send_dga=False,  # 🛑 Detener envíos para este registro
-                                is_error=True,
+                                send_dga=False,
                             )
                             return False
 
@@ -202,25 +218,28 @@ def send(response, delay_seconds=2):
                 data = response_data.get("data", {})
 
                 is_send = False
-                is_error = False
                 numero_comprobante = None
 
                 if status == "00":  # Éxito
                     is_send = True
                     numero_comprobante = data.get("numeroComprobante")
                     dga_logger.info(f"Éxito: {message} - Comprobante: {numero_comprobante}")
+                    # Éxito: no tocar is_error (puede ser marca de ingesta)
+                    _update_dga_outcome(
+                        id_interaction,
+                        return_dga=message,
+                        send_dga=False,
+                        n_voucher=numero_comprobante,
+                    )
                 else:
-                    is_error = True
                     dga_logger.error(f"Error: {message}")
-
-                # Actualizar registro en la base de datos
-                InteractionDetail.objects.filter(id=id_interaction).update(
-                    return_dga=message,
-                    # Si se envió correctamente, marcar como no pendiente
-                    send_dga=not is_send,
-                    n_voucher=numero_comprobante,
-                    is_error=is_error,
-                )
+                    _update_dga_outcome(
+                        id_interaction,
+                        set_error=True,
+                        return_dga=message,
+                        send_dga=True,
+                        n_voucher=numero_comprobante,
+                    )
 
                 if is_send:
                     time.sleep(delay_seconds)  # Espera configurable
@@ -233,11 +252,12 @@ def send(response, delay_seconds=2):
                     f"Error: Respuesta inválida del servidor DGA - "
                     f"{response_api.text}"
                 )
-                InteractionDetail.objects.filter(id=id_interaction).update(
+                _update_dga_outcome(
+                    id_interaction,
+                    set_error=True,
                     return_dga=error_msg,
                     n_voucher="No se pudo obtener el comprobante",
-                    send_dga=False,  # Ya no reintentar
-                    is_error=True,
+                    send_dga=False,
                 )
                 dga_logger.debug("Retornando False por error JSON")
                 return False
@@ -257,11 +277,16 @@ def send(response, delay_seconds=2):
         reg = InteractionDetail.objects.get(id=id_interaction)
         new_retry_count = reg.dga_retry_count + 1
         if new_retry_count < MAX_PERSISTENT_RETRIES:
-            InteractionDetail.objects.filter(id=id_interaction).update(
-                return_dga=f"Error de conexión DGA (reintento persistente {new_retry_count}/{MAX_PERSISTENT_RETRIES}). Reintentando en próximo ciclo.",
+            # No tocar is_error: un reintento de red no limpia errores de ingesta
+            _update_dga_outcome(
+                id_interaction,
+                return_dga=(
+                    f"Error de conexión DGA (reintento persistente "
+                    f"{new_retry_count}/{MAX_PERSISTENT_RETRIES}). "
+                    f"Reintentando en próximo ciclo."
+                ),
                 n_voucher="No se pudo obtener el comprobante",
-                send_dga=True,  # Mantener en cola para reintento persistente
-                is_error=False,
+                send_dga=True,
                 dga_retry_count=new_retry_count,
                 dga_last_retry_at=timezone.now(),
             )
@@ -270,11 +295,12 @@ def send(response, delay_seconds=2):
                 f"reintento persistente {new_retry_count}/{MAX_PERSISTENT_RETRIES}"
             )
         else:
-            InteractionDetail.objects.filter(id=id_interaction).update(
+            _update_dga_outcome(
+                id_interaction,
+                set_error=True,
                 return_dga="Error: El servidor DGA no está respondiendo tras todos los intentos persistentes.",
                 n_voucher="No se pudo obtener el comprobante",
                 send_dga=False,
-                is_error=True,
                 dga_retry_count=new_retry_count,
                 dga_last_retry_at=timezone.now(),
             )
@@ -283,11 +309,12 @@ def send(response, delay_seconds=2):
                 f"agotados todos los reintentos persistentes ({MAX_PERSISTENT_RETRIES})."
             )
     else:
-        InteractionDetail.objects.filter(id=id_interaction).update(
+        _update_dga_outcome(
+            id_interaction,
+            set_error=True,
             return_dga="Error: El servidor DGA no está respondiendo tras 3 intentos.",
             n_voucher="No se pudo obtener el comprobante",
-            send_dga=False,  # Ya no reintentar para no saturar la cola
-            is_error=True,
+            send_dga=False,
         )
     dga_logger.debug("Retornando False por fallos en intentos")
     return False

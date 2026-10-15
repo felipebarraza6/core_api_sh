@@ -6,12 +6,13 @@ from rest_framework.decorators import action
 from django.http import HttpResponse
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 from api.core.models import CatchmentPoint, InteractionDetail, ProjectCatchments
 from django.db.models import Sum, Avg, Max, Min, Count
-from django.db.models.functions import TruncDate
+from django.db.models.functions import TruncDate, TruncMonth
+from django.utils import timezone
 from api.core.reports.excel_generator import (
     generate_excel_by_project,
     generate_excel_by_point,
@@ -408,8 +409,6 @@ class ReportsGenerationViewSet(viewsets.ViewSet):
         if not points:
             return Response({'error': 'No hay puntos'}, status=status.HTTP_404_NOT_FOUND)
 
-        from django.utils import timezone
-        from datetime import timedelta
         cutoff = timezone.now() - timedelta(days=30)
         point_ids = [p.id for p in points]
 
@@ -490,8 +489,6 @@ class ReportsGenerationViewSet(viewsets.ViewSet):
         if not points:
             return Response({'error': 'No hay puntos'}, status=status.HTTP_404_NOT_FOUND)
 
-        from django.utils import timezone
-        from datetime import timedelta
         today = timezone.now().date()
         first_day_this_month = today.replace(day=1)
         last_day_last_month = first_day_this_month - timedelta(days=1)
@@ -526,7 +523,6 @@ class ReportsGenerationViewSet(viewsets.ViewSet):
         if not points:
             return Response({'error': 'No hay puntos'}, status=status.HTTP_404_NOT_FOUND)
 
-        from django.utils import timezone
         today = timezone.now().date()
         start_of_this_year = today.replace(month=1, day=1)
         start_of_last_year = (start_of_this_year - timedelta(days=1)).replace(month=1, day=1)
@@ -540,9 +536,9 @@ class ReportsGenerationViewSet(viewsets.ViewSet):
                 date_time_medition__date__gte=start_of_last_year,
                 date_time_medition__date__lte=end_of_last_year,
             )
-            .values('catchment_point_id', 'catchment_point__title')
+            .annotate(mes=TruncMonth('date_time_medition'))
+            .values('catchment_point_id', 'catchment_point__title', 'mes')
             .annotate(
-                mes=TruncDate('date_time_medition'),
                 consumo=Sum('total_diff'),
                 caudal_promedio=Avg('flow'),
                 caudal_max=Max('flow'),
@@ -561,7 +557,6 @@ class ReportsGenerationViewSet(viewsets.ViewSet):
         if not points:
             return Response({'error': 'No hay puntos'}, status=status.HTTP_404_NOT_FOUND)
 
-        from django.utils import timezone
         today = timezone.now().date()
         start_of_year = today.replace(month=1, day=1)
 

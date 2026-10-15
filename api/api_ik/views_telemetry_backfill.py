@@ -1,19 +1,19 @@
 """
-Endpoint de Backfill Histórico On-Demand
-=========================================
+Endpoint de Backfill Histórico On-Demand (modo seguro)
+======================================================
 
 POST /api/ik/telemetry/backfill/
 
-Consulta datos históricos de providers (TWIN/NOVUS) para un punto y rango,
-guarda en BD con update_or_create, y aplica procesamiento unificado completo:
-- Totales en cascada (con base del registro anterior)
-- Caudal convertido a L/s (instantaneous_flow)
-- Nivel con offset + water_table (nivel_mt)
-- Caudal promedio (average_flow) si aplica
-- Recálculo de diffs
+Consulta datos históricos de providers (TWIN/NOVUS/Tago) para un punto y rango.
+Por defecto opera en **dry-run** y **modo seguro**:
 
-El backfill utiliza la configuración dinámica del TelemetryProvider asociado
-al punto o a sus variables, con fallback a los booleanos legacy.
+- dry_run=true (default): no escribe; reporta por hora qué insertaría / actualizaría / omitiría.
+- safe=true (default): solo inserta horas faltantes y actualiza filas is_error o
+  réplicas congeladas; NUNCA toca filas con comprobante DGA (n_voucher).
+- apply=true (o dry_run=false): escribe los cambios permitidos por safe.
+- Recálculo de totales/caudal/nivel solo sobre filas tocadas.
+- send_dga y n_voucher nunca se modifican (no se encola envío a DGA).
+- Hora del logger: UTC de Tago convertida a hora de Chile.
 
 Seguridad:
 - Auth requerida (Token)
@@ -39,15 +39,34 @@ from api.core.services.telemetry_backfill import (
 from .throttles import BackfillRateThrottle
 
 
+def _as_bool(value, default=False):
+    """Parsea bool desde JSON/form (acepta true/false, 1/0, yes/no)."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in ("1", "true", "yes", "si", "sí", "on"):
+        return True
+    if text in ("0", "false", "no", "off"):
+        return False
+    return default
+
+
 class TelemetryBackfillView(APIView):
     """
     POST /api/ik/telemetry/backfill/
 
     Body:
     {
-        "point_id": 1,
-        "start": "2026-05-19T20:00:00",
-        "end": "2026-05-22T12:00:00"
+        "point_id": 94,
+        "start": "2026-09-18T00:00:00",
+        "end": "2026-10-02T18:00:00",
+        "dry_run": true,   // default true — no escribe
+        "apply": false,    // alias: apply=true equivale a dry_run=false
+        "safe": true       // default true — no toca voucher DGA ni filas válidas
     }
     """
     permission_classes = [IsAuthenticated]
@@ -61,6 +80,17 @@ class TelemetryBackfillView(APIView):
         point_id = data.get("point_id")
         start_str = data.get("start")
         end_str = data.get("end")
+
+        # dry_run default ON; apply=true fuerza escritura
+        if "apply" in data and data.get("apply") is not None:
+            apply = _as_bool(data.get("apply"), default=False)
+            dry_run = not apply
+        elif "dry_run" in data and data.get("dry_run") is not None:
+            dry_run = _as_bool(data.get("dry_run"), default=True)
+        else:
+            dry_run = True
+
+        safe = _as_bool(data.get("safe"), default=True)
 
         # Validaciones básicas
         if not point_id or not start_str or not end_str:
@@ -129,10 +159,10 @@ class TelemetryBackfillView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Ejecutar backfill + procesamiento completo
+        # Ejecutar backfill (dry-run por defecto)
         try:
             result = backfill_point_from_providers(
-                point, start_dt, end_dt, dry_run=False
+                point, start_dt, end_dt, dry_run=dry_run, safe=safe
             )
 
             processing = result.get("processing") or {}
@@ -142,9 +172,14 @@ class TelemetryBackfillView(APIView):
                 "point_id": point_id,
                 "point_name": point.title,
                 "range": f"{start_str} → {end_str}",
+                "dry_run": dry_run,
+                "safe": safe,
+                "mode": result.get("mode") or ("dry-run" if dry_run else "applied"),
                 "records_created": result["records_created"],
                 "records_updated": result["records_updated"],
+                "records_skipped": result.get("records_skipped", 0),
                 "records_failed": result["records_failed"],
+                "by_reason": result.get("by_reason") or {},
                 "processing": {
                     "totals_updated": processing.get("totals_updated", 0),
                     "flow_updated": processing.get("flow_updated", 0),
@@ -153,8 +188,12 @@ class TelemetryBackfillView(APIView):
                     "total_diff_updated": processing.get("diff_updated", 0),
                     "total_today_diff_updated": processing.get("today_diff_updated", 0),
                 },
+                "hours": result.get("hours") or [],
+                "sample": result.get("sample") or [],
+                "dga_note": result.get("dga_note"),
                 "details": {
                     "provider": result.get("provider") or handler_name,
+                    "fetch_errors": result.get("fetch_errors") or [],
                 }
             }, status=status.HTTP_200_OK)
 

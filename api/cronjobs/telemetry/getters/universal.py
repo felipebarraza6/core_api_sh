@@ -21,7 +21,8 @@ def get_data_universal(provider, token_service, str_variable):
         str_variable: nombre de la variable
 
     Returns:
-        dict con {"value": ..., "date_time": ...} o {"value": 0, "date_time": None}
+        dict con status ok/no_data/request_failed (ver getter_result).
+        Nunca inventa value=0 ante fallo de red/HTTP.
     """
     if not provider:
         # Fallback legacy: usa TDATA como default (mantener retrocompatibilidad)

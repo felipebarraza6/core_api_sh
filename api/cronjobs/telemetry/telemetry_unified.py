@@ -20,7 +20,7 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 
-from django.db.models import Q
+from django.db.models import F, Q
 
 from api.core.models import CatchmentPoint, DgaDataConfigCatchment, InteractionDetail
 from api.core.serializers import CatchmentPointSerializerDetailCron
@@ -33,6 +33,13 @@ from api.cronjobs.telemetry.controllers.unified_processing import (
     validate_frequency,
 )
 from api.cronjobs.telemetry.getters.universal import get_data_universal
+from api.cronjobs.telemetry.utils.connection import (
+    LOGGER_FMT,
+    days_since,
+    freshest_logger_ts,
+    parse_logger_ts,
+    stale_variables,
+)
 from api.cronjobs.utils.logging_config import telemetry_logger
 
 # Session HTTP persistente: reutiliza conexiones TCP y reduce overhead.
@@ -237,6 +244,7 @@ def _mark_stale_data(
     point_id: int,
     variable_details: list,
     created_register: Dict[str, Any],
+    now=None,
 ):
     """
     Detecta variables cuyo proveedor dejó de entregar datos frescos.
@@ -255,7 +263,7 @@ def _mark_stale_data(
     `variable_details` y emite un SystemEvent WARNING.
     """
     threshold = getattr(settings, "TELEMETRY_STALE_THRESHOLD_HOURS", STALE_THRESHOLD_HOURS)
-    now = timezone.now()
+    now = now or timezone.now()
 
     marcadas = []
     for detalle in variable_details:
@@ -364,84 +372,148 @@ def _process_point(
         return
 
     date_time_last_logger_total: Optional[str] = None
-    max_days_not_conection = 0
     best_date_time_last_logger: Optional[datetime] = None
+    # Fecha real reportada por cada variable (None si el getter no trajo fecha)
+    variable_ts: Dict[str, Optional[datetime]] = {}
+    has_totalizado = any(
+        (v.get("type_variable") or "").upper() == "TOTALIZADO" for v in variables
+    )
     variable_details: list = []
+
+    from api.cronjobs.telemetry.utils.getter_result import (
+        STATUS_NO_DATA,
+        STATUS_REQUEST_FAILED,
+        is_getter_success,
+        request_failed_result,
+    )
+    from api.cronjobs.telemetry.utils.audit import emit_system_event, resolve_system_events
 
     for variable in variables:
         data = None
 
-        if variable.get("type_variable") != "CAUDAL_PROMEDIO":
-            token = variable.get("token_service") or point_token
-            provider = variable.get("provider")
-
-            data = get_data_with_retry(
-                get_data_universal,
-                provider,
-                token,
-                variable.get("str_variable"),
+        # CAUDAL_PROMEDIO se deriva del totalizado; no consulta al proveedor.
+        if variable.get("type_variable") == "CAUDAL_PROMEDIO":
+            date_time_last_logger_total, created_register = process_variable_safely(
+                variable=variable,
+                data={"value": None, "date_time": None, "status": "ok"},
+                point_catchment=point_catchment,
+                created_register=created_register,
+                date_time_last_logger_total=date_time_last_logger_total,
+                medition_str=medition_str,
             )
+            variable_details.append({
+                "str_variable": variable.get("str_variable"),
+                "type_variable": variable.get("type_variable"),
+                "value": created_register.get("flow"),
+                "success": True,
+                "status": "ok",
+            })
+            continue
 
-        # Detectar fallo de getter: si date_time es None y value es 0,
-        # es casi seguro un fallo de API/sensor, no una medición real.
-        # Para TOTALIZADO (y LO Modbus) con historial previo, marcar error.
-        from api.cronjobs.telemetry.controllers.modbus_totalizer import (
-            is_modbus_hi_type,
-            is_totalizado_primary_type,
+        token = variable.get("token_service") or point_token
+        provider = variable.get("provider")
+
+        data = get_data_with_retry(
+            get_data_universal,
+            provider,
+            token,
+            variable.get("str_variable"),
         )
 
-        var_type = variable.get("type_variable") or ""
-        is_critical_total = is_totalizado_primary_type(var_type) or is_modbus_hi_type(var_type)
-
+        # Fallo de getter: NUNCA inventar value=0.
         if data is None:
-            if is_critical_total:
-                data = {"value": 0, "date_time": None}
-            else:
-                data = {"value": 0.00, "date_time": None}
+            data = request_failed_result(error="getter retornó None tras reintentos")
 
-        if not data.get("value") and data.get("value") != 0:
-            data["value"] = 0
+        getter_ok = is_getter_success(data)
+        status = data.get("status") or (
+            STATUS_REQUEST_FAILED if not getter_ok else "ok"
+        )
 
-        # Heurística de detección de fallo de getter:
-        # date_time=None indica que el getter no pudo contactar al sensor/API.
-        # value=0 en este contexto NO es una medición real.
-        if data.get("date_time") is None and data.get("value") == 0:
-            # Marcar is_error si falla TOTALIZADO clásico o cualquiera de los
-            # registros del par Modbus (ambos son necesarios para el acumulado).
-            # Si falla caudal o nivel, el registro sigue válido.
+        if not getter_ok:
+            # Distinguir "proveedor sin datos" vs "request fallido"
+            is_no_data = status == STATUS_NO_DATA
+            title = (
+                "Proveedor sin datos"
+                if is_no_data
+                else "Proveedor sin respuesta"
+            )
+            reason = (
+                "El proveedor respondió OK pero no tiene lecturas para esta variable."
+                if is_no_data
+                else "Fallo HTTP/timeout/red al consultar al proveedor. No es una medición cero."
+            )
+
+            # Variable crítica: TOTALIZADO clásico o par Modbus HI/LO. Si falla
+            # caudal o nivel, el registro sigue válido (no se marca error).
+            from api.cronjobs.telemetry.controllers.modbus_totalizer import (
+                is_modbus_hi_type,
+                is_totalizado_primary_type,
+            )
+
+            var_type = variable.get("type_variable") or ""
+            is_critical_total = (
+                is_totalizado_primary_type(var_type) or is_modbus_hi_type(var_type)
+            )
+
             if is_critical_total:
                 telemetry_logger.warning(
                     f"[UNIFIED] Punto {point_id} - {variable.get('str_variable')}: "
-                    f"Getter retornó value=0 sin timestamp. Probable fallo de ingesta. "
-                    f"Marcando is_error=True."
+                    f"{title} (status={status}). Marcando is_error=True; no se inventa 0."
                 )
-                from api.cronjobs.telemetry.utils.audit import emit_system_event
                 emit_system_event(
                     event_type="API_ERROR",
                     point_id=point_id,
-                    title="Getter retornó valor sin timestamp",
-                    message=f"Variable {variable.get('str_variable')}: getter retornó value=0 sin timestamp. Probable fallo de ingesta.",
+                    title=title,
+                    message=(
+                        f"Variable {variable.get('str_variable')}: {reason} "
+                        f"error={data.get('error')}; http_status={data.get('http_status')}."
+                    ),
                     severity="CRITICAL",
+                    condition_key=f"getter_fail:{point_id}:{variable.get('str_variable')}",
+                    dedupe_until_resolved=True,
                     extra_data={
                         "decision": "MARCAR_ERROR",
-                        "reason": "El getter de la API de telemetría no pudo obtener un timestamp válido junto con el valor. Para variables TOTALIZADO / TOTALIZADO_MODBUS esto indica una falla de comunicación con el sensor o la plataforma. Se marca el registro como error para no usarlo como baseline.",
-                        "actual_value": 0,
-                        "expected_range": [1, None],
-                        "variable": variable.get('str_variable'),
+                        "reason": reason,
+                        "status": status,
+                        "variable": variable.get("str_variable"),
                         "type_variable": var_type,
-                        "value": 0,
+                        "value": None,
                         "date_time": None,
+                        "error": data.get("error"),
+                        "http_status": data.get("http_status"),
                         "is_error": True,
                         "source": "api.cronjobs.telemetry.telemetry_unified:_process_point",
                     },
                 )
                 created_register["is_error"] = True
+                _apply_last_valid_totalizado(point_id, created_register)
             else:
                 telemetry_logger.warning(
                     f"[UNIFIED] Punto {point_id} - {variable.get('str_variable')}: "
-                    f"Getter retornó value=0 sin timestamp. Variable secundaria fallida; "
-                    f"registro sigue válido."
+                    f"{title}. Variable secundaria; no se inventa 0."
                 )
+
+            var_id = variable.get("id")
+            if var_id is not None:
+                if "variable_values" not in created_register:
+                    created_register["variable_values"] = {}
+                created_register["variable_values"][str(var_id)] = None
+
+            variable_details.append({
+                "str_variable": variable.get("str_variable"),
+                "type_variable": variable.get("type_variable"),
+                "value": None,
+                "success": False,
+                "status": status,
+                "error": data.get("error"),
+                "http_status": data.get("http_status"),
+            })
+            continue  # No procesar como lectura
+
+        # Getter OK: resolver alerta abierta de fallo de getter para esta variable
+        resolve_system_events(
+            point_id, f"getter_fail:{point_id}:{variable.get('str_variable')}"
+        )
 
         # Procesar variable usando unified_processing (ahora configurable)
         # Pasar medition_str para garantizar coherencia de zonas horarias
@@ -455,18 +527,12 @@ def _process_point(
             medition_str=medition_str,
         )
 
-        # Tracking de días sin conexión (mismo patrón que legacy)
-        days_not_conection = created_register.get("days_not_conection", 0)
-        if days_not_conection > max_days_not_conection:
-            max_days_not_conection = days_not_conection
-
-        if created_register.get("date_time_last_logger"):
-            try:
-                dt_lg = datetime.strptime(created_register["date_time_last_logger"], "%Y-%m-%dT%H:%M:%S")
-                if best_date_time_last_logger is None or dt_lg > best_date_time_last_logger:
-                    best_date_time_last_logger = dt_lg
-            except Exception as e:
-                telemetry_logger.debug(f"[UNIFIED] Fecha logger inválida para punto {point_id}: {e}")
+        # FIX 30-09-2026: la conexión se mide con la fecha REAL de cada variable
+        # (la que trajo el getter), no con lo que quedó en created_register.
+        if variable.get("type_variable") != "CAUDAL_PROMEDIO":
+            variable_ts[variable.get("str_variable") or str(variable.get("id"))] = parse_logger_ts(
+                data.get("date_time")
+            )
 
         # Guardar valor crudo en variable_values (esquema dinámico)
         var_id = variable.get("id")
@@ -491,7 +557,6 @@ def _process_point(
                 provider.get("handler_name") if isinstance(provider, dict)
                 else getattr(provider, "handler_name", None),
             )
-
         variable_details.append({
             "str_variable": variable.get("str_variable"),
             "type_variable": variable.get("type_variable"),
@@ -502,15 +567,53 @@ def _process_point(
             # y para que _mark_stale_data calcule la frescura POR VARIABLE
             # (un logger puede tener `nivel` al día y `caudal` congelado hace años).
             "provider_datetime": provider_dt.isoformat() if provider_dt else None,
+            "status": data.get("status", "ok"),
+            "date_time": data.get("date_time"),
         })
 
+    # FIX 30-09-2026: fecha del logger = la más fresca entre todas las variables.
+    # Antes cada variable pisaba la fecha y los días salían solo del TOTALIZADO.
+    best_date_time_last_logger = freshest_logger_ts(variable_ts.values())
+    connection_dt = best_date_time_last_logger
+    if connection_dt is None:
+        # Nada llegó en esta corrida: arrastrar la última fecha real guardada
+        # (excluye registros donde la fecha del logger es la hora de medición,
+        # firma del fallback antiguo que simulaba conexión).
+        prev = (
+            InteractionDetail.objects.filter(catchment_point_id=point_id)
+            .exclude(date_time_last_logger__isnull=True)
+            .exclude(date_time_last_logger=F("date_time_medition"))
+            .exclude(date_time_medition=medition_str)
+            .order_by("-date_time_medition")
+            .values_list("date_time_last_logger", flat=True)
+            .first()
+        )
+        connection_dt = parse_logger_ts(prev)
+
+    created_register["date_time_last_logger"] = (
+        connection_dt.strftime(LOGGER_FMT) if connection_dt else None
+    )
+    created_register["days_not_conection"] = days_since(connection_dt, now)
+
+    stale = stale_variables(variable_ts, best_date_time_last_logger)
+    if stale:
+        telemetry_logger.warning(
+            f"[UNIFIED] Punto {point_id}: logger conectado pero variables sin actualizar "
+            f"(>24 h): {', '.join(stale)}"
+        )
+        for detail in variable_details:
+            if detail.get("str_variable") in stale:
+                detail["stale"] = True
+
     # Replicar último registro si no hay datos y está configurado (Nettra legacy)
-    if replicate_on_missing and best_date_time_last_logger is None:
+    # Mismo comportamiento previo: con TOTALIZADO configurado el fallback antiguo
+    # nunca dejaba la fecha vacía, así que la réplica solo aplicaba a puntos sin él.
+    if replicate_on_missing and best_date_time_last_logger is None and not has_totalizado:
         _replicate_last_record(point_id, created_register, now)
 
     # Marca la frescura real del dato ANTES de fijar variable_details,
     # porque _replicate_last_record puede vaciar la lista.
-    _mark_stale_data(point_id, variable_details, created_register)
+    _mark_stale_data(point_id, variable_details, created_register, now)
     created_register["is_partial"] = False
 
     # Determinar si enviar a DGA
@@ -544,6 +647,45 @@ def _process_point(
     _save_to_db(point_id, medition_str, created_register, use_transaction)
 
 
+def _apply_last_valid_totalizado(point_id: int, created_register: Dict[str, Any]) -> None:
+    """
+    Ante fallo de getter del TOTALIZADO: conservar último total/pulsos válidos.
+    Nunca escribe pulses=0 inventado (causa de saltos falsos tipo Venecia #25).
+
+    Nota: InteractionDetail.pulses es IntegerField(default=0) no-nullable;
+    por eso siempre preservamos el último valor válido cuando existe historial.
+    """
+    last_valid = (
+        InteractionDetail.objects.filter(catchment_point_id=point_id)
+        .exclude(is_error=True)
+        .exclude(total__isnull=True)
+        .exclude(total="")
+        .order_by("-date_time_medition")
+        .first()
+    )
+    if last_valid:
+        created_register["pulses"] = last_valid.pulses
+        created_register["total"] = last_valid.total
+        created_register["total_diff"] = 0
+        created_register["total_today_diff"] = last_valid.total_today_diff
+        if last_valid.date_time_last_logger:
+            created_register["date_time_last_logger"] = (
+                last_valid.date_time_last_logger.strftime("%Y-%m-%dT%H:%M:%S")
+            )
+            calculate_days_not_connection(
+                created_register, timezone.get_current_timezone(), {"id": point_id}
+            )
+        else:
+            created_register["date_time_last_logger"] = None
+    else:
+        # Sin historial: total nulo; pulses queda fuera (default DB=0 solo en create).
+        created_register["total"] = None
+        created_register["total_diff"] = 0
+        created_register["total_today_diff"] = 0
+        created_register["date_time_last_logger"] = None
+        created_register.pop("pulses", None)
+
+
 def _replicate_last_record(point_id: int, created_register: Dict[str, Any], now: datetime):
     """Replica el último registro válido cuando no hay datos nuevos (legacy Nettra)."""
     try:
@@ -564,7 +706,9 @@ def _replicate_last_record(point_id: int, created_register: Dict[str, Any], now:
                 if last_valid.date_time_last_logger
                 else None
             )
-            created_register["days_not_conection"] = 9999
+            created_register["days_not_conection"] = days_since(
+                parse_logger_ts(last_valid.date_time_last_logger), now
+            )
             created_register["is_partial"] = False
             created_register["variable_details"] = []
             telemetry_logger.info(f"[UNIFIED] Punto {point_id}: replicado último registro válido")

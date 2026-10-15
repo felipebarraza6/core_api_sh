@@ -77,6 +77,14 @@ def _build_headers(provider):
 
 import time
 
+from api.cronjobs.telemetry.utils.getter_result import (
+    http_status_from_exc,
+    no_data_result,
+    ok_result,
+    request_failed_result,
+)
+
+
 def get_data_generic(provider, token_service, str_variable):
     """Obtener datos usando configuración genérica del proveedor."""
     base_url = (_provider_val(provider, "base_url") or "").rstrip("/")
@@ -101,6 +109,7 @@ def get_data_generic(provider, token_service, str_variable):
     headers = _build_headers(provider)
 
     last_error = None
+    last_http_status = None
     for attempt in range(retries):
         try:
             response = requests.get(url, headers=headers, timeout=timeout)
@@ -118,7 +127,7 @@ def get_data_generic(provider, token_service, str_variable):
                 data = data[idx] if len(data) > idx else None
 
             if data is None:
-                return {"value": 0, "date_time": None}
+                return no_data_result()
 
             # Extraer valor y timestamp
             value_field = parser_config.get("value_field", "value")
@@ -130,18 +139,21 @@ def get_data_generic(provider, token_service, str_variable):
             ts_raw = _resolve_json_path(data, ts_field)
 
             if value is None:
-                return {"value": 0, "date_time": None}
+                return no_data_result()
 
             timestamp = _parse_timestamp(ts_raw, ts_format, ts_custom) if ts_raw else None
-            return {"value": value, "date_time": timestamp}
+            if timestamp is None:
+                return no_data_result()
+            return ok_result(value, timestamp)
 
         except Exception as e:
             last_error = e
+            last_http_status = http_status_from_exc(e)
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)  # backoff exponencial: 1s, 2s, 4s...
             else:
                 logger.error(f"Error genérico getter {url} tras {retries} intentos: {e}")
-                return {"value": 0, "date_time": None}
+                return request_failed_result(error=e, http_status=last_http_status)
 
     logger.error(f"Error genérico getter {url} tras {retries} intentos: {last_error}")
-    return {"value": 0, "date_time": None}
+    return request_failed_result(error=last_error, http_status=last_http_status)

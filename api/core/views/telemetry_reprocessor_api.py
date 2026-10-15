@@ -231,7 +231,9 @@ class TelemetryReprocessorView(APIView):
             )
 
         try:
-            result = backfill_point_from_providers(point, start_dt, end_dt, dry_run=not apply)
+            result = backfill_point_from_providers(
+                point, start_dt, end_dt, dry_run=not apply, safe=True
+            )
         except ValueError as e:
             return Response(
                 {"error": str(e)},
