@@ -1099,3 +1099,7 @@ class PublicMapPointSerializer(serializers.Serializer):
     code = serializers.CharField()
     code_kind = serializers.ChoiceField(choices=('DGA', 'OTHER'))
     type_dga = serializers.CharField(allow_null=True, required=False)
+    measurements = serializers.ListField(
+        child=serializers.ChoiceField(choices=('nivel_freatico', 'caudal', 'totalizado')),
+        required=False,
+    )

@@ -5,7 +5,9 @@ Observatorio georreferenciado público
 GET /api/ik/observatory/public/   — AllowAny: solo códigos DGA (OB*) con coords
 GET /api/ik/observatory/points/   — IsAuthenticated: DGA + no-DGA del usuario (o todos si staff)
 
-Respuesta mínima: id, lat, lon, code, code_kind, type_dga.
+Respuesta mínima: id, lat, lon, code, code_kind, type_dga, measurements.
+`measurements` normaliza nivel freático / caudal / totalizado desde las variables
+del punto (`Variable.type_variable`); si no hay variables, se infiere por `type_dga`.
 Sin cliente, título, telemetría ni credenciales.
 """
 
@@ -44,6 +46,44 @@ def _code_kind(code):
     return 'OTHER'
 
 
+_MEASUREMENT_ORDER = ('nivel_freatico', 'caudal', 'totalizado')
+
+MEASUREMENT_LEGEND = {
+    'nivel_freatico': 'Nivel freático',
+    'caudal': 'Caudal',
+    'totalizado': 'Totalizado',
+}
+
+
+def _norm_measurement(type_variable):
+    """Normaliza `Variable.type_variable` a una categoría del observatorio."""
+    text = (type_variable or '').strip().upper()
+    if text.startswith('NIVEL'):
+        return 'nivel_freatico'
+    if text.startswith('CAUDAL'):
+        return 'caudal'
+    if text.startswith('TOTALIZADO'):
+        return 'totalizado'
+    return None
+
+
+def _measurements(point, cfg):
+    """Categorías que mide el punto; si no tiene variables, se infiere del tipo DGA."""
+    found = set()
+    for scheme in point.schemes.all():
+        for variable in scheme.variables.all():
+            category = _norm_measurement(variable.type_variable)
+            if category:
+                found.add(category)
+    if not found:
+        type_dga = (getattr(cfg, 'type_dga', '') or '').strip().upper() if cfg else ''
+        if type_dga == 'SUBTERRANEO':
+            found.add('nivel_freatico')
+        elif type_dga == 'SUPERFICIAL':
+            found.add('caudal')
+    return [category for category in _MEASUREMENT_ORDER if category in found]
+
+
 def _serialize_point(point, cfg):
     lat = _parse_coord(point.lat)
     lon = _parse_coord(point.lon)
@@ -64,6 +104,7 @@ def _serialize_point(point, cfg):
         'code': code,
         'code_kind': kind,
         'type_dga': (cfg.type_dga or None) if cfg else None,
+        'measurements': _measurements(point, cfg),
     }
 
 
@@ -71,6 +112,7 @@ def _base_queryset():
     return CatchmentPoint.objects.exclude(
         Q(lat__isnull=True) | Q(lat='') | Q(lon__isnull=True) | Q(lon='')
     ).prefetch_related(
+        'schemes__variables',
         Prefetch(
             'dga_data_config_profiles',
             queryset=DgaDataConfigCatchment.objects.only(
@@ -133,6 +175,7 @@ class ObservatoryPublicPointsView(APIView):
             'count': len(data),
             'dga_count': len(data),
             'other_count': 0,
+            'legend': MEASUREMENT_LEGEND,
             'points': data,
         })
 
@@ -200,5 +243,6 @@ class ObservatoryAuthPointsView(APIView):
             'count': len(data),
             'dga_count': dga_count,
             'other_count': other_count,
+            'legend': MEASUREMENT_LEGEND,
             'points': data,
         })
