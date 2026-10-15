@@ -3,6 +3,18 @@
 > **Última auditoría:** 2026-06-10
 > **Estado:** Producción activa — CAUTELA MÁXIMA en todo cambio
 >
+> **Cambios recientes (2026-10-15):**
+> - **Optimización backup a object storage (`api/cronjobs/space_backup.py`):** antes dumpeaba la tabla completa `core_interactiondetail` (180 MB, ~7 min, 24×/día → ~58 GB en bucket) **cada hora**. Ahora:
+>   - **Config operativa (`core_*`)** se respalda cada hora (0.1 MB); retención `SPACE_CONFIG_RETENTION_DAYS=30`.
+>   - **Telemetría (`InteractionDetail`)** solo cada `SPACE_TELEMETRY_EVERY_HOURS=6` h; retención `SPACE_TELEMETRY_RETENTION_DAYS=14`. El cron sigue siendo `0 * * * *` y el gating es interno (no cambia el hash de django-crontab).
+>   - **Backends seleccionables** con `SPACE_BACKEND`:
+>     - `s3` (default): cualquier storage S3-compatible (DO Spaces) vía boto3.
+>     - `gcs`: **Google Cloud Storage** vía REST con **service account** (`google-auth` + `requests`, tokens de corta vida, sin claves HMAC ni deps nuevas — `google-cloud-storage` NO se usa para no subir `protobuf` y romper `google-generativeai`).
+>   - **Estado migración GCS:** código y scripts listos (`scripts/setup_gcs_backup.py`, `scripts/decommission_do_spaces.py`). **Bloqueada:** el proyecto GCP `smart-hydro-chatbot` no tiene billing. Falta que el usuario habilite billing (o entregue un proyecto con billing) y corra `setup_gcs_backup.py`. El SA existente `cloud-ownlocal@smart-hydro-chatbot.iam.gserviceaccount.com` ya tiene acceso a Storage (reutilizado; idealmente luego un SA dedicado con `objectAdmin` solo en el bucket).
+>   - **Nota:** las vars de `SPACE_*` se cargan por `env_file:` en compose → requieren **recrear** el contenedor (`docker compose up -d cron_jobs_secure`) para tomar cambios del `.env`.
+>   - Modos CLI manuales: `python -m api.cronjobs.space_backup check|config|telemetry`.
+>   - **Decomisión DO:** `scripts/decommission_do_spaces.py` (dry-run por defecto; exige `--confirm` y verifica que GCS tenga `config` <6h y `telemetry` <12h antes de borrar).
+>
 > **Cambios recientes (2026-09-30):**
 > - **Fix 500 en mediciones mensuales (`GET /api/interaction_detail_override_month/`):** `NameError: name 'SchemesCatchment' is not defined` en `api/core/views/interaction_detail.py` (`InteractionDetailOverrideMonthViewSet.get_queryset`, línea ~314).
 >   - **Síntoma:** HTTP 500 al ver mediciones de cualquier punto/mes/año (ej. `?catchment_point=5&date_time_medition__month=09&date_time_medition__year=2026`). El OPTIONS respondía 200, solo fallaba el GET.

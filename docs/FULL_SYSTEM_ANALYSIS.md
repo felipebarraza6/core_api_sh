@@ -34,7 +34,7 @@
 | cron_dga | Cada 3 min | 🟡 Rate limit implícito, query por registro |
 | cron_sma | Cada 5 min | 🟡 Token hardcodeado, solo punto 1 |
 | cron_alerts | Cada 10 min | 🟢 Funcional, un query por alerta |
-| space_backup | Cada hora | 🟢 Bien implementado |
+| space_backup | Cada hora (config) / cada 6h (telemetría) | 🟢 Object storage S3-compatible (GCS/DO Spaces); retención config 30d / telemetry 14d |
 | daily_bulletin | 01:00 diario | 🔴 N+1 masivo, itera todos los puntos |
 | daily_chat_report | 12:00 diario | 🟡 Detección de resets en Python |
 | daily_active_tickets | 13:00 diario | 🟡 Similar a chat report |
