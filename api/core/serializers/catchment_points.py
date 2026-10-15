@@ -1088,6 +1088,14 @@ class CatchmentPointIkoluSerializer(serializers.ModelSerializer):
                   'profile_ikolu', 'config_data', 'dga', 'modules', 'lat','lon')
 
 
+class DgaSendInfoSerializer(serializers.Serializer):
+    """Info de envíos DGA por punto: standard, último envío, voucher y próximo envío."""
+    standard = serializers.CharField(allow_null=True, required=False)
+    last_send = serializers.CharField(allow_null=True, required=False)
+    voucher = serializers.CharField(allow_null=True, required=False)
+    next_send = serializers.CharField(allow_null=True, required=False)
+
+
 class PublicMapPointSerializer(serializers.Serializer):
     """
     Observatorio público: solo código regulatorio + coordenadas.
@@ -1099,3 +1107,8 @@ class PublicMapPointSerializer(serializers.Serializer):
     code = serializers.CharField()
     code_kind = serializers.ChoiceField(choices=('DGA', 'OTHER'))
     type_dga = serializers.CharField(allow_null=True, required=False)
+    measurements = serializers.ListField(
+        child=serializers.ChoiceField(choices=('nivel_freatico', 'caudal', 'totalizado')),
+        required=False,
+    )
+    dga = DgaSendInfoSerializer(allow_null=True, required=False)
