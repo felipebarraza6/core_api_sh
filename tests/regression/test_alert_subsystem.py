@@ -9,7 +9,9 @@ Validan que:
 """
 
 from decimal import Decimal
+from unittest.mock import patch
 
+from django.core import mail
 from django.test import TestCase, override_settings
 from django.core.exceptions import ValidationError
 from django.urls import reverse
@@ -316,3 +318,137 @@ class AlertEngineTriggerTests(TestCase):
         # Segunda ejecución inmediata: no debe crear otro por cooldown
         stats2 = run_engine(dry_run=False)
         self.assertEqual(stats2["triggered"], 0)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class AlertDispatcherEmailTests(TestCase):
+    """El canal EMAIL debe enviarse correctamente (no 'Canal desconocido')."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="email_alert_tester",
+            email="email_alert@test.com",
+            password="testpass",
+        )
+        self.client_obj = Client.objects.create(name="CCU")
+        self.project = ProjectCatchments.objects.create(
+            name="Pozo Project", client=self.client_obj
+        )
+        self.point = CatchmentPoint.objects.create(
+            title="Pozo 1",
+            owner_user=self.user,
+            project=self.project,
+            frecuency="60",
+        )
+        self.rule = AlertRule.objects.create(
+            name="Pozo 1 flow > 35 L/s",
+            target_type="THRESHOLD_MAX",
+            variable_type="CAUDAL",
+            threshold_value=Decimal("35"),
+            check_frequency_minutes=1,
+            cooldown_minutes=0,
+            point_catchment=self.point,
+        )
+        self.channel = AlertChannel.objects.create(
+            alert_rule=self.rule,
+            channel_type="EMAIL",
+            destination="ops@ccu.example.com",
+            is_active=True,
+        )
+        self.trigger = AlertTrigger.objects.create(
+            alert_rule=self.rule,
+            triggered_at=timezone.now(),
+            value_at_trigger=Decimal("42.5"),
+            threshold_breached=Decimal("35"),
+            point_catchment=self.point,
+            notification_sent=False,
+        )
+
+    def test_send_via_channel_email_succeeds(self):
+        """_send_via_channel debe reconocer EMAIL y no devolver 'Canal desconocido'."""
+        from api.cronjobs.alerts.alert_dispatcher import _send_via_channel
+
+        mail.outbox = []
+        ok, err = _send_via_channel(self.trigger, self.channel, dry_run=False)
+
+        self.assertTrue(ok, msg=f"EMAIL falló: {err}")
+        self.assertIsNone(err)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["ops@ccu.example.com"])
+        self.assertIn("Pozo 1 flow > 35 L/s", mail.outbox[0].subject)
+        self.assertIn("Pozo 1", mail.outbox[0].body)
+        self.assertIn("42.5", mail.outbox[0].body)
+
+    def test_send_via_channel_email_multiple_recipients(self):
+        """EMAIL con varios destinatarios separados por coma."""
+        from api.cronjobs.alerts.alert_dispatcher import _send_via_channel
+
+        self.channel.destination = "a@ccu.example.com, b@ccu.example.com"
+        self.channel.save(update_fields=["destination"])
+
+        mail.outbox = []
+        ok, err = _send_via_channel(self.trigger, self.channel, dry_run=False)
+
+        self.assertTrue(ok, msg=f"EMAIL falló: {err}")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(
+            set(mail.outbox[0].to),
+            {"a@ccu.example.com", "b@ccu.example.com"},
+        )
+
+    def test_dispatcher_sends_email_and_marks_trigger(self):
+        """run_dispatcher debe enviar EMAIL y marcar notification_sent sin error."""
+        from api.cronjobs.alerts.alert_dispatcher import run_dispatcher
+
+        mail.outbox = []
+        stats = run_dispatcher(dry_run=False)
+
+        self.assertNotIn("skipped", stats)
+        self.assertEqual(stats["processed"], 1)
+        self.assertEqual(stats["sent"], 1)
+        self.assertEqual(stats["errors"], 0)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("ops@ccu.example.com", mail.outbox[0].to)
+
+        self.trigger.refresh_from_db()
+        self.assertTrue(self.trigger.notification_sent)
+        self.assertIsNotNone(self.trigger.notification_sent_at)
+        self.assertFalse(
+            bool(self.trigger.notification_error)
+            and "Canal desconocido" in (self.trigger.notification_error or "")
+        )
+
+    def test_dispatcher_google_chat_still_works(self):
+        """GOOGLE_CHAT no debe romperse al rehabilitar EMAIL."""
+        from api.cronjobs.alerts.alert_dispatcher import _send_via_channel
+
+        chat_channel = AlertChannel.objects.create(
+            alert_rule=self.rule,
+            channel_type="GOOGLE_CHAT",
+            destination="https://chat.googleapis.com/v1/spaces/AAA/messages?key=x",
+            is_active=True,
+        )
+
+        with patch(
+            "api.cronjobs.alerts.alert_dispatcher.send_google_chat_message"
+        ) as mock_chat:
+            ok, err = _send_via_channel(self.trigger, chat_channel, dry_run=False)
+
+        self.assertTrue(ok, msg=f"GOOGLE_CHAT falló: {err}")
+        self.assertIsNone(err)
+        mock_chat.assert_called_once()
+
+    def test_unknown_channel_still_reports_error(self):
+        """Canales no soportados siguen reportando 'Canal desconocido'."""
+        from api.cronjobs.alerts.alert_dispatcher import _send_via_channel
+
+        bad = AlertChannel(
+            alert_rule=self.rule,
+            channel_type="PIGEON",
+            destination="nowhere",
+            is_active=True,
+        )
+        ok, err = _send_via_channel(self.trigger, bad, dry_run=False)
+        self.assertFalse(ok)
+        self.assertIn("Canal desconocido", err)
+        self.assertIn("PIGEON", err)
