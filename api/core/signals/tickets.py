@@ -8,12 +8,13 @@ import re
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.template.loader import render_to_string
+from django.utils import timezone
 from django.utils.html import strip_tags
 
 from api.core.notifications import notify
 from api.core.notifications.digest import send_or_queue as digest_or_send
 from api.core.models.alerts import AlertTrigger, SystemEvent
-from api.core.models.tickets import SupportTicket, TicketCategory
+from api.core.models.tickets import SupportTicket, TicketCategory, TicketComment
 
 logger = logging.getLogger(__name__)
 
@@ -585,12 +586,60 @@ def create_ticket_from_alert_trigger(sender, instance, created, **kwargs):
     _notify_ticket_created(ticket.id)
 
 
+_TERMINAL_TICKET_STATUSES = ("RESUELTO", "CERRADO", "CANCELADO")
+
+
+def _system_event_is_resolved(instance: SystemEvent) -> bool:
+    """True si extra_data marca el evento como resuelto."""
+    extra = instance.extra_data or {}
+    return bool(extra.get("resolved") is True)
+
+
+def _auto_close_tickets_for_resolved_event(instance: SystemEvent) -> None:
+    """
+    Cierra tickets automáticos 'Evento crítico' vinculados a un SystemEvent
+    ya resuelto (ej. Colbún P3 #15619 cuando getter_fail se resuelve).
+    """
+    tickets = SupportTicket.objects.filter(system_event=instance).exclude(
+        status__in=_TERMINAL_TICKET_STATUSES
+    )
+    now = timezone.now()
+    for ticket in tickets:
+        previous_status = ticket.status
+        ticket.status = "RESUELTO"
+        if not ticket.resolved_at:
+            ticket.resolved_at = now
+        if not ticket.sla_resolved_at:
+            ticket.sla_resolved_at = now
+        ticket.save(update_fields=["status", "resolved_at", "sla_resolved_at", "modified"])
+        TicketComment.objects.create(
+            ticket=ticket,
+            author=None,
+            content=(
+                "Cierre automático: el SystemEvent asociado fue marcado como resuelto. "
+                f"Estado anterior: {previous_status}. "
+                f"Evento #{instance.id} ({instance.event_type}): {instance.title}."
+            ),
+            is_internal=True,
+            status_change="RESUELTO",
+        )
+        logger.info(
+            f"Ticket #{ticket.id} auto-cerrado (RESUELTO) por SystemEvent {instance.id} resuelto."
+        )
+
+
 @receiver(post_save, sender=SystemEvent)
 def create_ticket_from_system_event(sender, instance, created, **kwargs):
     """
     Cuando ocurre un SystemEvent de severidad CRITICAL, crea un ticket automático.
+    Si el evento se marca resuelto después, cierra esos tickets en RESUELTO.
     """
-    if not created or instance.severity != "CRITICAL":
+    if not created:
+        if _system_event_is_resolved(instance):
+            _auto_close_tickets_for_resolved_event(instance)
+        return
+
+    if instance.severity != "CRITICAL":
         return
 
     # Evitar duplicados

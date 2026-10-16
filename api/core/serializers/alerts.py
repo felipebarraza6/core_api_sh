@@ -51,11 +51,12 @@ class AlertChannelNestedSerializer(serializers.ModelSerializer):
 
 class AlertTriggerSerializer(serializers.ModelSerializer):
     alert_rule_name = serializers.CharField(source="alert_rule.name", read_only=True)
+    severity = serializers.CharField(source="alert_rule.severity", read_only=True)
 
     class Meta:
         model = AlertTrigger
         fields = [
-            "id", "alert_rule", "alert_rule_name", "triggered_at",
+            "id", "alert_rule", "alert_rule_name", "severity", "triggered_at",
             "value_at_trigger", "threshold_breached", "interaction_detail_id",
             "point_catchment",
             "notification_sent", "notification_error", "notification_sent_at",

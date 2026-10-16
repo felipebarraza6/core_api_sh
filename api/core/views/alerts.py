@@ -106,18 +106,35 @@ class AlertChannelViewSet(
 
 
 class AlertTriggerFilter(filters.FilterSet):
+    """
+    Filtros para AlertTrigger.
+
+    `severity` filtra por la severidad de la AlertRule asociada (AlertTrigger
+    no tiene campo propio). Soporta la query de N1:
+    `?severity=CRITICAL&triggered_at__gte=...`
+    """
+
+    severity = filters.CharFilter(field_name="alert_rule__severity")
+
     class Meta:
         model = AlertTrigger
         fields = {
             "alert_rule": ["exact"],
             "notification_sent": ["exact"],
             "is_acknowledged": ["exact"],
-            "triggered_at": ["exact", "date", "date__gte", "date__lte"],
+            "triggered_at": ["exact", "gte", "lte", "date", "date__gte", "date__lte"],
         }
 
 
 @extend_schema_view(
-    list=extend_schema(summary="Listar disparos de alerta", description="Historial de AlertTrigger. Filtros: regla, enviado, acknowledgado, fecha."),
+    list=extend_schema(
+        summary="Listar disparos de alerta",
+        description=(
+            "Historial de AlertTrigger ordenado por triggered_at descendente. "
+            "Filtros: regla, severity (vía alert_rule), enviado, acknowledgado, "
+            "triggered_at / triggered_at__gte / triggered_at__lte / date."
+        ),
+    ),
     retrieve=extend_schema(summary="Detalle de disparo de alerta"),
     create=extend_schema(summary="Crear disparo de alerta (manual)"),
     update=extend_schema(summary="Actualizar disparo"),
