@@ -208,6 +208,41 @@ class TicketAutoCreationTests(TestCase):
         self.assertEqual(ticket.priority, "CRITICA")
         self.assertEqual(ticket.origin, "INTERNO")
 
+    def test_resolved_system_event_auto_closes_critical_ticket(self):
+        """
+        Al marcar SystemEvent.resolved=True se cierra el ticket 'Evento crítico'
+        (caso Colbún P3 #15619: evento resuelto, ticket seguía ABIERTO).
+        """
+        from api.cronjobs.telemetry.utils.audit import resolve_system_events
+
+        event = SystemEvent.objects.create(
+            event_type="API_ERROR",
+            point_catchment=self.point,
+            title="Proveedor sin respuesta",
+            message="Timeout thethings.io volumenAcum3",
+            severity="CRITICAL",
+            extra_data={
+                "condition_key": f"getter_fail:{self.point.id}:volumenAcum3",
+                "resolved": False,
+            },
+        )
+        ticket = SupportTicket.objects.filter(system_event=event).first()
+        self.assertIsNotNone(ticket)
+        self.assertEqual(ticket.status, "ABIERTO")
+        self.assertTrue(ticket.title.startswith("Evento crítico:"))
+
+        resolve_system_events(self.point.id, f"getter_fail:{self.point.id}:volumenAcum3")
+
+        ticket.refresh_from_db()
+        event.refresh_from_db()
+        self.assertTrue(event.extra_data.get("resolved"))
+        self.assertEqual(ticket.status, "RESUELTO")
+        self.assertIsNotNone(ticket.resolved_at)
+        comment = TicketComment.objects.filter(ticket=ticket, status_change="RESUELTO").first()
+        self.assertIsNotNone(comment)
+        self.assertTrue(comment.is_internal)
+        self.assertIn("Cierre automático", comment.content)
+
 
 @override_settings(
     MIDDLEWARE=TEST_MIDDLEWARE,

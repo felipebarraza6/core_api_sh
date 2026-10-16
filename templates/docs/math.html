@@ -402,7 +402,8 @@
             <a href="#matrices">Matrices</a>
             <a href="#tensores">Tensores</a>
             <a href="#atencion">Atención</a>
-            <a href="#anomalias">Anomalías</a>
+            <a href="#anomalias">Motor real</a>
+            <a href="#roadmap">Roadmap</a>
             <a href="#biblio">Bibliografía</a>
             <a href="/docs/" style="background:rgba(255,255,255,0.15);padding:0.3rem 0.8rem;border-radius:50px;">📘 API</a>
         </nav>
@@ -410,13 +411,13 @@
 </header>
 
 <section class="hero">
-    <h1>SmartMath: Fundamentos Matemáticos del Motor</h1>
-    <p>Lenguaje matemático del motor: vectores, matrices, tensores, atención y detección de anomalías.</p>
+    <h1>SmartMath: El Motor Numérico</h1>
+    <p>Hoy el motor opera con <strong>reglas fijas y umbrales configurados</strong>. Esta página describe lo que realmente corre en producción y, aparte, el marco teórico (Mahalanobis/PCA) como roadmap.</p>
     <div class="hero-badges">
-        <span class="badge">Álgebra Lineal</span>
-        <span class="badge">Tensores</span>
-        <span class="badge">Transformers</span>
-        <span class="badge">Anomalías</span>
+        <span class="badge">Umbrales fijos</span>
+        <span class="badge">SystemEvent</span>
+        <span class="badge">AlertRule</span>
+        <span class="badge">Roadmap PCA</span>
     </div>
 </section>
 
@@ -1171,212 +1172,97 @@ x = [10.2, 10.5, 10.8, 11.0, 11.2, 11.5,
     <section class="section" id="anomalias">
         <div class="section-header">
             <div class="section-num">6</div>
-            <h2 class="section-title">Detección de Anomalías: Geometría del Error</h2>
-            <p class="section-subtitle">Detectar comportamiento anómalo en un pozo sin revisar 288 datos manualmente cada día.</p>
+            <h2 class="section-title">Motor real: reglas fijas y umbrales</h2>
+            <p class="section-subtitle">Lo que corre hoy en producción. No hay Mahalanobis, PCA, SVD ni percentiles en el código de telemetría.</p>
+        </div>
+
+        <div class="highlight-box">
+            <h4>Qué hace el motor hoy</h4>
+            <p>Cada lectura se compara con <strong>límites configurados</strong> (sí/no). Si falla, se emite un <code>SystemEvent</code> (WARNING o CRITICAL). Las reglas de alerta (<code>AlertRule</code>) generan <code>AlertTrigger</code> para N1. No hay cálculo de probabilidad ni distancia estadística en este camino.</p>
         </div>
 
         <div class="math-card">
-            <h3>📐 Distancia de Mahalanobis</h3>
-            <p>La detección manual de anomalías funciona para pocas fuentes, pero no escala. Una caída repentina de caudal, un nivel inconsistente o un total que se resetea son patrones identificables visualmente en 10 pozos, pero no en 100. La alternativa matemática es geométrica: los datos normales de un pozo no llenan todo el espacio; viven en una estructura de dimensión mucho menor. Lo que cae fuera de esa estructura es anómalo.</p>
-            <p>La distancia euclidiana trata todas las direcciones igual. Pero en hidrología, caudal y nivel están correlacionados: si ambos cambian juntos, es normal. Si solo uno cambia, es anómalo. Mahalanobis mide distancia <strong>respetando la forma de la nube de datos</strong>:</p>
+            <h3>⚙️ Detectores en producción</h3>
+            <p>Comparación directa valor ↔ umbral. Ejemplos reales:</p>
+            <div class="eq-block">
+<span class="comment"># Fuera de rango (Polykarpo #104): nivel 3276.7 &gt; max 1500 → RECHAZAR</span>
+<span class="var">val</span> &gt; <span class="var">max_value</span>  <span class="op">⇒</span>  SystemEvent WARNING + dedupe por condition_key
+
+<span class="comment"># Salto de totalizador (Pozo 768): Δm³/h = 635 &gt; 500 → WARNING, se acepta</span>
+<span class="var">Δtotal</span> / <span class="var">Δh</span> &gt; <span class="var">max_diff_m3_per_hour</span>
+
+<span class="comment"># Proveedor sin respuesta (Colbún P3 #127): timeout → CRITICAL + ticket</span>
+getter_fail  <span class="op">⇒</span>  SystemEvent CRITICAL + ticket "Evento crítico"
+
+<span class="comment"># AlertRule TOTALIZADO: se evalúa consumo del período (delta), no el total eterno</span>
+<span class="var">consumo_período</span> &gt; <span class="var">threshold</span>  <span class="op">⇒</span>  AlertTrigger
+            </div>
+            <ul>
+                <li><strong>WARNING</strong> → auditoría / panel Ikolu (N1 no lee SystemEvent directamente).</li>
+                <li><strong>CRITICAL</strong> → ticket automático "Evento crítico"; al resolver el SystemEvent el ticket pasa a RESUELTO con comentario de sistema.</li>
+                <li><strong>AlertTrigger</strong> → <code>GET /api/alert_triggers/?severity=CRITICAL&amp;triggered_at__gte=...</code> (N1).</li>
+            </ul>
+        </div>
+
+        <div class="math-card">
+            <h3>📡 Flujo telemetría → alerta</h3>
+            <div class="diagram">
+<span class="label">Proveedor IoT</span> → cron telemetry_unified → reglas fijas
+        │
+        ├─ OK → InteractionDetail
+        │         └─ AlertRule (THRESHOLD / NO_DATA / …) → AlertTrigger → N1
+        └─ umbral roto → SystemEvent
+                  ├─ WARNING (dedupe punto+variable+causa)
+                  └─ CRITICAL → ticket "Evento crítico" → N1
+            </div>
+            <p>El único concepto con "probable" en el nombre es el <em>caudal probable</em> físico (diámetro × 2,5 m/s) del informe de veracidad histórica — no alimenta las alertas operativas.</p>
+        </div>
+    </section>
+
+    <section class="section" id="roadmap">
+        <div class="section-header">
+            <div class="section-num">6b</div>
+            <h2 class="section-title">Roadmap — Mahalanobis / PCA (no implementado)</h2>
+            <p class="section-subtitle">Marco teórico ilustrativo. Las cifras D² (2.1 / 7.4 / 18.9) son ejemplos didácticos, no salen de datos reales del motor.</p>
+        </div>
+
+        <div class="highlight-box">
+            <h4>⚠️ Etiqueta clara</h4>
+            <p>Esta sección <strong>no describe el motor actual</strong>. Es la base teórica candidata para una detección estadística futura (p. ej. z-score robusto por punto/hora sobre Δtotal/h). Hoy el código no usa <code>sklearn</code>, SVD ni Mahalanobis.</p>
+        </div>
+
+        <div class="math-card">
+            <h3>📐 Distancia de Mahalanobis (roadmap)</h3>
+            <p>Idea: medir distancia respetando la correlación caudal–nivel. Fórmula ilustrativa:</p>
             <div class="eq-block">
 <span class="var">D</span><sup>2</sup>(<span class="var">x</span>) = (<span class="var">x</span> - <span class="var">μ</span>)<sup>T</sup> <span class="var">Σ</span><sup>-1</sup> (<span class="var">x</span> - <span class="var">μ</span>)
             </div>
-            <div class="var-legend">
-                <div class="var-item">
-                    <span class="var-symbol">x</span>
-                    <span class="var-meaning">Vector de mediciones del pozo en un instante: [caudal, nivel, total].</span>
+            <div style="background:#0f1724; border-radius:10px; padding:1rem; margin-top:0.5rem;">
+                <div style="display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid var(--sh-border);">
+                    <span style="font-size:0.85rem;">Caudal ↑, Nivel ↓ (esperado)</span>
+                    <span style="font-size:0.85rem; color:var(--sh-green); font-weight:700;">D² ≈ 2.1 ✓ (ilustrativo)</span>
                 </div>
-                <div class="var-item">
-                    <span class="var-symbol">μ</span>
-                    <span class="var-meaning">Vector de medias históricas. Es el "centro" del comportamiento normal.</span>
+                <div style="display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid var(--sh-border);">
+                    <span style="font-size:0.85rem;">Caudal ↑, Nivel = (raro)</span>
+                    <span style="font-size:0.85rem; color:var(--sh-yellow); font-weight:700;">D² ≈ 7.4 ⚠ (ilustrativo)</span>
                 </div>
-                <div class="var-item">
-                    <span class="var-symbol">Σ</span>
-                    <span class="var-meaning">Matriz de covarianza. Captura cómo se correlacionan las variables entre sí.</span>
-                </div>
-                <div class="var-item">
-                    <span class="var-symbol">Σ⁻¹</span>
-                    <span class="var-meaning">Inversa de covarianza. Acorta distancias en direcciones de alta correlación.</span>
-                </div>
-                <div class="var-item">
-                    <span class="var-symbol">D²</span>
-                    <span class="var-meaning">Distancia al cuadrado. Si D² > τ → el punto es anómalo.</span>
-                </div>
-                <div class="var-item">
-                    <span class="var-symbol">D</span>
-                    <span class="var-meaning">Distancia de Mahalanobis (raíz cuadrada de D²). Mide desviación respecto al comportamiento normal en unidades de desviación estándar.</span>
-                </div>
-            </div>
-
-            <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; margin:1.5rem 0;">
-                <div class="diagram" style="flex:1; min-width:280px;">
-<span class="label">Euclidiana vs Mahalanobis:</span>
-
-     nivel
-       ↑
-       │      ╭────────╮
-       │     ╱   ·A    ╲
-       │    │  ·    ·   │
-       │    │ ·   ●   ·  │  ← nube normal
-       │    │  ·    ·   │     (caudal vs nivel
-       │     ╲   ·B   ·╱      correlacionados)
-       │      ╰────────╯
-       └──────────────────→ caudal
-
-<span class="value">Euclidiana: d(A,●) = d(B,●)</span>
-<span class="highlight">Mahalanobis: D(A) >> D(B)</span>
-<span class="axis">A está en la dirección de la correlación → menos anómalo</span>
-                </div>
-                <div style="flex:1; min-width:280px;">
-                    <p style="font-size:0.9rem; margin-bottom:0.75rem;"><strong>Ejemplo concreto:</strong></p>
-                    <p style="font-size:0.88rem; color:var(--sh-text); margin-bottom:0.5rem;">Un pico de caudal sin cambio de nivel podría tener distancia euclidiana "normal", pero Mahalanobis detecta la <strong>ruptura de correlación</strong>.</p>
-                    <div style="background:#0f1724; border-radius:10px; padding:1rem; margin-top:0.5rem;">
-                        <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
-                            <span style="font-size:0.8rem; color:var(--sh-text-muted);">Situación</span>
-                            <span style="font-size:0.8rem; color:var(--sh-text-muted);">D² Mahalanobis</span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid var(--sh-border);">
-                            <span style="font-size:0.85rem;">Caudal ↑, Nivel ↓ (esperado)</span>
-                            <span style="font-size:0.85rem; color:var(--sh-green); font-weight:700;">2.1 ✓</span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid var(--sh-border);">
-                            <span style="font-size:0.85rem;">Caudal ↑, Nivel = (raro)</span>
-                            <span style="font-size:0.85rem; color:var(--sh-yellow); font-weight:700;">7.4 ⚠</span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; padding:0.3rem 0;">
-                            <span style="font-size:0.85rem;">Caudal ↑, Nivel ↑ (imposible)</span>
-                            <span style="font-size:0.85rem; color:var(--sh-red-dark); font-weight:700;">18.9 ✗</span>
-                        </div>
-                    </div>
+                <div style="display:flex; justify-content:space-between; padding:0.3rem 0;">
+                    <span style="font-size:0.85rem;">Caudal ↑, Nivel ↑ (imposible)</span>
+                    <span style="font-size:0.85rem; color:var(--sh-red-dark); font-weight:700;">D² ≈ 18.9 ✗ (ilustrativo)</span>
                 </div>
             </div>
             <div class="citation">
-                <strong>Bishop, C. M. (2006).</strong> <em>Pattern Recognition and Machine Learning</em>. Springer. Cap. 2. ISBN 978-0387310732.
+                <strong>Bishop, C. M. (2006).</strong> <em>Pattern Recognition and Machine Learning</em>. Springer. Cap. 2.
             </div>
         </div>
 
         <div class="math-card">
-            <h3>🔺 Subespacios normales y anómalos</h3>
-            <p>Tras PCA, los datos normales se alinean en pocas direcciones principales. Cualquier desviación perpendicular a esas direcciones es anómala:</p>
+            <h3>🔺 PCA / residual (roadmap)</h3>
+            <p>Tras PCA, el residual perpendicular al subespacio normal sería el score de anomalía, con umbral τ (p. ej. percentil 99). <strong>No está cableado al cron ni a SystemEvent.</strong></p>
             <div class="eq-block">
-<span class="var">x</span> = <span class="var">x</span><sub>normal</sub> + <span class="var">x</span><sub>residual</sub>
-
 <span class="var">||x</span><sub>residual</sub><span class="var">||²</span> = <span class="var">Σ</span><sub>i=k+1</sub><sup>r</sup> (<span class="var">u</span><sub>i</sub><sup>T</sup><span class="var">x</span>)<sup>2</sup>
             </div>
-            <div class="var-legend">
-                <div class="var-item">
-                    <span class="var-symbol">x</span>
-                    <span class="var-meaning">Vector de observación actual (medición del pozo).</span>
-                </div>
-                <div class="var-item">
-                    <span class="var-symbol">x_normal</span>
-                    <span class="var-meaning">Proyección de x sobre los k componentes principales. Representa comportamiento esperado.</span>
-                </div>
-                <div class="var-item">
-                    <span class="var-symbol">x_residual</span>
-                    <span class="var-meaning">Lo que sobra después de proyectar. Es perpendicular al subespacio normal. Cuanto mayor, más anómalo.</span>
-                </div>
-                <div class="var-item">
-                    <span class="var-symbol">u_i</span>
-                    <span class="var-meaning">i-ésimo vector singular de U. Cada u_i es una dirección ortogonal en el espacio de datos.</span>
-                </div>
-                <div class="var-item">
-                    <span class="var-symbol">k</span>
-                    <span class="var-meaning">Número de componentes principales conservados. k=1 para un pozo donde todo está acoplado.</span>
-                </div>
-                <div class="var-item">
-                    <span class="var-symbol">τ</span>
-                    <span class="var-meaning">Umbral de anomalía. Se calibra con percentil 99 de datos históricos normales.</span>
-                </div>
-                <div class="var-item">
-                    <span class="var-symbol">r</span>
-                    <span class="var-meaning">Rango de la matriz de datos (número de valores singulares no nulos). r = min(filas, columnas) en la práctica.</span>
-                </div>
-                <div class="var-item">
-                    <span class="var-symbol">||x<sub>residual</sub>||²</span>
-                    <span class="var-meaning">Norma al cuadrado del residual. Mide la magnitud de la desviación perpendicular al subespacio normal.</span>
-                </div>
-            </div>
-
-            <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; margin:1.5rem 0;">
-                <div class="diagram" style="flex:1; min-width:280px;">
-<span class="label">Descomposición en subespacios:</span>
-
-         R^d (espacio completo)
-         │
-         │  ┌─────────────────┐
-         │  │   Subespacio    │
-         │  │   Normal R^k    │
-         │  │  ┌─────────┐    │
-         │  │  │  · · ·  │    │
-         │  │  │ · ● ● · │    │
-         │  │  │  · · ·  │    │
-         │  │  └─────────┘    │
-         │  │       ↑         │
-         │  │   x_normal      │
-         │  └─────────────────┘
-         │         ↑
-         │    x_residual (anomalía)
-         │    perpendicular al plano
-         │
-         └────────────────────────→
-                </div>
-                <div style="flex:1; min-width:280px;">
-                    <p style="font-size:0.9rem; margin-bottom:0.75rem;"><strong>Visualización del residual:</strong></p>
-                    <div style="background:#0f1724; border-radius:10px; padding:1rem;">
-                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
-                            <div style="width:12px; height:12px; border-radius:50%; background:var(--sh-green);"></div>
-                            <span style="font-size:0.85rem;">Datos normales (||res||² pequeño)</span>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
-                            <div style="width:12px; height:12px; border-radius:50%; background:var(--sh-red);"></div>
-                            <span style="font-size:0.85rem;">Anomalía (||res||² grande)</span>
-                        </div>
-                        <div style="height:80px; position:relative; background:white; border-radius:8px; border:1px solid var(--sh-border);">
-                            <div style="position:absolute; bottom:10%; left:15%; width:6px; height:6px; border-radius:50%; background:var(--sh-green); opacity:0.6;"></div>
-                            <div style="position:absolute; bottom:25%; left:35%; width:6px; height:6px; border-radius:50%; background:var(--sh-green); opacity:0.6;"></div>
-                            <div style="position:absolute; bottom:18%; left:55%; width:6px; height:6px; border-radius:50%; background:var(--sh-green); opacity:0.6;"></div>
-                            <div style="position:absolute; bottom:30%; left:70%; width:6px; height:6px; border-radius:50%; background:var(--sh-green); opacity:0.6;"></div>
-                            <div style="position:absolute; bottom:22%; left:45%; width:6px; height:6px; border-radius:50%; background:var(--sh-green); opacity:0.6;"></div>
-                            <div style="position:absolute; bottom:75%; left:60%; width:10px; height:10px; border-radius:50%; background:var(--sh-red); box-shadow:0 0 8px var(--sh-red);"></div>
-                            <div style="position:absolute; bottom:5%; left:5%; font-size:0.7rem; color:var(--sh-text-muted);">PC₁</div>
-                            <div style="position:absolute; top:5%; left:5%; font-size:0.7rem; color:var(--sh-text-muted);">PC₂</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <p>Este enfoque — <strong>PCA-based anomaly detection</strong> — es computacionalmente eficiente (una vez calculada la SVD, cada evaluación es O(d)) y no requiere datos etiquetados como "anómalos". Solo necesita una muestra representativa de comportamiento normal.</p>
-        </div>
-
-        <div class="math-card">
-            <h3>🌊 Aplicación concreta en el motor</h3>
-            <p>Supongamos un pozo con historial de 90 días. Calculamos la SVD de su matriz de datos (288 muestras/día × 3 variables). Encontramos que σ₁/σ₂ ≈ 15, indicando que un único modo domina. Usamos k=1 como subespacio normal.</p>
-            <div style="background:#0f1724; border-radius:12px; padding:1.5rem; margin:1.5rem 0;">
-                <p style="font-size:0.9rem; font-weight:700; color:var(--sh-text); margin-bottom:1rem;">Datos de un día nuevo:</p>
-                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:1rem; margin-bottom:1rem;">
-                    <div style="text-align:center;">
-                        <p style="font-size:0.8rem; color:var(--sh-text-muted);">Caudal</p>
-                        <p style="font-size:1.3rem; font-weight:800; color:var(--sh-blue);">12 L/s</p>
-                        <p style="font-size:0.75rem; color:var(--sh-green);">Normal: 10-11</p>
-                    </div>
-                    <div style="text-align:center;">
-                        <p style="font-size:0.8rem; color:var(--sh-text-muted);">Nivel</p>
-                        <p style="font-size:1.3rem; font-weight:800; color:var(--sh-green);">45 m</p>
-                        <p style="font-size:0.75rem; color:var(--sh-green);">Normal: 44-46</p>
-                    </div>
-                    <div style="text-align:center;">
-                        <p style="font-size:0.8rem; color:var(--sh-text-muted);">Total</p>
-                        <p style="font-size:1.3rem; font-weight:800; color:var(--sh-red);">+500 m³</p>
-                        <p style="font-size:0.75rem; color:var(--sh-red-dark);">Imposible en 1h</p>
-                    </div>
-                </div>
-                <div style="border-top:1px solid var(--sh-border); padding-top:1rem;">
-                    <p style="font-size:0.9rem; color:var(--sh-text);"><strong>Análisis:</strong> Caudal y nivel parecen normales individualmente, pero el salto de <strong>500 m³ en 1 hora</strong> viola el acoplamiento físico esperado (caudal de 12 L/s = 43.2 m³/h, no 500).</p>
-                    <p style="font-size:0.9rem; color:var(--sh-text); margin-top:0.5rem;"><strong>Resultado:</strong> ||x<sub>res</sub>||² supera el umbral τ (percentil 99). <span style="color:var(--sh-red-dark); font-weight:700;">→ Alerta de reset de contador o error de sensor.</span></p>
-                </div>
-            </div>
-            <p>Este flujo matemático — <strong>vector → proyección → norma residual → umbral</strong> — es la base teórica de las <em>heurísticas de auditoría</em> que este motor aplica automáticamente.</p>
+            <p>Propuesta operativa de tamaño razonable: z-score robusto (mediana/MAD 30 días) sobre Δtotal/h, guardado en <code>SystemEvent.extra_data.score</code> con dedupe por <code>condition_key</code>.</p>
         </div>
     </section>
 
@@ -1474,28 +1360,23 @@ x = [10.2, 10.5, 10.8, 11.0, 11.2, 11.5,
             </div>
 
             <div class="math-card">
-                <h3>🔍 Auditoría de Datos</h3>
-                <p><strong>Objeto:</strong> Residuo de reconstrucción ||x − x̂||</p>
+                <h3>🔍 Auditoría de Datos (hoy)</h3>
+                <p><strong>Objeto:</strong> SystemEvent con comparación escalar x ≷ umbral</p>
                 <div class="var-legend">
                     <div class="var-item">
                         <span class="var-symbol">x</span>
-                        <span class="var-meaning">Vector de observación actual. Dimensión d. Tipo: real. Ej: [caudal, nivel, total] en un instante.</span>
+                        <span class="var-meaning">Valor medido (nivel, caudal, Δtotal/h, etc.).</span>
                     </div>
                     <div class="var-item">
-                        <span class="var-symbol">x̂</span>
-                        <span class="var-meaning">Reconstrucción de x usando solo los k componentes principales. Tipo: real. Dimensión d.</span>
+                        <span class="var-symbol">a, b</span>
+                        <span class="var-meaning">Límites min/max de Variable o max_diff del perfil.</span>
                     </div>
                     <div class="var-item">
-                        <span class="var-symbol">k</span>
-                        <span class="var-meaning">Número de componentes principales conservados. Tipo: entero. k &lt; d.</span>
-                    </div>
-                    <div class="var-item">
-                        <span class="var-symbol">d</span>
-                        <span class="var-meaning">Dimensión original del vector de observación. Tipo: entero. En este motor, d = 3.</span>
+                        <span class="var-symbol">condition_key</span>
+                        <span class="var-meaning">Clave de dedupe (ej. out_of_range:104:3grecuc2v) con occurrence_count / last_seen.</span>
                     </div>
                 </div>
-                <p><strong>Operaciones:</strong> SVD truncada, proyección ortogonal sobre el subespacio normal, norma del residual.</p>
-                <p><strong>Espacio:</strong> R<sup>k</sup> ⊂ R<sup>d</sup>. El subespacio normal tiene k dimensiones (las principales) dentro del espacio original de d dimensiones.</p>
+                <p><strong>Operaciones:</strong> Validación de rango, salto de totalizador, reset, fallo de getter. PCA/Mahalanobis → ver <a href="#roadmap">roadmap</a>.</p>
             </div>
 
             <div class="math-card">

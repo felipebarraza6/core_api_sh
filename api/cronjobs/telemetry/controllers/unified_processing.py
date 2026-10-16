@@ -17,7 +17,7 @@ from api.core.models import InteractionDetail
 
 # ✅ Logging estructurado
 from api.cronjobs.utils.logging_config import telemetry_logger
-from api.cronjobs.telemetry.utils.audit import emit_system_event
+from api.cronjobs.telemetry.utils.audit import emit_system_event, resolve_system_events
 
 # ✅ Timezone desde settings (elimina hardcode de pytz)
 from django.utils import timezone
@@ -789,24 +789,32 @@ def _validate_variable_range(
     except (ValueError, TypeError):
         return True  # No validamos si no es numérico
 
+    str_var = variable.get("str_variable") or "unknown"
+    point_id = point_catchment["id"]
+    # Una sola condición abierta por punto+variable+causa (Polykarpo 3276.7).
+    condition_key = f"out_of_range:{point_id}:{str_var}"
+
     if min_val is not None and val < float(min_val):
         telemetry_logger.warning(
-            f"[VALIDACION] Punto {point_catchment['id']} - {variable.get('str_variable')}: "
+            f"[VALIDACION] Punto {point_id} - {str_var}: "
             f"valor {val} < mínimo {min_val}"
         )
         emit_system_event(
             event_type="MEASUREMENT_ERROR",
-            point_id=point_catchment["id"],
+            point_id=point_id,
             title="Valor fuera de rango configurado",
-            message=f"Variable {variable.get('str_variable')}: valor {val} < mínimo {min_val}.",
+            message=f"Variable {str_var}: valor {val} < mínimo {min_val}.",
             severity="WARNING",
+            condition_key=condition_key,
+            dedupe_until_resolved=True,
             extra_data={
                 "decision": "RECHAZAR",
                 "reason": "El valor medido está por debajo del mínimo configurado para esta variable. Se marca el registro como error para evitar distorsiones en reportes y envíos DGA.",
+                "cause": "below_min",
                 "actual_value": val,
                 "threshold_value": float(min_val),
-                "expected_range": [float(min_val), None],
-                "variable": variable.get('str_variable'),
+                "expected_range": [float(min_val), float(max_val) if max_val is not None else None],
+                "variable": str_var,
                 "raw_value": val,
                 "min_value": float(min_val),
                 "is_error": True,
@@ -818,22 +826,25 @@ def _validate_variable_range(
 
     if max_val is not None and val > float(max_val):
         telemetry_logger.warning(
-            f"[VALIDACION] Punto {point_catchment['id']} - {variable.get('str_variable')}: "
+            f"[VALIDACION] Punto {point_id} - {str_var}: "
             f"valor {val} > máximo {max_val}"
         )
         emit_system_event(
             event_type="MEASUREMENT_ERROR",
-            point_id=point_catchment["id"],
+            point_id=point_id,
             title="Valor fuera de rango configurado",
-            message=f"Variable {variable.get('str_variable')}: valor {val} > máximo {max_val}.",
+            message=f"Variable {str_var}: valor {val} > máximo {max_val}.",
             severity="WARNING",
+            condition_key=condition_key,
+            dedupe_until_resolved=True,
             extra_data={
                 "decision": "RECHAZAR",
                 "reason": "El valor medido supera el máximo configurado para esta variable. Se marca el registro como error para evitar distorsiones en reportes y envíos DGA.",
+                "cause": "above_max",
                 "actual_value": val,
                 "threshold_value": float(max_val),
-                "expected_range": [None, float(max_val)],
-                "variable": variable.get('str_variable'),
+                "expected_range": [float(min_val) if min_val is not None else None, float(max_val)],
+                "variable": str_var,
                 "raw_value": val,
                 "max_value": float(max_val),
                 "is_error": True,
@@ -843,6 +854,8 @@ def _validate_variable_range(
         created_register["is_error"] = True
         return False
 
+    # Valor dentro de rango: resolver evento abierto de fuera de rango (si existe).
+    resolve_system_events(point_id, condition_key)
     return True
 
 

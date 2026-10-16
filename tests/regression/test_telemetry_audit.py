@@ -191,8 +191,8 @@ class TelemetryAuditTestCase(TestCase):
         ).count()
         self.assertEqual(count, 2)
 
-    def test_emit_system_event_no_dedup_for_warning(self):
-        """SystemEvent WARNING no se deduplica (solo CRITICAL)."""
+    def test_emit_system_event_no_dedup_for_warning_without_condition_key(self):
+        """WARNING sin condition_key sigue creando eventos nuevos (compatibilidad)."""
         emit_system_event(
             event_type="MEASUREMENT_ERROR",
             point_id=self.point.id,
@@ -213,6 +213,44 @@ class TelemetryAuditTestCase(TestCase):
             severity="WARNING",
         ).count()
         self.assertEqual(count, 2)
+
+    def test_emit_system_event_warning_dedupe_updates_count(self):
+        """
+        WARNING con condition_key + dedupe_until_resolved: un solo evento abierto
+        y occurrence_count/last_seen actualizados (caso Polykarpo 3276.7).
+        """
+        key = f"out_of_range:{self.point.id}:3grecuc2v"
+        emit_system_event(
+            event_type="MEASUREMENT_ERROR",
+            point_id=self.point.id,
+            title="Valor fuera de rango configurado",
+            message="Variable 3grecuc2v: valor 3276.7 > máximo 1500.",
+            severity="WARNING",
+            condition_key=key,
+            dedupe_until_resolved=True,
+            extra_data={"actual_value": 3276.7, "variable": "3grecuc2v"},
+        )
+        emit_system_event(
+            event_type="MEASUREMENT_ERROR",
+            point_id=self.point.id,
+            title="Valor fuera de rango configurado",
+            message="Variable 3grecuc2v: valor 3276.7 > máximo 1500.",
+            severity="WARNING",
+            condition_key=key,
+            dedupe_until_resolved=True,
+            extra_data={"actual_value": 3276.7, "variable": "3grecuc2v"},
+        )
+        qs = SystemEvent.objects.filter(
+            point_catchment=self.point,
+            event_type="MEASUREMENT_ERROR",
+            severity="WARNING",
+        )
+        self.assertEqual(qs.count(), 1)
+        event = qs.first()
+        self.assertEqual(event.extra_data.get("condition_key"), key)
+        self.assertEqual(event.extra_data.get("occurrence_count"), 2)
+        self.assertIn("last_seen", event.extra_data)
+        self.assertFalse(event.extra_data.get("resolved"))
 
 
     def test_average_flow_negative_diff_returns_zero(self):
