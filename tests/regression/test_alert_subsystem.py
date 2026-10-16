@@ -8,6 +8,7 @@ Validan que:
 4. El motor no genera triggers para reglas con cooldown activo
 """
 
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -222,6 +223,64 @@ class AlertSubsystemAPITests(TestCase):
         resp = self.client.get("/api/alert_channels/")
         self.assertEqual(resp.status_code, 200)
 
+    def test_alert_triggers_filter_severity_and_triggered_at_gte(self):
+        """
+        N1 envía severity=CRITICAL y triggered_at__gte; ambos deben filtrar.
+        Orden por defecto: más recientes primero.
+        """
+        client_obj = Client.objects.create(name="N1 Client")
+        project = ProjectCatchments.objects.create(name="N1 Project", client=client_obj)
+        point = CatchmentPoint.objects.create(
+            title="N1 Point", project=project, owner_user=self.user, frecuency="60",
+        )
+        rule_crit = AlertRule.objects.create(
+            name="Crítica caudal",
+            target_type="THRESHOLD_MAX",
+            variable_type="CAUDAL",
+            threshold_value=Decimal("10"),
+            severity="CRITICAL",
+            check_frequency_minutes=1,
+            cooldown_minutes=0,
+            point_catchment=point,
+        )
+        rule_warn = AlertRule.objects.create(
+            name="Warning nivel",
+            target_type="THRESHOLD_MAX",
+            variable_type="NIVEL",
+            threshold_value=Decimal("100"),
+            severity="WARNING",
+            check_frequency_minutes=1,
+            cooldown_minutes=0,
+            point_catchment=point,
+        )
+        now = timezone.now()
+        old = now - timedelta(hours=5)
+        t_old_crit = AlertTrigger.objects.create(
+            alert_rule=rule_crit, triggered_at=old, value_at_trigger=20,
+            point_catchment=point,
+        )
+        t_new_crit = AlertTrigger.objects.create(
+            alert_rule=rule_crit, triggered_at=now, value_at_trigger=25,
+            point_catchment=point,
+        )
+        AlertTrigger.objects.create(
+            alert_rule=rule_warn, triggered_at=now, value_at_trigger=200,
+            point_catchment=point,
+        )
+
+        cutoff = (now - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        resp = self.client.get(
+            "/api/alert_triggers/",
+            {"severity": "CRITICAL", "triggered_at__gte": cutoff},
+        )
+        self.assertEqual(resp.status_code, 200)
+        ids = [row["id"] for row in resp.data["results"]]
+        self.assertIn(t_new_crit.id, ids)
+        self.assertNotIn(t_old_crit.id, ids)
+        self.assertTrue(all(row["severity"] == "CRITICAL" for row in resp.data["results"]))
+        # Más reciente primero
+        self.assertEqual(ids[0], t_new_crit.id)
+
 
 class AlertEngineTriggerTests(TestCase):
     """Tests para el flujo completo: engine crea trigger con interaction_detail."""
@@ -318,6 +377,42 @@ class AlertEngineTriggerTests(TestCase):
         # Segunda ejecución inmediata: no debe crear otro por cooldown
         stats2 = run_engine(dry_run=False)
         self.assertEqual(stats2["triggered"], 0)
+
+    def test_totalizado_threshold_uses_period_consumption_not_absolute_total(self):
+        """
+        Regla TOTALIZADO debe evaluar consumo del período (total_diff / delta),
+        no el total acumulado que siempre crece (caso P09 Central Yungay / AlertRule #5).
+        """
+        from api.cronjobs.alerts.alert_engine import run_engine
+
+        # Total absoluto 113404 >> umbral 105845, pero consumo período = 50
+        InteractionDetail.objects.filter(pk=self.interaction.pk).update(
+            total="113404.0",
+            total_diff=50,
+            flow=0,
+        )
+        rule = AlertRule.objects.create(
+            name="volumen acumulado Yungay",
+            target_type="THRESHOLD_MAX",
+            variable_type="TOTALIZADO",
+            threshold_value=Decimal("105845"),
+            severity="WARNING",
+            check_frequency_minutes=1,
+            cooldown_minutes=0,
+            point_catchment=self.point,
+        )
+
+        stats = run_engine(dry_run=False)
+        self.assertEqual(stats["triggered"], 0)
+        self.assertFalse(AlertTrigger.objects.filter(alert_rule=rule).exists())
+
+        # Si el consumo del período supera el umbral, sí dispara
+        InteractionDetail.objects.filter(pk=self.interaction.pk).update(total_diff=200000)
+        stats2 = run_engine(dry_run=False)
+        self.assertEqual(stats2["triggered"], 1)
+        trigger = AlertTrigger.objects.filter(alert_rule=rule).first()
+        self.assertIsNotNone(trigger)
+        self.assertEqual(float(trigger.value_at_trigger), 200000.0)
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")

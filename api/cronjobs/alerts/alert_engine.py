@@ -149,7 +149,13 @@ def _get_points_for_rule(rule: AlertRule):
 
 
 def _evaluate_threshold(rule: AlertRule, now: datetime) -> list:
-    """Evalúa alertas de umbral MAX/MIN."""
+    """
+    Evalúa alertas de umbral MAX/MIN.
+
+    Para TOTALIZADO no se compara el total acumulado (siempre crece) sino el
+    consumo del período (delta en la ventana). Evita el spam de reglas tipo
+    "volumen acumulado" (ej. P09 Central Yungay #73 / AlertRule #5).
+    """
     variable_type = rule.variable_type
     threshold = rule.threshold_value
 
@@ -158,6 +164,8 @@ def _evaluate_threshold(rule: AlertRule, now: datetime) -> list:
 
     points = _get_points_for_rule(rule)
     results = []
+    is_totalizado = (variable_type or "").upper() in ("TOTALIZADO", "TOTAL")
+    window_minutes = rule.rate_change_window or rule.check_frequency_minutes or 60
 
     for point in points:
         last_record = (
@@ -168,7 +176,12 @@ def _evaluate_threshold(rule: AlertRule, now: datetime) -> list:
         if not last_record:
             continue
 
-        value = _extract_value(last_record, variable_type)
+        if is_totalizado:
+            value = _extract_totalizado_period_consumption(
+                point, last_record, now, window_minutes
+            )
+        else:
+            value = _extract_value(last_record, variable_type)
         if value is None:
             continue
 
@@ -180,6 +193,62 @@ def _evaluate_threshold(rule: AlertRule, now: datetime) -> list:
         results.append((triggered, value, threshold, last_record, point.id))
 
     return results
+
+
+def _extract_totalizado_period_consumption(
+    point: CatchmentPoint,
+    last_record: InteractionDetail,
+    now: datetime,
+    window_minutes: int,
+) -> Optional[float]:
+    """
+    Consumo del período para reglas TOTALIZADO.
+
+    Preferencia:
+    1. `total_diff` del último registro (consumo m³ del intervalo de telemetría).
+    2. Delta de `total` respecto al registro más cercano a `now - window`.
+    """
+    if last_record.total_diff is not None:
+        try:
+            return float(last_record.total_diff)
+        except (TypeError, ValueError):
+            pass
+
+    try:
+        current_total = float(last_record.total) if last_record.total is not None else None
+    except (TypeError, ValueError):
+        current_total = None
+    if current_total is None:
+        return None
+
+    cutoff = now - timedelta(minutes=max(1, int(window_minutes or 60)))
+    older = (
+        InteractionDetail.objects.filter(
+            catchment_point=point,
+            date_time_medition__lte=cutoff,
+        )
+        .exclude(pk=last_record.pk)
+        .order_by("-date_time_medition")
+        .first()
+    )
+    if older is None:
+        older = (
+            InteractionDetail.objects.filter(catchment_point=point)
+            .exclude(pk=last_record.pk)
+            .order_by("-date_time_medition")
+            .first()
+        )
+    if older is None:
+        return None
+
+    try:
+        previous_total = float(older.total) if older.total is not None else None
+    except (TypeError, ValueError):
+        previous_total = None
+    if previous_total is None:
+        return None
+
+    return current_total - previous_total
 
 
 def _evaluate_no_data(rule: AlertRule, now: datetime) -> list:

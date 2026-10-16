@@ -451,7 +451,9 @@ Historial de disparos. Solo lectura y update parcial (acknowledge).
 | `GET /api/alert_triggers/` | GET | Listar triggers |
 | `GET /api/alert_triggers/<id>/` | GET, PATCH | Detalle + ack |
 
-**Filtros:** `?alert_rule=`, `?notification_sent=`, `?is_acknowledged=`, `?triggered_at=`, `?triggered_at__date__gte=`, `?triggered_at__date__lte=`
+**Filtros:** `?alert_rule=`, `?severity=` (vía `alert_rule.severity`), `?notification_sent=`, `?is_acknowledged=`, `?triggered_at=`, `?triggered_at__gte=`, `?triggered_at__lte=`, `?triggered_at__date__gte=`, `?triggered_at__date__lte=`
+
+**Orden por defecto:** `triggered_at` descendente (más recientes primero).
 
 ---
 
